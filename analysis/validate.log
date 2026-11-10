@@ -1,0 +1,17 @@
+滚动样本外验证（train→val 选参→test 冻结复跑；全部试验记录）...
+
+可行性判定: INSUFFICIENT_OOS_HORIZON
+  ✗ B0: fold0: CAGR 4.85% MDD 0.91%  fold1: CAGR 0.61% MDD 0.69%  fold2: CAGR 2.20% MDD 1.07%  fold3: CAGR 5.77% MDD 2.68%
+  ✗ B1: fold0: CAGR 3.86% MDD 0.64%  fold1: CAGR 1.88% MDD 0.40%  fold2: CAGR 2.76% MDD 0.64%  fold3: CAGR 5.31% MDD 1.95%
+  ✗ B2: fold0: CAGR 4.18% MDD 0.10%  fold1: CAGR 1.97% MDD 0.29%  fold2: CAGR 3.16% MDD 0.29%  fold3: CAGR 4.94% MDD 1.02%
+  ✗ B3: fold0: CAGR 4.18% MDD 0.10%  fold1: CAGR 1.97% MDD 0.29%  fold2: CAGR 3.16% MDD 0.29%  fold3: CAGR 4.94% MDD 1.02%
+  ✗ B4: fold0: CAGR 4.17% MDD 0.10%  fold1: CAGR 1.97% MDD 0.29%  fold2: CAGR 3.16% MDD 0.29%  fold3: CAGR 4.94% MDD 1.02%
+  ✗ B5: fold0: CAGR 4.18% MDD 0.10%  fold1: CAGR 1.98% MDD 0.28%  fold2: CAGR 3.19% MDD 0.28%  fold3: CAGR 4.94% MDD 1.02%
+
+帕累托前沿（test 均值）:
+  B5: CAGR 3.57% / MDD 0.42%
+
+压力测试（块自助 2000 条×252日）: P(MDD>4%)=0.0% [0.0%,0.2%]，MDD中位 1.02%，P95 1.38%
+2022-11 债灾回放：DATA_BLOCKED（缺失历史序列，不补零）
+
+明细: reports/oos_trials.csv, reports/oos_summary.json  状态: RESEARCH_ONLY

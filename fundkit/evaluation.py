@@ -23,8 +23,6 @@ from fundkit import policies, simulator, style
 from fundkit.adapters import CST, LocalDataAdapter, load_account_snapshot
 from fundkit import finance_math as fm
 
-CAPITAL = 195123.58  # 标准化本金（快照总额），反事实起点
-BUDGET_PER_DAY = 1005.0
 MDD_BUDGET = 0.04
 CAGR_TARGET = 0.05
 
@@ -99,11 +97,13 @@ def _style_signals_asof(adapter: LocalDataAdapter, codes, until) -> dict:
 
 
 def _initial_lots(adapter: LocalDataAdapter, snap: dict, start: str,
-                  capital: float = CAPITAL):
+                  capital: float | None = None):
     """反事实起点组合：快照权重×标准化本金；成立日晚于起点的基金持有现金等待。
 
     COUNTERFACTUAL_START_PORTFOLIO：非用户真实历史持仓。
     """
+    if capital is None:
+        capital = sum(float(f["value_cny"]) for f in snap["funds"])
     total_snap = sum(f["value_cny"] for f in snap["funds"])
     lots = {}
     start_ts = pd.Timestamp(start)
@@ -130,14 +130,15 @@ def _run_window(family, overrides, window, adapter, snap, sim_config_base,
     params["equity_index_codes"] = sim_config_base["equity_index_codes"]
     if style_signals is not None:
         params["_style_signals"] = style_signals
-    lots = _initial_lots(adapter, snap, window[0])
+    total_snap = sum(float(f["value_cny"]) for f in snap["funds"])
+    capital0 = total_snap
+    lots = _initial_lots(adapter, snap, window[0], capital=capital0)
     # 起始无数据基金的份额按现金处理
-    total_snap = sum(f["value_cny"] for f in snap["funds"])
     held = set(lots)
-    cash0 = sum(CAPITAL * f["value_cny"] / total_snap
+    cash0 = sum(capital0 * f["value_cny"] / total_snap
                 for f in snap["funds"] if f["code"] not in held)
     config = simulator.SimConfig(
-        budget_per_day=BUDGET_PER_DAY,
+        budget_per_day=float(snap["new_cash_budget_cny_per_execution_day"]),
         allow_new_equity_index=(family == "B0"),
         equity_index_codes=frozenset(sim_config_base["equity_index_codes"]),
         daily_limits=sim_config_base["daily_limits"])

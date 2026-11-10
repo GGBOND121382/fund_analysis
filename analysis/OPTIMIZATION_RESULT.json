@@ -1,0 +1,122 @@
+{
+  "asof": "2026-11-10T23:26:13.832418+08:00",
+  "objective": {
+    "annualized_net_return_strictly_gt": 0.05,
+    "portfolio_mdd_lte": 0.04,
+    "priority": "drawdown_first"
+  },
+  "code_version": "bec32bd",
+  "joint_strategy_optimization": {
+    "status": "DATA_BLOCKED",
+    "reason": "INSUFFICIENT_HISTORY: 需要至少 1008 个共同交易日，实际 507",
+    "available_common_days": 507,
+    "required_common_days": 1008,
+    "binding_constraint": "021559 成立日 2024-08-13（全部13只持仓共同历史起点）",
+    "unblock_estimate": "约 2028-09（021559 满 1008 个共同交易日）",
+    "note": "CLI 安全阈值 train/val/test 各 ≥252 交易日，不放宽"
+  },
+  "weight_research_candidate": {
+    "status": "SCENARIO_CRITERIA_MET_UNVALIDATED",
+    "trade_ready": false,
+    "research_only": true,
+    "data_start": "2025-08-29",
+    "data_end": "2026-11-05",
+    "n_joint_observations": 277,
+    "codes": [
+      "710301",
+      "004400",
+      "021559",
+      "014846",
+      "000218",
+      "110020",
+      "096001",
+      "017641",
+      "016452",
+      "019736",
+      "019172",
+      "539001",
+      "019441"
+    ],
+    "weights": {
+      "710301": 0.0023519768,
+      "004400": 0.362724305,
+      "021559": 0.5779765639,
+      "014846": 0.0333664438,
+      "000218": 0.004100556,
+      "110020": 0.004675396,
+      "096001": 0.0023432842,
+      "017641": 0.0010231977,
+      "016452": 0.0009941905,
+      "019736": 0.0004554549,
+      "019172": 0.0004555574,
+      "539001": 0.0004555574,
+      "019441": 0.0002278043,
+      "cash": 0.0088497119
+    },
+    "candidate_count_evaluated": 2416,
+    "risk_feasible_candidate_count": 960,
+    "historical_mdd": 0.007509691458350787,
+    "scenario_mdd_p95": 0.008229145049330465,
+    "scenario_return_q25": 0.061246134349338066,
+    "independent_scenario_mdd_p95": 0.008467901177380865,
+    "independent_scenario_return_q25": 0.060558786685642685,
+    "turnover_proxy": 0.6119736720605227,
+    "risk_budget": 0.04,
+    "frozen_current_weights": {
+      "110020": 0.004675395972132121,
+      "096001": 0.002343284189435228,
+      "017641": 0.0010231977088571251,
+      "016452": 0.0009941904509952102,
+      "019736": 0.00045545494808982073,
+      "019172": 0.00045555744723420913,
+      "539001": 0.00045555744723420913,
+      "019441": 0.00022780434840320168
+    },
+    "return_target": 0.05,
+    "method": "fixed-weight joint historical + moving-block bootstrap, risk-first reproducible search",
+    "limits": [
+      "不是全局最优保证；候选网格与样本模拟均有有限采样误差",
+      "情景检验不是未来4%硬回撤保证，也不是95%收益置信下界",
+      "不同随机种子仅验证模拟稳定性，不是时间样本外；需独立滚动样本外回测",
+      "实际交易须另行模拟逐笔申购、赎回、锁定期、分红与真实费用",
+      "只识别当前风格后选取历史窗口，旧风格风险需通过现时因子敞口压力测试"
+    ],
+    "config": {
+      "target_annual_return": 0.05,
+      "max_drawdown": 0.04,
+      "lookback_days": 756,
+      "horizon": 252,
+      "bootstrap_paths": 192,
+      "block_lengths": [
+        20,
+        60
+      ],
+      "historical_windows": 18,
+      "candidate_count": 2400,
+      "batch_size": 80,
+      "min_observations": 252,
+      "max_single_fund_weight": 0.6,
+      "min_cash_weight": 0.0,
+      "annual_cash_return": 0.0,
+      "turnover_cost_rate": 0.0,
+      "seed": 7
+    },
+    "asof": "2026-11-10T20:27:01.195496+08:00",
+    "regime_start": "2025-08-29",
+    "data_quality": "PUBLISHED_AT_RULE_INFERRED; DIVIDEND_SOURCE_REQUIRES_AUDIT",
+    "account_history": "SIMULATED_LOTS_NO_REAL_ACCOUNT_MDD",
+    "portfolio_scope": "ALL_CURRENT_HOLDINGS_REQUIRED; EXISTING_INDEX_EXPOSURE_FROZEN",
+    "style_regime_verification": "USER_PROVIDED_CUTOFF_NOT_AUTOMATICALLY_VERIFIED"
+  },
+  "optimization_variables_audit": {
+    "全部基金目标权重": "已纳入（weight_optimizer 候选池，含现金，权重守恒校验）",
+    "每日定投金额": "未纳入：固定为账户预算 1005 元/日（账户属性，非自由变量）",
+    "再平衡触发阈值": "已纳入（B3 weight_trigger ∈ {1%,2%}）",
+    "止盈规则": "已纳入（B3 destination_fraction ∈ {25%,50%} 部分止盈）",
+    "止损规则": "已纳入（B5 债券/黄金分层 pause 阈值）",
+    "暂停定投条件": "已纳入（B4 pause_cdar95、B5 fund_pause）",
+    "重新入场条件": "已纳入（B4 reenter_cdar95_low+cooldown、B5 reenter_fraction）",
+    "费率情景": "已纳入联合搜索 fee_stress（0/30bp 统一费率假设；真实费率 MISSING）"
+  },
+  "verdict": "JOINT_OPTIMIZATION_BLOCKED：联合优化因共同历史不足未运行；权重候选为 SCENARIO_CRITERIA_MET_UNVALIDATED（情景内达标但未经独立样本外验证），不得转为实盘。最终可行性判定以 OOS_BACKTEST_REPORT 的 NO_FEASIBLE_STRATEGY/帕累托前沿为准。"
+}
