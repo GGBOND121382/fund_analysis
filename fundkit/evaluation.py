@@ -33,6 +33,12 @@ FOLDS = [
      "test": ("2025-12-01", "2026-06-01")},
     {"train": ("2024-01-01", "2026-01-01"), "val": ("2026-01-01", "2026-06-01"),
      "test": ("2026-06-01", "2026-11-09")},
+    # 12个月测试窗（验收要求）；train/val 与 fold0 相同，test 拉长到数据末端
+    {"train": ("2023-06-01", "2025-06-01"), "val": ("2025-06-01", "2025-12-01"),
+     "test": ("2025-12-01", "2026-11-09")},
+    # 24个月测试窗（跨 710301 风格切换 2025-08-29，结果含切换前权益敞口，如实标注）
+    {"train": ("2022-06-01", "2024-06-01"), "val": ("2024-06-01", "2024-11-01"),
+     "test": ("2024-11-01", "2026-11-09")},
 ]
 
 # 预声明小网格（search_space.yaml 子集；每次试验记录）
@@ -48,8 +54,12 @@ GRID = [
 ]
 
 
-def _params_for(family: str, overrides: dict) -> dict:
+def _params_for(family: str, overrides: dict, base_target: dict | None = None) -> dict:
     params = policies.load_params()
+    if base_target is not None:
+        # 研究回测基准：维持快照配置。config 里的 cash:1.0 是决策端 fail-closed 占位，
+        # 不代表任何研究结论，不能作为回测目标权重。
+        params["target_weights"] = dict(base_target)
     if family == "B2":
         # 更改现金目标时，非现金权重必须按比例重新归一化，否则总权重≠1。
         target = dict(params["target_weights"])
@@ -114,8 +124,8 @@ def _initial_lots(adapter: LocalDataAdapter, snap: dict, start: str,
 
 
 def _run_window(family, overrides, window, adapter, snap, sim_config_base,
-                style_signals=None):
-    params = _params_for(family, overrides)
+                style_signals=None, base_target=None):
+    params = _params_for(family, overrides, base_target=base_target)
     params["daily_limits"] = sim_config_base["daily_limits"]
     params["equity_index_codes"] = sim_config_base["equity_index_codes"]
     if style_signals is not None:
@@ -135,7 +145,24 @@ def _run_window(family, overrides, window, adapter, snap, sim_config_base,
     policy = policies.build_policy(family, params)
     result = sim.run(window[0], window[1], initial_lots=lots,
                      initial_cash=cash0, policy=policy)
-    return result["metrics"]
+    m = dict(result["metrics"])
+    # 统一报告口径：年化卖出换手率、交易费用、平均现金占比
+    events, daily = result["events"], result["daily"]
+    avg_val = float(daily["value"].mean()) if len(daily) else 0.0
+    years = max((daily["date"].iloc[-1] - daily["date"].iloc[0]).days / 365, 1e-9)
+    sells = fees = 0.0
+    if not events.empty:
+        red = events[events["event"] == "REDEEM"]
+        if len(red):
+            sells = float((red["shares"].astype(float) * red["nav"].astype(float)).sum())
+            fees += sells * config.params["redeem_fee_rate"]
+        buy = events[events["event"] == "BUY"]
+        if len(buy):
+            fees += float(buy["amount"].astype(float).sum()) * config.params["subscribe_fee_rate"]
+    m["turnover_ann"] = sells / avg_val / years if avg_val > 0 else 0.0
+    m["fees_total"] = fees
+    m["cash_ratio_avg"] = float((daily["cash"] / daily["value"]).mean()) if len(daily) else 0.0
+    return m
 
 
 def _select_risk_first(trials: pd.DataFrame) -> pd.Series:
@@ -261,6 +288,10 @@ def run_validation(out_dir="reports") -> dict:
             limits[c] = float(status[c])
     sim_base = {"daily_limits": limits, "equity_index_codes": equity}
     bond_funds = [f["code"] for f in snap["funds"] if f["category"] == "bond"]
+    # 研究基准目标权重 = 快照配置（与反事实起点组合一致）
+    total_snap0 = sum(float(f["value_cny"]) for f in snap["funds"])
+    base_target = {f["code"]: float(f["value_cny"]) / total_snap0 for f in snap["funds"]}
+    base_target["cash"] = 0.0
 
     # 必须先补齐本地原始基金净值。缺数据不得用旧 reports/ 回填伪结果。
     absent = [code for code in codes if adapter.nav([code], pd.Timestamp.now(tz=CST)).empty]
@@ -278,9 +309,11 @@ def run_validation(out_dir="reports") -> dict:
         for family, overrides in GRID:
             tag = f"{family}|{json.dumps(overrides, sort_keys=True)}"
             m_train = _run_window(family, overrides, fold["train"], adapter, snap,
-                                  sim_base, signals_train if family in ("B4", "B5") else None)
+                                  sim_base, signals_train if family in ("B4", "B5") else None,
+                                  base_target)
             m_val = _run_window(family, overrides, fold["val"], adapter, snap,
-                                sim_base, signals_val if family in ("B4", "B5") else None)
+                                sim_base, signals_val if family in ("B4", "B5") else None,
+                                base_target)
             trials_rows.append({
                 "fold": fold_i, "family": family, "params": tag,
                 "phase": "train", **{k: v for k, v in m_train.items() if v is not None}})
@@ -294,7 +327,8 @@ def run_validation(out_dir="reports") -> dict:
             pick = _select_risk_first(cand)
             overrides = json.loads(pick["params"].split("|", 1)[1])
             m_test = _run_window(family, overrides, fold["test"], adapter, snap,
-                                 sim_base, signals_test if family in ("B4", "B5") else None)
+                                 sim_base, signals_test if family in ("B4", "B5") else None,
+                                 base_target)
             trials_rows.append({"fold": fold_i, "family": family,
                                 "params": pick["params"], "phase": "test", "frozen": True,
                                 **{k: v for k, v in m_test.items() if v is not None}})
