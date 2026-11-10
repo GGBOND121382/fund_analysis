@@ -555,6 +555,8 @@ def make_b5(params: dict):
                     })
         return orders
 
+    return policy
+
 def build_policy(name: str, params: dict | None = None):
     params = params or load_params()
     table = {
