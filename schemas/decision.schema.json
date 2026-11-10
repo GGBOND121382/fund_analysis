@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fund advisory decision (research-only default)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["asof", "model_version", "config_hash", "decision_status", "cash_budget_cny", "recommended_cash_hold_cny", "fund_decisions", "evidence_status"],
+  "properties": {
+    "asof": {"type": "string", "format": "date-time"},
+    "model_version": {"type": "string"},
+    "config_hash": {"type": "string"},
+    "input_data_hash": {"type": ["string", "null"]},
+    "decision_status": {"enum": ["RESEARCH_ONLY", "DATA_BLOCKED", "MANUAL_REVIEW", "NO_FEASIBLE_STRATEGY"]},
+    "evidence_status": {"enum": ["VERIFIED", "PARTIAL", "INSUFFICIENT", "INVALID"]},
+    "cash_budget_cny": {"type": "number", "minimum": 0},
+    "recommended_cash_hold_cny": {"type": "number", "minimum": 0},
+    "portfolio_current_mdd": {"type": ["number", "null"], "minimum": 0},
+    "portfolio_oos_cagr": {"type": ["number", "null"]},
+    "portfolio_oos_sharpe": {"type": ["number", "null"]},
+    "portfolio_oos_mdd": {"type": ["number", "null"], "minimum": 0},
+    "portfolio_oos_cdar95": {"type": ["number", "null"], "minimum": 0},
+    "scenario_mdd_exceed_5pct_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "fund_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fund_code", "current_value_cny", "current_weight", "target_weight", "subscribe_cny", "action", "rule_ids", "data_quality", "rationale"],
+        "properties": {
+          "fund_code": {"type": "string", "pattern": "^[0-9]{6}$"},
+          "current_value_cny": {"type": "number", "minimum": 0},
+          "current_weight": {"type": "number", "minimum": 0, "maximum": 1},
+          "target_weight": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+          "subscribe_cny": {"type": "number", "minimum": 0},
+          "estimated_confirmed_units": {"type": ["number", "null"], "minimum": 0},
+          "redeem_review_cny": {"type": ["number", "null"], "minimum": 0},
+          "redeemable_lots": {"type": ["array", "null"], "items": {"type": "string"}},
+          "next_redeem_date": {"type": ["string", "null"], "format": "date"},
+          "action": {"enum": ["BUY_PROPOSAL", "HOLD", "PAUSE_NEW_BUY", "REDUCE_REVIEW", "LOCKED", "DATA_BLOCKED", "REENTRY_REVIEW"]},
+          "rule_ids": {"type": "array", "items": {"type": "string"}},
+          "style_state": {"type": ["string", "null"]},
+          "style_confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+          "data_quality": {"enum": ["VERIFIED", "SINGLE_SOURCE", "PROXY", "MISSING"]},
+          "available_asof": {"type": ["string", "null"], "format": "date-time"},
+          "source_refs": {"type": "array", "items": {"type": "string"}},
+          "rationale": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

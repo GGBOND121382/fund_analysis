@@ -1,0 +1,35 @@
+{
+  "_comment": "策略参数（候选值，来自 config/search_space.yaml 的搜索空间；不是已验证的最优交易规则。第5步样本外验证后冻结）",
+  "target_weights": {
+    "_note": "候选目标权重（显式含现金资产）；equity_index 默认 0（禁新买，存量保留）",
+    "710301": 0.45,
+    "004400": 0.35,
+    "021559": 0.05,
+    "014846": 0.0,
+    "000218": 0.05,
+    "cash": 0.10
+  },
+  "max_fund_weight": 0.60,
+  "B3": {
+    "check_frequency": "weekly",
+    "weight_trigger": 0.02,
+    "destination_fraction": 0.5,
+    "allow_redeem": false,
+    "_note": "allow_redeem=false 时赎回仅记入事件日志（REDUCE_REVIEW 提案），不实际执行"
+  },
+  "B4": {
+    "pause_cdar95": 0.02,
+    "pause_shift_states": ["POSSIBLE_SHIFT", "CONFIRMED_SHIFT"],
+    "reenter_cooldown_days": 10,
+    "reenter_cdar95_low": 0.01,
+    "_note": "迟滞：reenter 阈值必须低于 pause 阈值（03 C）"
+  },
+  "B5": {
+    "mdd_budget": 0.05,
+    "internal_drawdown_margin": 0.02,
+    "reenter_mdd_fraction": 0.6,
+    "fund_pause_drawdown": 0.03,
+    "fund_reenter_drawdown": 0.015,
+    "reenter_cooldown_days": 10
+  }
+}
