@@ -100,19 +100,19 @@ def _style_signals_asof(adapter: LocalDataAdapter, codes, until) -> dict:
 
 
 def _initial_lots(adapter: LocalDataAdapter, snap: dict, start: str,
-                  capital: float | None = None):
-    """反事实起点组合：快照权重×标准化本金；成立日晚于起点的基金持有现金等待。
+                  capital: float | None = None, subscribe_fee_rate: float = 0.003):
+    """反事实建仓：按起始快照权重申购，首次申购费计入期初单位净值。
 
     COUNTERFACTUAL_START_PORTFOLIO：非用户真实历史持仓。
     """
     if capital is None:
         capital = sum(float(f["value_cny"]) for f in snap["funds"])
     total_snap = sum(f["value_cny"] for f in snap["funds"])
-    lots = {}
+    lots, fee_by_code, gross_by_code = {}, {}, {}
     start_ts = pd.Timestamp(start)
     for f in snap["funds"]:
         code = f["code"]
-        value = capital * f["value_cny"] / total_snap
+        gross = capital * f["value_cny"] / total_snap
         try:
             df = adapter.nav([code], start_ts.tz_localize(CST) if start_ts.tzinfo is None
                              else start_ts)
@@ -122,12 +122,16 @@ def _initial_lots(adapter: LocalDataAdapter, snap: dict, start: str,
             nav0 = float(df.iloc[-1]["unit_nav"])
         except Exception:  # noqa: BLE001
             continue
+        fee = gross * subscribe_fee_rate
+        net = gross - fee
         lots[code] = [simulator.Lot(
-            code, value / nav0, start_ts, simulated=True,
-            cost_basis_cny=value, cost_basis_known=True,
+            code, net / nav0, start_ts, simulated=True,
+            cost_basis_cny=gross, cost_basis_known=True,
             basis_source="counterfactual_start",
         )]
-    return lots
+        fee_by_code[code] = fee
+        gross_by_code[code] = gross
+    return lots, fee_by_code, gross_by_code
 
 
 def _run_window(family, overrides, window, adapter, snap, sim_config_base,
@@ -143,7 +147,10 @@ def _run_window(family, overrides, window, adapter, snap, sim_config_base,
         params["_style_signals"] = style_signals
     total_snap = sum(float(f["value_cny"]) for f in snap["funds"])
     capital0 = total_snap
-    lots = _initial_lots(adapter, snap, window[0], capital=capital0)
+    initial_fee_rate = 0.003
+    lots, initial_fee_by_code, initial_buy_by_code = _initial_lots(
+        adapter, snap, window[0], capital=capital0,
+        subscribe_fee_rate=initial_fee_rate)
     # 起始无数据基金的份额按现金处理
     held = set(lots)
     cash0 = sum(capital0 * f["value_cny"] / total_snap
@@ -155,7 +162,10 @@ def _run_window(family, overrides, window, adapter, snap, sim_config_base,
         daily_limits=sim_config_base["daily_limits"],
         params={**simulator.SIM_DEFAULTS,
                 "subscribe_fee_rate": 0.003,
-                "redeem_fee_rate": 0.006})
+                "redeem_fee_rate": 0.006,
+                "initial_investment_fee_cny": sum(initial_fee_by_code.values()),
+                "initial_investment_fee_by_code": initial_fee_by_code,
+                "initial_buy_amount_by_code": initial_buy_by_code})
     sim = simulator.Simulator([f["code"] for f in snap["funds"]], config, adapter)
     if family == "B3":
         params["B3"]["allow_redeem"] = True
@@ -189,11 +199,24 @@ def _run_window(family, overrides, window, adapter, snap, sim_config_base,
 
 
 def _select_risk_first(trials: pd.DataFrame) -> pd.Series:
-    """风险优先选择：先 MDD≤4%，再 CAGR 最大；都不满足时选 MDD 最小（如实记录）。"""
-    feasible = trials[trials["max_drawdown"] <= MDD_BUDGET]
-    pool = feasible if len(feasible) else trials
-    key = "cagr" if len(feasible) else "max_drawdown"
-    return pool.sort_values(key, ascending=len(feasible) == 0).iloc[0]
+    """先满足MDD和收益目标；达标候选按Sharpe、CAGR、MDD排序。"""
+    pool = trials.copy()
+    pool["_sharpe_rank"] = pd.to_numeric(
+        pool.get("sharpe", pd.Series(index=pool.index, dtype=float)),
+        errors="coerce").fillna(-np.inf)
+    risk_feasible = pool[pool["max_drawdown"] <= MDD_BUDGET]
+    target_feasible = risk_feasible[risk_feasible["cagr"] > CAGR_TARGET]
+    if len(target_feasible):
+        return target_feasible.sort_values(
+            ["_sharpe_rank", "cagr", "max_drawdown"],
+            ascending=[False, False, True]).iloc[0]
+    if len(risk_feasible):
+        return risk_feasible.sort_values(
+            ["cagr", "_sharpe_rank", "max_drawdown"],
+            ascending=[False, False, True]).iloc[0]
+    return pool.sort_values(
+        ["max_drawdown", "_sharpe_rank", "cagr"],
+        ascending=[True, False, False]).iloc[0]
 
 
 # -- 压力测试 -----------------------------------------------------------------
@@ -299,13 +322,32 @@ def stress_2022_bond_crash(adapter: LocalDataAdapter, snap: dict,
 # -- 主流程 -------------------------------------------------------------------
 
 def run_validation(out_dir="reports") -> dict:
+    def write_data_blocked(reason, missing_nav_codes=None):
+        os.makedirs(out_dir, exist_ok=True)
+        blocked = {"status": "DATA_BLOCKED", "decision": "NOT_VALIDATED",
+                   "reason": str(reason),
+                   "missing_nav_codes": list(missing_nav_codes or []),
+                   "note": "未运行收益回测；不得复用旧版报告",
+                   "validation_version": "NON_OVERLAPPING_PRIMARY_OOS_GUARD_V1"}
+        pd.DataFrame(columns=["fold", "test_role", "family", "params", "phase"]).to_csv(
+            os.path.join(out_dir, "oos_trials.csv"), index=False)
+        with open(os.path.join(out_dir, "oos_summary.json"), "w", encoding="utf-8") as f:
+            json.dump(blocked, f, ensure_ascii=False, indent=2)
+        with open(os.path.join(out_dir, "OOS_BACKTEST_REPORT.md"), "w", encoding="utf-8") as f:
+            f.write("# OOS_BACKTEST_REPORT\n\n**DATA_BLOCKED**\n\n" + str(reason) +
+                    "\n\n本次未运行回测；此文件不是策略绩效结果。\n")
+        return blocked
+
     adapter = LocalDataAdapter()
     snap = load_account_snapshot()
     codes = [f["code"] for f in snap["funds"]]
     equity = sorted(f["code"] for f in snap["funds"] if f["category"] == "equity_index")
     from fundkit import storage
     limits = {}
-    status = storage.load_trade_status().set_index("code")["daily_limit"]
+    try:
+        status = storage.load_trade_status().set_index("code")["daily_limit"]
+    except FileNotFoundError as exc:
+        return write_data_blocked(f"缺少当前申购限额/交易状态快照：{exc}")
     for c in codes:
         if c in status.index and pd.notna(status[c]) and 0 < status[c] < 1e9:
             limits[c] = float(status[c])
@@ -319,9 +361,7 @@ def run_validation(out_dir="reports") -> dict:
     # 必须先补齐本地原始基金净值。缺数据不得用旧 reports/ 回填伪结果。
     absent = [code for code in codes if adapter.nav([code], pd.Timestamp.now(tz=CST)).empty]
     if absent:
-        return {"status": "DATA_BLOCKED", "decision": "NOT_VALIDATED",
-                "missing_nav_codes": absent,
-                "note": "缺少历史净值；未运行任何收益回测；不得复用旧版报告"}
+        return write_data_blocked("缺少以下基金历史净值", absent)
 
     trials_rows, selected = [], {}
     for fold_i, fold in enumerate(FOLDS):

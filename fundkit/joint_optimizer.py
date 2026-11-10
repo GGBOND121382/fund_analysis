@@ -248,15 +248,16 @@ def optimize_joint_fold(weight_candidates: list[dict], rule_candidates: list[dic
     feasible_rows = [x for x in trials if x["validation_feasible"]]
     if feasible_rows:
         selected = max(feasible_rows, key=lambda x: (
+            x["validation"].get("sharpe_conservative", -999),
             x["validation"]["cagr_worst_fee"],
             -x["validation"]["mdd_worst_fee"],
-            x["validation"].get("sharpe_conservative", -999),
             -x["weight_prescreen"].get("turnover_proxy", 0.0)))
         validation_status = "VALIDATION_FEASIBLE_CANDIDATE"
     else:
         # 无可行解时只选风险最小的诊断候选，明确标记失败，不伪装为推荐。
         selected = min(trials, key=lambda x: (
             x["validation"]["mdd_worst_fee"],
+            -x["validation"].get("sharpe_conservative", -999),
             -x["validation"]["cagr_worst_fee"]))
         validation_status = "NO_VALIDATION_FEASIBLE_CANDIDATE"
 
@@ -288,7 +289,7 @@ def optimize_joint_fold(weight_candidates: list[dict], rule_candidates: list[dic
         "research_only": True,
         "objective": {"annualized_net_return_strictly_gt": cfg.target_annual_return,
                       "portfolio_mdd_lte": cfg.max_drawdown,
-                      "priority": "drawdown_first_then_worst_fee_cagr"},
+                      "priority": "return_and_drawdown_constraints_then_worst_fee_sharpe"},
         "validation_window": validation_window,
         "test_window": test_window,
         "validation_status": validation_status,

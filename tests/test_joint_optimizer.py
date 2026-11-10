@@ -77,6 +77,23 @@ class JointOptimizerTests(unittest.TestCase):
         self.assertEqual(len(test_calls), 2)
         self.assertEqual({x[1] for x in test_calls}, {"B5"})
 
+    def test_validation_uses_sharpe_after_return_and_drawdown_constraints(self):
+        weights = [{"weights": {"A": .5, "cash": .5}}]
+        rules = [
+            {"family": "B2", "params": {}, "rule_id": "lower_sharpe"},
+            {"family": "B5", "params": {"B5": {}}, "rule_id": "higher_sharpe"},
+        ]
+        def evaluator(w, rule, window, fee):
+            return {"cagr": .06 - fee, "max_drawdown": .03,
+                    "sharpe": 1.5 if rule["rule_id"] == "lower_sharpe" else 2.0,
+                    "sortino": 1.8, "cdar95": .02, "xirr": .06 - fee,
+                    "days": 252, "redeem_events": 0, "buy_events": 0}
+        out = optimize_joint_fold(
+            weights, rules, evaluator,
+            ("2024-01-01", "2024-12-31"), ("2025-01-01", "2025-12-31"),
+            JointSearchConfig(fee_stress_rates=(0.0, .003)))
+        self.assertEqual(out["selected"]["rule_id"], "higher_sharpe")
+
     def test_no_validation_feasible_candidate_is_explicit(self):
         weights = [{"weights": {"A": 1.0, "cash": 0.0}}]
         rules = [{"family": "B2", "params": {}, "rule_id": "B2"}]

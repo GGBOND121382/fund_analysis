@@ -321,6 +321,23 @@ class PolicyFundSpecificRiskTests(unittest.TestCase):
         out = policy(state)
         self.assertAlmostEqual(out["redeem"]["004400"], 50.0)
 
+    def test_b5_blocks_new_buy_when_fund_history_is_insufficient(self):
+        params = {
+            **PARAMS,
+            "asset_categories": {"004400": "bond"},
+            "B5": {**PARAMS["B5"], "fund_pause_drawdown": .03,
+                   "fund_reenter_drawdown": .01, "allow_redeem": True},
+        }
+        with mock.patch.object(policies, "_load_style_signals", return_value={}), \
+             mock.patch.object(policies, "_plans", return_value=[
+                 {"code": "004400", "daily_plan_cny": 500}]):
+            policy = policies.make_b5(params)
+        state = make_state(1000, {"004400": 100}, {"004400": 1.0})
+        out = policy(state)
+        self.assertNotIn("004400", out.get("subscribe", {}))
+        self.assertTrue(any(e.get("action") == "FUND_RISK_DATA_BLOCKED"
+                            for e in out.get("events", [])))
+
     def test_b2_can_allocate_to_index_fund_asset_class(self):
         params = {
             **PARAMS,

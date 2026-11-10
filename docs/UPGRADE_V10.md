@@ -42,7 +42,7 @@ Subtract an estimation-uncertainty allowance:
 
 Defaults are tau_mu = 504 observations and z_mu = 1. These are regularization defaults to validate, not proven optimal constants.
 
-For each candidate portfolio, use the lower of the weighted conservative return estimate and moving-block-bootstrap 25th-percentile annualized return as its ranking score. Initial turnover cost is included in bootstrap paths and therefore affects both net return and drawdown.
+For each candidate portfolio, use the lower of the weighted conservative return estimate and moving-block-bootstrap 25th-percentile annualized return as its conservative return score. Among candidates satisfying the return and drawdown constraints, rank by the 25th-percentile scenario Sharpe, then conservative return, drawdown and turnover. Sharpe uses a configurable annual risk-free assumption (default 2%) and includes the initial turnover fee in the first daily return. The 2% rate is an explicit assumption, not a live yield feed.
 
 ## 2. Concentration and transaction-cost guardrails
 
@@ -90,7 +90,7 @@ A take-profit trigger requires both:
 
 Then the policy redeems the configured fraction of redeemable units and applies a cooldown.
 
-The simulator tracks cost basis for simulated purchases and counterfactual backtest-start lots. Partial redemption releases cost basis pro rata. Snapshot-derived synthetic lots deliberately have unknown historical cost basis; live take-profit is therefore blocked for those existing lots until verified lot-level acquisition cost is supplied. A snapshot market value is not treated as the investor's purchase cost.
+The simulator tracks cost basis for simulated purchases and counterfactual backtest-start lots. Initial counterfactual purchases are charged the same subscription-fee stress rate as subsequent purchases; the fee is included in the starting unit-NAV loss, Sharpe, TWR, XIRR, fee totals and turnover. Partial redemption releases cost basis pro rata. Snapshot-derived synthetic lots deliberately have unknown historical cost basis; live take-profit is therefore blocked for those existing lots until verified lot-level acquisition cost is supplied. A snapshot market value is not treated as the investor's purchase cost.
 
 ### Portfolio-level guard
 
@@ -124,10 +124,10 @@ Given the current common-history limitation (previously 507 common trading days)
 
 This upgrade does not yet provide:
 - a complete holdings-based bond risk engine with verified modified duration, spread duration, bank capital-bond exposure, and liquidity measures;
-- historical fund-specific subscription/redemption fee schedules and actual batch-level account acquisition costs;
+- historical fund-specific subscription/redemption fee schedules and actual account acquisition batches (the backtest uses explicit uniform fee stress assumptions, including initial counterfactual purchases);
 - reliable historical dealing cutoffs and settlement calendars for each QDII fund;
 - multiple independent full-year OOS windows for the complete current fund universe;
-- proof that any strategy achieves net CAGR >5% while keeping MDD <=4%.
+- proof that any strategy achieves net CAGR >5% while keeping MDD <=4%; Sharpe ranking is an additional selection metric, not a substitute for either hard research target.
 
 Do not describe candidate weights or stop/take-profit thresholds as investment recommendations until local data audit, fee/lot integration, and independent OOS validation pass.
 

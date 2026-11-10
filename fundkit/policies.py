@@ -409,11 +409,25 @@ def make_b5(params: dict):
                 continue
             rows = histories.get(code) or []
             h = state.get("holdings", {}).get(code, {})
-            peak_lookback = int(p5.get("fund_peak_lookback_days", 252))
             position_start = h.get("position_start_date")
             relevant_rows = [r for r in rows
                              if position_start is not None and
                              pd.Timestamp(r["date"]) >= pd.Timestamp(position_start)]
+            risk_rows = relevant_rows if position_start is not None else rows
+            history_frame = pd.DataFrame(risk_rows)
+            history_count = (pd.to_numeric(history_frame["total_return_nav"], errors="coerce")
+                             .dropna().shape[0]
+                             if "total_return_nav" in history_frame else 0)
+            if history_count < 2 and code not in peaks:
+                # 初次启动且缺少该持仓阶段的历史时，不能把未知回撤当成0。
+                peaks[code] = nav  # 只从系统开始观察之日起建立临时高水位
+                orders["subscribe"].pop(code, None)
+                orders["events"].append({
+                    "code": code, "action": "FUND_RISK_DATA_BLOCKED",
+                    "reason": "该持仓阶段可用总回报净值少于2个观测；暂停新增申购，暂不推断止损赎回",
+                })
+                continue
+            peak_lookback = int(p5.get("fund_peak_lookback_days", 252))
             if relevant_rows:
                 hist_values = pd.to_numeric(
                     pd.DataFrame(relevant_rows)["total_return_nav"], errors="coerce"

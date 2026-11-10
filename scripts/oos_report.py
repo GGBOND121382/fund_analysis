@@ -26,8 +26,8 @@ def main():
          f"生成时间: {summ['asof']}｜算法版本: {summ.get('validation_version')}｜"
          f"试验总数: {len(trials)}（网格 {summ['grid_size']} 配置 × 折 × 阶段）", "",
          "口径：反事实起点组合（快照权重×标准化本金，非真实历史）；"
-         "净收益口径=费后（费率 MISSING 默认 0，费用压力见联合优化 fee_stress）；"
-         "MDD 在外部现金流单位化（TWR）净值上计算。", "",
+         "首次建仓申购费、后续申购费和赎回费均按统一压力假设计入，非真实基金费率；"
+         "MDD/Sharpe 在含首次建仓成本的外部现金流单位化（TWR）净值上计算。", "",
          "## 1. 时间序列切分（train→val 选参→test 冻结复跑）", "",
          "| fold | train | val | test | test 长度 |", "|---|---|---|---|---|"]
     for i, f in enumerate(summ["folds"]):
@@ -37,14 +37,17 @@ def main():
     L += ["", "fold3 的 24 个月测试窗跨 710301 风格切换（2025-08-29 确认纯债化），"
           "其 test 段含切换前权益/转债敞口，是该基金真实历史行为而非数据错误。", "",
           "## 2. 各策略族 test 折结果（冻结参数，全部试验见 oos_trials.csv）", "",
-          "| 策略族 | fold | CAGR | XIRR | MDD | CDaR95 | Sharpe | Sortino | Calmar "
-          "| 年化换手 | 费用(元) | 平均现金占比 |", "|---|---|---|---|---|---|---|---|---|---|---|"]
+          "| 策略族 | fold | 测试窗口角色 | CAGR | XIRR | MDD | CDaR95 | Sharpe | Sortino | Calmar "
+          "| 年化换手 | 费用(元) | 平均现金占比 |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     test = trials[trials["phase"] == "test"]
     for _, r in test.sort_values(["family", "fold"]).iterrows():
         calmar = r["cagr"] / r["max_drawdown"] if r.get("max_drawdown", 0) > 0 else np.nan
-        L.append(f"| {r['family']} | {r['fold']} | {pct(r['cagr'])} | {pct(r.get('xirr'))} "
+        sharpe = float(r["sharpe"]) if pd.notna(r.get("sharpe")) else np.nan
+        sortino = float(r["sortino"]) if pd.notna(r.get("sortino")) else np.nan
+        L.append(f"| {r['family']} | {r['fold']} | {r.get('test_role', 'diagnostic')} "
+                 f"| {pct(r['cagr'])} | {pct(r.get('xirr'))} "
                  f"| {pct(r['max_drawdown'])} | {pct(r.get('cdar95'))} "
-                 f"| {r.get('sharpe', float('nan')):.2f} | {r.get('sortino', float('nan')):.2f} "
+                 f"| {sharpe:.2f} | {sortino:.2f} "
                  f"| {calmar:.2f} | {pct(r.get('turnover_ann', 0))} "
                  f"| {r.get('fees_total', 0):.0f} | {pct(r.get('cash_ratio_avg', 0))} |")
 
@@ -54,17 +57,33 @@ def main():
             L.append(f"- {fam} fold{s['fold']}: `{json.dumps(s['params'], ensure_ascii=False)}`"
                      f"（val MDD {pct(s['val_mdd'])}）")
 
-    L += ["", "## 4. 可行性判定（验收：CAGR>5% 且 MDD≤4%，全部 test 折同时满足）", "",
-          f"**判定: {summ['decision']}**", "",
-          "| 策略族 | 全部折满足 | 各折 CAGR/MDD |", "|---|---|---|"]
+    L += ["", "## 4. 可行性判定（主验收：独立完整年度OOS；单一主窗口仅作初步证据）", "",
+          f"**判定: {summ['decision']}**",
+          f"独立完整年度主测试窗口数: {summ.get('independent_full_year_test_windows', 0)}；"
+          "重叠的24个月窗口只作诊断，不参与主验收。", "",
+          "| 策略族 | 单一主窗口是否满足5%/4% | 主窗口/诊断窗口 CAGR、MDD、Sharpe |",
+          "|---|---|---|"]
     for fam, v in (summ.get("feasibility") or {}).items():
-        det = "; ".join(f"fold{f['fold']}: {pct(f['cagr'])}/{pct(f['max_drawdown'])}"
-                        for f in v["folds"])
-        L.append(f"| {fam} | {'是' if v['all_folds_cagr_gt_5pct_and_mdd_le_4pct'] else '否'} | {det} |")
+        rows = v.get("primary_12m_windows", []) + v.get("diagnostic_overlapping_windows", [])
+        det = "; ".join(
+            f"fold{f['fold']}[{f.get('test_role','test')}]: "
+            f"{pct(f['cagr'])}/{pct(f['max_drawdown'])}/Sh="
+            f"{float(f['sharpe']):.2f}" if f.get('sharpe') is not None else
+            f"{pct(f['cagr'])}/{pct(f['max_drawdown'])}/Sh=NA"
+            for f in rows)
+        ok = "是" if v.get("single_primary_12m_window_meets_targets", False) else "否/证据不足"
+        L.append(f"| {fam} | {ok} | {det} |")
 
-    L += ["", "## 5. 收益—回撤有效前沿（test 折均值）", "",
+    L += ["", "## 5. 主样本外有效前沿", "",
           "| 策略族 | CAGR | MDD |", "|---|---|---|"]
-    for pp in summ.get("pareto_front_test_mean", []):
+    if summ.get("pareto_front_test_mean"):
+        for pp in summ.get("pareto_front_test_mean", []):
+            L.append(f"| {pp['family']} | {pct(pp['cagr'])} | {pct(pp['max_drawdown'])} |")
+    else:
+        L.append("| - | NA | NA |")
+    L += ["", "### 重叠窗口诊断前沿（不得视为独立OOS证据）", "",
+          "| 策略族 | CAGR | MDD |", "|---|---|---|"]
+    for pp in summ.get("diagnostic_pareto_front_overlapping", []):
         L.append(f"| {pp['family']} | {pct(pp['cagr'])} | {pct(pp['max_drawdown'])} |")
 
     boot = (summ.get("stress") or {}).get("bootstrap") or {}
@@ -88,9 +107,12 @@ def main():
              "（信用利差、汇率 MISSING），当前以历史真实窗口回放 + 块自助替代，"
              "债券信用敞口以季报披露 lower_bound 表达（见 PORTFOLIO_RISK_REPORT 第6节）。")
 
-    if summ["decision"] == "NO_FEASIBLE_STRATEGY" or summ["decision"] == "INSUFFICIENT_OOS_HORIZON":
+    if summ["decision"] in ("NO_FEASIBLE_STRATEGY",
+                              "INSUFFICIENT_OOS_HORIZON",
+                              "INSUFFICIENT_INDEPENDENT_OOS_WINDOWS"):
         L += ["", "## 7. 不可行原因分解", ""]
-        testg = test.copy()
+        testg = test[test.get("test_role", pd.Series(index=test.index, dtype=str))
+                     == "primary_12m_single_window"].copy()
         for fam, grp in testg.groupby("family"):
             bad_ret = grp[grp["cagr"] <= 0.05]
             bad_mdd = grp[grp["max_drawdown"] > 0.04]
@@ -105,7 +127,7 @@ def main():
         L += ["", "结论：不放宽 5%/4% 目标；以上前沿即当前数据与策略族下的客观边界。", ""]
 
     L += ["---", f"状态: {summ.get('status')}｜数据截止见 DATA_COVERAGE｜"
-          f"复现: `python main.py validate`（确定性，无随机性；块自助种子42）", ""]
+          f"复现: `python main.py validate`（确定性；随机块自助种子42）", ""]
     open(f"{REPORTS}/OOS_BACKTEST_REPORT.md", "w", encoding="utf-8").write("\n".join(L))
     print("完成: reports/OOS_BACKTEST_REPORT.md")
 

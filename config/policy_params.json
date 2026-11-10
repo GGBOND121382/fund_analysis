@@ -1,7 +1,7 @@
 {
   "_comment": "Public safe-default configuration. Replace with parameters selected by your own out-of-sample validation; these are not optimized recommendations.",
   "target_weights": {"cash": 1.0},
-  "max_fund_weight": 0.6,
+  "max_fund_weight": 0.4,
   "B3": {
     "check_frequency": "weekly",
     "weight_trigger": 0.02,

@@ -35,6 +35,9 @@ SIM_DEFAULTS = {
     "cash_annual_rate": 0.0,        # 现金年化收益（小数）
     "rolling_lock_days": 30,        # 滚动持有锁定天数（021559）
     "rf": 0.02,                     # 无风险利率（年化小数，用于 Sharpe/Sortino）
+    "initial_investment_fee_cny": 0.0,
+    "initial_investment_fee_by_code": {},
+    "initial_buy_amount_by_code": {},
     "published_lag_days": 2,        # 与 adapters 的披露延迟规则一致（决策可见性）
 }
 
@@ -151,11 +154,40 @@ class Simulator:
         unit_nav = 1.0
         # 初始持仓按期初单位净值 1.0 折算为单位数；XIRR 口径下期初市值计为首笔流出
         init_value = self._value(lots, cash, {}, self.calendar[0])
+        initial_fee = float(p.get("initial_investment_fee_cny", 0.0))
+        if not np.isfinite(initial_fee) or initial_fee < 0:
+            raise ValueError("DATA_BLOCKED: 初始建仓费用非法")
+        if initial_fee > 0 and init_value <= 0:
+            raise ValueError("DATA_BLOCKED: 初始建仓费用存在但初始组合价值为零")
         if init_value > 0:
-            units = init_value
-            external_flows.append((self.calendar[0], -init_value))
+            # 期初份额按含初始费用的总现金投入发行，首日单位净值反映建仓成本。
+            units = init_value + initial_fee
+            external_flows.append((self.calendar[0], -(init_value + initial_fee)))
         records, events = [], []
-        unit_hist: list[tuple[pd.Timestamp, float]] = []
+        initial_fee_by_code = dict(p.get("initial_investment_fee_by_code", {}) or {})
+        initial_buy_by_code = dict(p.get("initial_buy_amount_by_code", {}) or {})
+        if initial_fee_by_code and abs(sum(float(v) for v in initial_fee_by_code.values())
+                                       - initial_fee) > 1e-5:
+            raise ValueError("DATA_BLOCKED: 初始建仓费用分项与总额不一致")
+        for code, gross_amount in initial_buy_by_code.items():
+            gross_amount = float(gross_amount)
+            fee_amount = float(initial_fee_by_code.get(code, 0.0))
+            if gross_amount <= 0 or fee_amount < 0 or fee_amount > gross_amount:
+                raise ValueError(f"DATA_BLOCKED: {code} 初始申购金额/费用非法")
+            nav0 = self._nav_at(code, self.calendar[0])
+            if nav0 is None or nav0 <= 0:
+                raise ValueError(f"DATA_BLOCKED: {code} 初始申购缺少起始交易净值")
+            events.append({"date": str(self.calendar[0].date()), "code": code,
+                           "event": "BUY", "amount": round(gross_amount, 6),
+                           "nav": nav0, "fee_cny": round(fee_amount, 6),
+                           "net_invested_cny": round(gross_amount - fee_amount, 6),
+                           "initial": True})
+        if initial_fee > 0 and not initial_buy_by_code:
+            events.append({"date": str(self.calendar[0].date()), "code": "PORTFOLIO",
+                           "event": "INITIAL_BUY_FEE", "fee_cny": round(initial_fee, 6)})
+        unit_hist: list[tuple[pd.Timestamp, float]] = (
+            [(self.calendar[0] - pd.Timedelta(days=1), 1.0)]
+            if initial_fee > 0 else [])
         prev_date = None
 
         for day in self.calendar:
@@ -424,10 +456,11 @@ class Simulator:
 
     def _metrics(self, daily: pd.DataFrame, flows) -> dict:
         nav = daily["unit_nav"].to_numpy(dtype=float)
-        rets = pd.Series(nav).pct_change().dropna().to_numpy()
+        rets = (np.r_[nav[0] - 1.0, nav[1:] / np.maximum(nav[:-1], 1e-12) - 1.0]
+                if len(nav) else np.asarray([], dtype=float))
         days = max((daily["date"].iloc[-1] - daily["date"].iloc[0]).days, 1)
         rf, td = self.config.params["rf"], 252
-        total = nav[-1] / nav[0] - 1 if len(nav) > 1 else 0.0
+        total = nav[-1] - 1.0 if len(nav) else 0.0
         cagr = (1 + total) ** (365 / days) - 1 if total > -1 else -1.0
         vol = float(np.std(rets, ddof=1) * np.sqrt(td)) if len(rets) > 1 else 0.0
         ex = rets - rf / td
@@ -436,7 +469,8 @@ class Simulator:
         # 下行偏差：对全体观测期取 min(r-rf,0) 的均方根，不是负收益子样本标准差。
         dstd = float(np.sqrt(np.mean(np.minimum(ex, 0.0) ** 2))) if len(ex) else 0.0
         sortino = float(np.mean(ex) / dstd * np.sqrt(td)) if dstd > 0 else None
-        nav_list = nav.tolist()
+        # 以初始投入前的单位净值1.0为基准，首次建仓费用也计入MDD/CDaR。
+        nav_list = [1.0] + nav.tolist() if nav.size else []
         mdd = max_drawdown(nav_list) if nav_list else 0.0
         cdar = empirical_cdar(drawdown_path(nav_list), alpha=0.95) if nav_list else 0.0
         xirr = self._xirr(flows, daily["value"].iloc[-1], daily["date"].iloc[-1])

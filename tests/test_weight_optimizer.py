@@ -118,6 +118,20 @@ class TargetWeightOptimizerTests(unittest.TestCase):
         self.assertEqual(r["concentration_guardrail"]["status"],
                          "GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED")
 
+    def test_optimizer_reports_fee_aware_historical_and_scenario_sharpe(self):
+        values = np.tile([.0005, -.0001, .0003, .0000], 85)
+        df = pd.DataFrame({"F1": values, "F2": values * .5}, index=DAYS)
+        cfg = WeightSearchConfig(
+            bootstrap_paths=5, block_lengths=(10,), candidate_count=30,
+            historical_windows=2, min_observations=252, lookback_days=340,
+            annual_risk_free_rate=.02)
+        result = optimize_target_weights(df, cfg=cfg)
+        self.assertIn("historical_sharpe", result)
+        self.assertIn("scenario_sharpe_q25", result)
+        self.assertIn("independent_scenario_sharpe_q25", result)
+        self.assertTrue(np.isfinite(result["scenario_sharpe_q25"]))
+        self.assertEqual(result["annual_risk_free_rate_assumption"], .02)
+
     def test_out_of_scope_cash_is_not_automatically_an_optimized_portfolio(self):
         df = pd.DataFrame({'F1': [0.] * 340}, index=DAYS)
         with self.assertRaisesRegex(ValueError, 'unknown|未知'):

@@ -166,3 +166,24 @@ python main.py optimize-strategy --asof 2026-11-10 --weight-pool 1200 --weight-c
 ## v1.0 risk-budgeted strategy upgrade
 
 See docs/UPGRADE_V10.md for robust return shrinkage, concentration guardrails, B5 stop-loss/trailing take-profit, cost-basis accounting, covariance-risk de-risking, index-fund scope, and non-overlapping OOS rules. This release remains research-only and does not claim the 5% net-return / 4% maximum-drawdown objective has been achieved.
+
+
+## v1.0.1 validation hardening (2026-11-11)
+
+- Candidate ranking now reports historical Sharpe and block-bootstrap Sharpe Q25; among candidates meeting the 5% return and 4% MDD research constraints, Sharpe is the first tie-break/selection objective. The annual risk-free assumption defaults to 2% and is configurable.
+- Counterfactual initial purchases now pay the same subscription-fee stress assumption as subsequent buys. The initial fee is included in starting unit NAV, TWR, CAGR, Sharpe, XIRR, fees and turnover.
+- B5 blocks new purchases when fewer than two published total-return NAV observations are available and no observed high-water mark exists.
+- DATA_BLOCKED joint-optimization and OOS-validation runs now write explicit structured reports rather than leaving a stale prior report in place.
+- All current fund categories, including CSI 300 / S&P 500 / Nasdaq index funds, remain in the investable fund universe; no direct stocks are introduced.
+
+### 一键本地验证（v1.0.1）
+
+在已具备 `config/account_snapshot.json`、`data/nav/`、`data/factors/` 和交易状态缓存的机器上运行：
+
+```bash
+python scripts/run_v10_research.py --asof YYYY-MM-DD
+```
+
+该脚本依次执行数据审计、组合风险分析、目标权重优化、权重/止盈止损联合搜索、滚动样本外验证和报告导出。结果写入 `reports/v10_research_run.json`。若返回码为2，表示数据阻断、样本外证据不足或某一步失败；不能视为策略通过。脚本不会联网补造本地缓存，也不会下单。
+
+v1.0.1 的Sharpe默认使用2%年化无风险利率假设，可用 `--risk-free-rate` 调整；首次反事实建仓申购费也计入回测净值。
