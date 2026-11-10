@@ -100,7 +100,7 @@ class PolicyTests(unittest.TestCase):
                            navs={"004400": 1.0806}, unit_hist=hist)
         orders = policy(state)
         self.assertEqual(orders.get("subscribe"), {})  # 全部新增留现金
-        self.assertTrue(any(e.get("action") == "DE_RISK_CASH"
+        self.assertTrue(any(e.get("action") == "DE_RISK_PAUSE_BUYS"
                             for e in orders.get("events", [])))
         # 回撤未恢复：保持防守
         s2 = dict(state, date=D0 + pd.Timedelta(days=1))

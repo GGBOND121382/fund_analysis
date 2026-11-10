@@ -418,12 +418,17 @@ def make_b5(params: dict):
                 hist_values = pd.to_numeric(
                     pd.DataFrame(relevant_rows)["total_return_nav"], errors="coerce"
                 ).dropna().to_numpy(dtype=float)
-            else:
+                peak = max(float(np.max(hist_values)) if len(hist_values) else nav, nav)
+            elif rows and position_start is None:
                 hist_values = pd.to_numeric(
                     pd.DataFrame(rows)["total_return_nav"], errors="coerce"
-                ).dropna().to_numpy(dtype=float) if rows else np.asarray([], dtype=float)
+                ).dropna().to_numpy(dtype=float)
                 hist_values = hist_values[-peak_lookback:] if len(hist_values) else hist_values
-            peak = max(float(np.max(hist_values)) if len(hist_values) else nav, nav)
+                peak = max(float(np.max(hist_values)) if len(hist_values) else nav, nav)
+            else:
+                # 单元测试、无历史数据的离线状态或历史披露缺口：
+                # 延续本策略已观察到的高水位，不能每天把当前净值重置成峰值。
+                peak = max(peaks.get(code, nav), nav)
             peaks[code] = peak
             dd = max(0.0, 1.0 - nav / peak)
             z = fund_state.setdefault(code, {
