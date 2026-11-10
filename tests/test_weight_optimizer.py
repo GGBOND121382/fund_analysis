@@ -12,7 +12,8 @@ from fundkit.weight_optimizer import (WeightSearchConfig, optimize_target_weight
 DAYS = pd.bdate_range('2024-01-02', periods=340)
 CFG = WeightSearchConfig(bootstrap_paths=7, block_lengths=(10, 30),
                          candidate_count=105, historical_windows=4,
-                         min_observations=252, batch_size=50, lookback_days=340)
+                         min_observations=252, batch_size=50, lookback_days=340,
+                         max_single_fund_weight=0.60)
 
 
 class TargetWeightOptimizerTests(unittest.TestCase):
@@ -104,6 +105,18 @@ class TargetWeightOptimizerTests(unittest.TestCase):
         self.assertEqual(policies.load_params()['B5']['mdd_budget'], .04)
         self.assertEqual(CFG.max_drawdown, .04)
         self.assertEqual(CFG.target_annual_return, .05)
+
+    def test_default_single_fund_concentration_guardrail(self):
+        df = pd.DataFrame({
+            "F1": [.0004] * 340, "F2": [.0003] * 340,
+            "F3": [.0002] * 340,
+        }, index=DAYS)
+        r = optimize_target_weights(df, cfg=WeightSearchConfig(
+            bootstrap_paths=5, block_lengths=(10,), candidate_count=30,
+            historical_windows=2, min_observations=252, lookback_days=340))
+        self.assertLessEqual(r["weights"]["F1"], 0.40 + 1e-8)
+        self.assertEqual(r["concentration_guardrail"]["status"],
+                         "GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED")
 
     def test_out_of_scope_cash_is_not_automatically_an_optimized_portfolio(self):
         df = pd.DataFrame({'F1': [0.] * 340}, index=DAYS)

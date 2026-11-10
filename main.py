@@ -272,7 +272,7 @@ def cmd_sim(args):
     params["equity_index_codes"] = sorted(equity)
     config = simulator.SimConfig(
         budget_per_day=snap["new_cash_budget_cny_per_execution_day"],
-        allow_new_equity_index=args.allow_new_equity or args.policy == "B0",
+        allow_new_equity_index=args.allow_new_equity or args.policy != "B1",
         equity_index_codes=equity, daily_limits=limits)
     sim = simulator.Simulator(codes, config, adapter)
 
@@ -352,10 +352,12 @@ def cmd_validate(args):
         print("没有执行回测；旧版报告不得作为当前算法的验证结果。")
         return
     for fam, v in summary["feasibility"].items():
-        folds = "  ".join(f"fold{f['fold']}: CAGR {f['cagr']:.2%} MDD {f['max_drawdown']:.2%}"
-                          for f in v["folds"])
-        ok = "✓" if v["all_folds_cagr_gt_5pct_and_mdd_le_4pct"] else "✗"
-        print(f"  {ok} {fam}: {folds}")
+        rows = v.get("primary_12m_windows", []) + v.get("diagnostic_overlapping_windows", [])
+        folds_text = "  ".join(
+            f"fold{f['fold']}[{f.get('test_role','primary')}]: CAGR {f['cagr']:.2%} MDD {f['max_drawdown']:.2%}"
+            for f in rows)
+        ok = "✓" if v.get("single_primary_12m_window_meets_targets", False) else "✗"
+        print(f"  {ok} {fam}: {folds_text}")
     print("\n帕累托前沿（test 均值）:")
     for p in summary["pareto_front_test_mean"]:
         print(f"  {p['family']}: CAGR {p['cagr']:.2%} / MDD {p['max_drawdown']:.2%}")
@@ -413,11 +415,10 @@ def cmd_optimize_weights(args):
         R = build_returns_asof(LocalDataAdapter(), codes, until, cfg)
         if args.regime_start:
             R = R[R.index >= pd.Timestamp(args.regime_start)]
-        # 股指现有仓位冻结；不可偷偷按卖出后现金计算组合风险。
-        fixed = {f["code"]: current[f["code"]] for f in snap["funds"]
-                 if f["category"] == "equity_index"}
+        categories = {str(f["code"]): str(f.get("category", "other")) for f in snap["funds"]}
+        caps = {str(f["code"]): args.max_fund_weight for f in snap["funds"]}
         out = optimize_target_weights(R, current_weights=current,
-                                      fixed_weights=fixed, cfg=cfg)
+                                      caps=caps, cfg=cfg, categories=categories)
     except ValueError as exc:
         out = {"status": "DATA_BLOCKED", "reason": str(exc), "trade_ready": False}
     out["config"] = asdict(cfg)
@@ -462,8 +463,9 @@ def cmd_optimize_strategy(args):
     all_codes = [str(f["code"]) for f in all_funds]
     equity_codes = {str(f["code"]) for f in all_funds
                     if f.get("category") == "equity_index"}
-    investable_codes = [str(f["code"]) for f in all_funds
-                        if f.get("category") != "equity_index"]
+    # 沪深300、标普500、纳斯达克等指数基金属于用户明确纳入的资产类别；
+    # 不买个股不等于排除指数基金。默认全部基金代码参与组合优化。
+    investable_codes = list(all_codes)
     bond_codes = [str(f["code"]) for f in all_funds
                   if f.get("category") == "bond"]
     adapter = LocalDataAdapter()
@@ -497,10 +499,9 @@ def cmd_optimize_strategy(args):
         print(f"DATA_BLOCKED: {exc}")
         return
 
-    # 不新增任何股票指数仓位。研究回测从一个标准化的“已完成退出股票后的目标组合”起步；
-    # 这不是对用户当前股票存量已实际卖出的判断，实际账户迁移须另做批次/费用模拟。
+    # 研究范围包含用户当前选定的指数基金类别；不涉及直接个股交易。
+    # 回测起点为标准化反事实目标组合，不代表用户当前存量已实际迁移。
     caps = {c: args.max_fund_weight for c in investable_codes}
-    caps.update({c: 0.0 for c in equity_codes})
     current_for_search = {c: 0.0 for c in all_codes}
     current_for_search["cash"] = 1.0  # 避免把2026快照权重倒灌到历史训练期
 
@@ -569,8 +570,11 @@ def cmd_optimize_strategy(args):
             if not (nav0 > 0):
                 raise ValueError(f"DATA_BLOCKED: {code} 起点单位净值非法")
             # 021559 初始批次的实际申请日未知，simulated=True 会阻止猜测其赎回日期。
-            lots[code] = [simulator.Lot(code, capital * weight / nav0,
-                                        start_ts, simulated=True, order_date=None)]
+            lots[code] = [simulator.Lot(
+                code, capital * weight / nav0, start_ts, simulated=True, order_date=None,
+                cost_basis_cny=capital * weight, cost_basis_known=True,
+                basis_source="counterfactual_start",
+            )]
         return lots, capital * float(weights.get("cash", 0.0))
 
     style_cache = {}
@@ -580,6 +584,7 @@ def cmd_optimize_strategy(args):
         params["target_weights"] = dict(weights)
         params["daily_limits"] = daily_limits
         params["equity_index_codes"] = sorted(equity_codes)
+        params["asset_categories"] = asset_categories
         for section, values in (rule.get("params") or {}).items():
             params[section] = {**params.get(section, {}), **values}
         if family in ("B3", "B5"):
@@ -603,16 +608,31 @@ def cmd_optimize_strategy(args):
         # 统一费率只是敏感性假设；没有真实费率表时不能视为实际净收益。
         config = simulator.SimConfig(
             budget_per_day=float(snap["new_cash_budget_cny_per_execution_day"]),
-            allow_new_equity_index=False,
+            allow_new_equity_index=True,
             equity_index_codes=frozenset(equity_codes),
             daily_limits=daily_limits,
             params=sim_params)
-        sim_codes = investable_codes
+        sim_codes = all_codes
         engine = simulator.Simulator(sim_codes, config, adapter)
         result = engine.run(start, end, initial_lots=lots,
                             initial_cash=initial_cash, policy=policy)
         m = result["metrics"]
         events = result["events"]
+        daily = result["daily"]
+        avg_value = float(daily["value"].mean()) if len(daily) else 0.0
+        years = max((pd.Timestamp(end) - pd.Timestamp(start)).days / 365.25, 1e-9)
+        buys = sells = fees_total = 0.0
+        if not events.empty:
+            buy_rows = events[events.get("event", pd.Series(dtype=str)) == "BUY"]
+            sell_rows = events[events.get("event", pd.Series(dtype=str)) == "REDEEM"]
+            buys = float(pd.to_numeric(buy_rows.get("amount", pd.Series(dtype=float)),
+                                       errors="coerce").fillna(0).sum())
+            sells = float((pd.to_numeric(sell_rows.get("shares", pd.Series(dtype=float)),
+                                          errors="coerce").fillna(0) *
+                           pd.to_numeric(sell_rows.get("nav", pd.Series(dtype=float)),
+                                         errors="coerce").fillna(0)).sum())
+            if "fee_cny" in events:
+                fees_total = float(pd.to_numeric(events["fee_cny"], errors="coerce").fillna(0).sum())
         return {
             "cagr": float(m["cagr"]),
             "max_drawdown": float(m["max_drawdown"]),
@@ -623,6 +643,9 @@ def cmd_optimize_strategy(args):
             "days": int(m["days"]),
             "redeem_events": int((events.get("event", pd.Series(dtype=str)) == "REDEEM").sum()),
             "buy_events": int((events.get("event", pd.Series(dtype=str)) == "BUY").sum()),
+            "turnover_ann": ((buys + sells) / avg_value / years if avg_value > 0 else 0.0),
+            "fees_total": fees_total,
+            "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
             "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START",
         }
 
@@ -674,7 +697,7 @@ def cmd_optimize_strategy(args):
             candidate_pack = generate_weight_candidates(
                 train_returns, current_weights=current_for_search,
                 caps=caps, fixed_weights={}, cfg=train_cfg,
-                top_k=args.weight_candidates)
+                top_k=args.weight_candidates, categories=asset_categories)
             if not candidate_pack["candidates"]:
                 raise ValueError("DATA_BLOCKED: 没有生成目标权重候选")
             result = joint_optimizer.optimize_joint_fold(
@@ -703,7 +726,7 @@ def cmd_optimize_strategy(args):
         "asof": asof.isoformat(),
         "objective": {"annualized_net_return_strictly_gt": 0.05,
                       "portfolio_mdd_lte": 0.04, "priority": "drawdown_first"},
-        "portfolio_scope": "ALL_CURRENT_FUNDS; EQUITY_INDEX_NEW_BUYS_DISABLED; EQUITY_TARGET_ZERO",
+        "portfolio_scope": "ALL_CURRENT_FUND_ASSET_CLASSES_INCLUDED; INDEX_FUNDS_ARE_INVESTABLE; NO_DIRECT_STOCKS",
         "initialization": "COUNTERFACTUAL_TARGET_WEIGHT_START; NOT_REAL_ACCOUNT_HISTORY",
         "style_signal_update": "ASOF_EVERY_21_BUSINESS_DAYS_FOR_B4",
         "trade_limit_quality": trade_limit_quality,
@@ -785,9 +808,11 @@ def main():
     p_wo.add_argument("--candidates", type=int, default=2400)
     p_wo.add_argument("--paths", type=int, default=192)
     p_wo.add_argument("--min-cash", type=float, default=0.0)
-    p_wo.add_argument("--max-fund-weight", type=float, default=0.60)
+    p_wo.add_argument("--max-fund-weight", type=float, default=0.40,
+                      help="单只基金治理上限；默认40%，不是经验收益参数")
     p_wo.add_argument("--cash-return", type=float, default=0.0)
-    p_wo.add_argument("--turnover-cost", type=float, default=0.0)
+    p_wo.add_argument("--turnover-cost", type=float, default=0.003,
+                      help="单边换仓成本压力代理（默认30bp；真实费率应逐基金替换）")
     p_wo.add_argument("--seed", type=int, default=42)
 
     p_js = sub.add_parser("optimize-strategy", help="目标权重+止盈止损+再入场联合优化（RESEARCH_ONLY）")
@@ -801,9 +826,11 @@ def main():
     p_js.add_argument("--weight-candidates", type=int, default=5)
     p_js.add_argument("--weight-paths", type=int, default=64)
     p_js.add_argument("--min-cash", type=float, default=0.0)
-    p_js.add_argument("--max-fund-weight", type=float, default=0.60)
+    p_js.add_argument("--max-fund-weight", type=float, default=0.40,
+                      help="单只基金治理上限；默认40%，不是经验收益参数")
     p_js.add_argument("--regime-start", default=None, help="可选：经季报证据确认的当前风格起点")
-    p_js.add_argument("--fee-stress-bps", default="0,30", help="统一费用压力情景，单位bp，如0,30")
+    p_js.add_argument("--fee-stress-bps", default="30,60",
+                       help="统一单边费用压力情景，单位bp；真实基金费率需另行接入")
     p_js.add_argument("--seed", type=int, default=42)
 
     p_decide = sub.add_parser("decide", help="第6步：输出研究建议（schema 校验，RESEARCH_ONLY）")

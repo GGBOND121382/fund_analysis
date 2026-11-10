@@ -15,6 +15,8 @@ from typing import Mapping
 import numpy as np
 import pandas as pd
 
+from fundkit.risk_engine import estimate_robust_returns, portfolio_return_lcb
+
 
 @dataclass(frozen=True)
 class WeightSearchConfig:
@@ -28,10 +30,12 @@ class WeightSearchConfig:
     candidate_count: int = 2400
     batch_size: int = 80
     min_observations: int = 252
-    max_single_fund_weight: float = .60
+    max_single_fund_weight: float = .40  # 集中度治理上限；不是文献给出的最优比例
     min_cash_weight: float = 0.0
-    annual_cash_return: float = 0.0  # 没有无风险收益真实数据时，保守设为零
-    turnover_cost_rate: float = 0.0  # 必须标记为假设；后续接入实际申赎费
+    annual_cash_return: float = 0.0
+    turnover_cost_rate: float = 0.003  # 30bp单边压力代理；真实费用应由逐基金费率表替换
+    return_prior_shrinkage_days: int = 504
+    return_uncertainty_z: float = 1.0
     seed: int = 42
 
     def validate(self):
@@ -47,6 +51,11 @@ class WeightSearchConfig:
             raise ValueError("样本个数非法")
         if not (0 <= self.turnover_cost_rate < 1):
             raise ValueError("交易成本参数非法")
+        if self.return_prior_shrinkage_days < 0 or self.return_uncertainty_z < 0:
+            raise ValueError("收益收缩/估计不确定性参数非法")
+        if not np.isfinite([self.return_prior_shrinkage_days,
+                            self.return_uncertainty_z]).all():
+            raise ValueError("收益收缩/估计不确定性参数必须有限")
 
 
 def _validate_returns(returns: pd.DataFrame, cfg: WeightSearchConfig) -> pd.DataFrame:
@@ -90,37 +99,39 @@ def _scenarios(R: np.ndarray, cfg: WeightSearchConfig) -> np.ndarray:
 def _risk_metrics(returns: np.ndarray, weights: np.ndarray,
                   initial_current: np.ndarray, cfg: WeightSearchConfig,
                   scenarios: np.ndarray):
-    """批量复利路径，包含现金收益和一次性换仓成本的保守折减。"""
+    """批量复利路径；把初始换仓成本计入净值路径和最大回撤。"""
     n_assets = returns.shape[1]
     w = weights[:, :n_assets]
     cash = weights[:, n_assets]
-    r = np.einsum('std,bd->bst', scenarios, w)  # 候选 × 情景 × 日期
+    turnover = np.sum(np.abs(weights - initial_current[None, :]), axis=1) / 2.0
+    cost = np.minimum(turnover * cfg.turnover_cost_rate, 0.95)
+
+    r = np.einsum("std,bd->bst", scenarios, w)
     r += cash[:, None, None] * ((1 + cfg.annual_cash_return) ** (1 / 252) - 1)
-    nav = np.cumprod(1 + r, axis=2)
-    # 首日峰值必须包含 1.0
+    nav = np.cumprod(1 + r, axis=2) * (1.0 - cost[:, None, None])
     peak = np.maximum(1.0, np.maximum.accumulate(nav, axis=2))
-    mdd = np.max(1 - nav / peak, axis=2)
+    mdd = np.max(1.0 - nav / peak, axis=2)
     quantile_mdd = np.quantile(mdd, .95, axis=1)
-    # 测试历史完整序列 MDD（仅当前风格窗口，混合旧风格不能用于此输入）
+
     hist_r = returns @ w.T
-    hist_r += np.broadcast_to(cash[None, :] *
-                ((1 + cfg.annual_cash_return) ** (1 / 252) - 1), hist_r.shape)
-    hist_nav = np.cumprod(1 + hist_r, axis=0)
+    hist_r += np.broadcast_to(
+        cash[None, :] * ((1 + cfg.annual_cash_return) ** (1 / 252) - 1),
+        hist_r.shape,
+    )
+    hist_nav = np.cumprod(1 + hist_r, axis=0) * (1.0 - cost[None, :])
     hist_peak = np.maximum(1.0, np.maximum.accumulate(hist_nav, axis=0))
-    hist_mdd = np.max(1 - hist_nav / hist_peak, axis=0)
-    # 组合换仓成本只在第一天计入收益；不伪造真实申赎费用
-    turnover = np.sum(np.abs(weights - initial_current[None, :]), axis=1) / 2
-    cost = turnover * cfg.turnover_cost_rate
-    annualized = np.maximum(nav[:, :, -1] * (1 - cost[:, None]), 1e-10) ** (252 / cfg.horizon) - 1
+    hist_mdd = np.max(1.0 - hist_nav / hist_peak, axis=0)
+
+    annualized = np.maximum(nav[:, :, -1], 1e-10) ** (252 / cfg.horizon) - 1
     q25 = np.quantile(annualized, .25, axis=1)
     return hist_mdd, quantile_mdd, q25, turnover
-
 
 def optimize_target_weights(returns: pd.DataFrame,
                             current_weights: Mapping[str, float] | None = None,
                             caps: Mapping[str, float] | None = None,
                             fixed_weights: Mapping[str, float] | None = None,
-                            cfg: WeightSearchConfig | None = None) -> dict:
+                            cfg: WeightSearchConfig | None = None,
+                            categories: Mapping[str, str] | None = None) -> dict:
     """固定随机种子、多情景风险优先的权重搜索；结果始终是研究候选。
 
     returns: 已按披露时点切割、已严格对齐交易日期、已处理分红的日收益。
@@ -133,6 +144,11 @@ def optimize_target_weights(returns: pd.DataFrame,
     codes = list(Rdf.columns)
     R = Rdf.to_numpy(float)
     n = len(codes)
+    robust_estimates = estimate_robust_returns(
+        Rdf, categories=categories,
+        prior_shrinkage_days=cfg.return_prior_shrinkage_days,
+        uncertainty_z=cfg.return_uncertainty_z,
+    )
     if caps or fixed_weights:
         unknown = (set(caps or {}) | set(fixed_weights or {})).difference(codes)
         if unknown:
@@ -197,16 +213,22 @@ def optimize_target_weights(returns: pd.DataFrame,
         hdd, qdd, qret, turn = _risk_metrics(R, batch, cur, cfg, paths)
         for j, w in enumerate(batch):
             checked += 1
+            weight_map = {**{c: float(w[i]) for i, c in enumerate(codes)},
+                          "cash": float(w[-1])}
+            robust_lcb = portfolio_return_lcb(
+                weight_map, robust_estimates, cash_return=cfg.annual_cash_return)
+            score = min(float(qret[j]), robust_lcb)
             item = {'weights': w, 'historical_mdd': float(hdd[j]),
                     'scenario_mdd_p95': float(qdd[j]), 'scenario_return_q25': float(qret[j]),
+                    'robust_return_lcb': float(robust_lcb), 'robust_return_score': float(score),
                     'turnover_proxy': float(turn[j])}
             loss = max(item['historical_mdd'], item['scenario_mdd_p95'])
-            if best_risk is None or (loss, -item['scenario_return_q25']) < best_risk[0]:
+            if best_risk is None or (loss, -item['robust_return_score']) < best_risk[0]:
                 best_risk = ((loss, -item['scenario_return_q25']), item)
             if loss > cfg.max_drawdown + 1e-12:
                 continue
             feasible_count += 1
-            if best_feasible is None or (item['scenario_return_q25'], -turn[j]) > best_feasible[0]:
+            if best_feasible is None or (item['robust_return_score'], -turn[j]) > best_feasible[0]:
                 best_feasible = ((item['scenario_return_q25'], -turn[j]), item)
     chosen = (best_feasible or best_risk)[1]
     # 第二次独立随机种子情景重检；仍共享同一历史经验分布，不等于时间样本外。
@@ -217,8 +239,9 @@ def optimize_target_weights(returns: pd.DataFrame,
     independent_return = float(independent_q25[0])
     status = ('RISK_CONSTRAINT_UNMET' if best_feasible is None else
               'INDEPENDENT_SCENARIO_REJECTED' if independent_risk > cfg.max_drawdown + 1e-12 else
-              'RETURN_TARGET_UNMET' if min(chosen['scenario_return_q25'], independent_return)
-              <= cfg.target_annual_return else 'SCENARIO_CRITERIA_MET_UNVALIDATED')
+              'RETURN_TARGET_UNMET' if min(chosen['scenario_return_q25'], independent_return,
+                  chosen['robust_return_lcb']) <= cfg.target_annual_return
+              else 'SCENARIO_CRITERIA_MET_UNVALIDATED')
     return {
         'status': status, 'trade_ready': False,
         'research_only': True,
@@ -231,6 +254,13 @@ def optimize_target_weights(returns: pd.DataFrame,
         'historical_mdd': chosen['historical_mdd'],
         'scenario_mdd_p95': chosen['scenario_mdd_p95'],
         'scenario_return_q25': chosen['scenario_return_q25'],
+        'robust_return_lcb': chosen['robust_return_lcb'],
+        'robust_return_score': chosen['robust_return_score'],
+        'robust_return_estimates': robust_estimates,
+        'concentration_guardrail': {
+            'max_single_fund_weight': cfg.max_single_fund_weight,
+            'status': 'GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED',
+        },
         'independent_scenario_mdd_p95': independent_risk,
         'independent_scenario_return_q25': independent_return,
         'turnover_proxy': chosen['turnover_proxy'],
@@ -302,7 +332,8 @@ def generate_weight_candidates(returns: pd.DataFrame,
                                fixed_weights: Mapping[str, float] | None = None,
                                cfg: WeightSearchConfig | None = None,
                                top_k: int = 8,
-                               min_l1_distance: float = 0.04) -> dict:
+                               min_l1_distance: float = 0.04,
+                               categories: Mapping[str, str] | None = None) -> dict:
     """生成供外层止盈/止损联合搜索使用的多组目标权重候选。
 
     与 optimize_target_weights 不同，本函数不只返回单一最优权重，而是保留
@@ -317,6 +348,11 @@ def generate_weight_candidates(returns: pd.DataFrame,
     codes = list(Rdf.columns)
     R = Rdf.to_numpy(float)
     n = len(codes)
+    robust_estimates = estimate_robust_returns(
+        Rdf, categories=categories,
+        prior_shrinkage_days=cfg.return_prior_shrinkage_days,
+        uncertainty_z=cfg.return_uncertainty_z,
+    )
     unknown = (set(caps or {}) | set(fixed_weights or {})).difference(codes)
     if unknown:
         raise ValueError(f"仓位上限/冻结仓位存在未知基金：{sorted(unknown)}")
@@ -408,6 +444,9 @@ def generate_weight_candidates(returns: pd.DataFrame,
             "historical_mdd": float(hdd[i]),
             "scenario_mdd_p95": float(qdd[i]),
             "scenario_return_q25": float(qret[i]),
+            "robust_return_lcb": float(portfolio_return_lcb(
+                {**{c: float(x[j]) for j, c in enumerate(codes)}, "cash": float(x[-1])},
+                robust_estimates, cash_return=cfg.annual_cash_return)),
             "turnover_proxy": float(turnover[i]),
             "static_risk_feasible": bool(risk[i] <= cfg.max_drawdown + 1e-12),
         })
@@ -415,11 +454,13 @@ def generate_weight_candidates(returns: pd.DataFrame,
     # 不因静态权重超限而剔除候选：B3/B5 的退出规则可能改变后续路径风险。
     # 先保留全体候选中的最低风险、最高收益，再优先补入静态可行候选。
     pool = records
+    for item in records:
+        item["robust_return_score"] = min(item["scenario_return_q25"], item["robust_return_lcb"])
     ordered = sorted(pool, key=lambda r: (
         max(r["historical_mdd"], r["scenario_mdd_p95"]),
-        -r["scenario_return_q25"], r["turnover_proxy"]))
+        -r["robust_return_score"], r["turnover_proxy"]))
     feasible_ordered = sorted(feasible, key=lambda r: (
-        -r["scenario_return_q25"],
+        -r["robust_return_score"],
         max(r["historical_mdd"], r["scenario_mdd_p95"]),
         r["turnover_proxy"]))
     selected = []
@@ -450,6 +491,9 @@ def generate_weight_candidates(returns: pd.DataFrame,
         "training_data_start": str(Rdf.index[0].date()),
         "training_data_end": str(Rdf.index[-1].date()),
         "static_risk_feasible_count": int(len(feasible)),
+        "robust_return_estimates": robust_estimates,
+        "concentration_guardrail": {"max_single_fund_weight": cfg.max_single_fund_weight,
+                                    "status": "GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED"},
         "candidates": selected,
         "research_only": True,
     }

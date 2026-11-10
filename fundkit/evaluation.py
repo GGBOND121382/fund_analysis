@@ -28,15 +28,13 @@ CAGR_TARGET = 0.05
 
 FOLDS = [
     {"train": ("2023-06-01", "2025-06-01"), "val": ("2025-06-01", "2025-12-01"),
-     "test": ("2025-12-01", "2026-06-01")},
+     "test": ("2025-12-01", "2026-06-01"), "test_role": "short_diagnostic"},
     {"train": ("2024-01-01", "2026-01-01"), "val": ("2026-01-01", "2026-06-01"),
-     "test": ("2026-06-01", "2026-11-09")},
-    # 12个月测试窗（验收要求）；train/val 与 fold0 相同，test 拉长到数据末端
+     "test": ("2026-06-01", "2026-11-09"), "test_role": "short_diagnostic"},
     {"train": ("2023-06-01", "2025-06-01"), "val": ("2025-06-01", "2025-12-01"),
-     "test": ("2025-12-01", "2026-11-09")},
-    # 24个月测试窗（跨 710301 风格切换 2025-08-29，结果含切换前权益敞口，如实标注）
+     "test": ("2025-12-01", "2026-11-09"), "test_role": "primary_12m_single_window"},
     {"train": ("2022-06-01", "2024-06-01"), "val": ("2024-06-01", "2024-11-01"),
-     "test": ("2024-11-01", "2026-11-09")},
+     "test": ("2024-11-01", "2026-11-09"), "test_role": "overlapping_24m_diagnostic"},
 ]
 
 # 预声明小网格（search_space.yaml 子集；每次试验记录）
@@ -49,6 +47,11 @@ GRID = [
     *[("B4", {"pause_cdar95": c}) for c in (0.01, 0.02, 0.03)],
     *[("B5", {"internal_drawdown_margin": m, "fund_pause_drawdown": f})
       for m in (0.01, 0.02) for f in (0.02, 0.03)],
+    *[("B5", {
+        "take_profit_activation_by_category": {"bond": a, "gold": g, "equity_index": e},
+        "take_profit_trailing_drawdown_by_category": {"bond": .0075, "gold": .03, "equity_index": .05},
+        "take_profit_redeem_fraction": .25,
+      }) for a, g, e in ((.02, .06, .10), (.03, .08, .12))],
 ]
 
 
@@ -119,7 +122,11 @@ def _initial_lots(adapter: LocalDataAdapter, snap: dict, start: str,
             nav0 = float(df.iloc[-1]["unit_nav"])
         except Exception:  # noqa: BLE001
             continue
-        lots[code] = [simulator.Lot(code, value / nav0, start_ts, simulated=True)]
+        lots[code] = [simulator.Lot(
+            code, value / nav0, start_ts, simulated=True,
+            cost_basis_cny=value, cost_basis_known=True,
+            basis_source="counterfactual_start",
+        )]
     return lots
 
 
@@ -128,6 +135,10 @@ def _run_window(family, overrides, window, adapter, snap, sim_config_base,
     params = _params_for(family, overrides, base_target=base_target)
     params["daily_limits"] = sim_config_base["daily_limits"]
     params["equity_index_codes"] = sim_config_base["equity_index_codes"]
+    params["asset_categories"] = {
+        str(f["code"]): str(f.get("category", "other"))
+        for f in snap["funds"]
+    }
     if style_signals is not None:
         params["_style_signals"] = style_signals
     total_snap = sum(float(f["value_cny"]) for f in snap["funds"])
@@ -139,10 +150,17 @@ def _run_window(family, overrides, window, adapter, snap, sim_config_base,
                 for f in snap["funds"] if f["code"] not in held)
     config = simulator.SimConfig(
         budget_per_day=float(snap["new_cash_budget_cny_per_execution_day"]),
-        allow_new_equity_index=(family == "B0"),
+        allow_new_equity_index=(family != "B1"),
         equity_index_codes=frozenset(sim_config_base["equity_index_codes"]),
-        daily_limits=sim_config_base["daily_limits"])
+        daily_limits=sim_config_base["daily_limits"],
+        params={**simulator.SIM_DEFAULTS,
+                "subscribe_fee_rate": 0.003,
+                "redeem_fee_rate": 0.006})
     sim = simulator.Simulator([f["code"] for f in snap["funds"]], config, adapter)
+    if family == "B3":
+        params["B3"]["allow_redeem"] = True
+    if family == "B5":
+        params["B5"]["allow_redeem"] = True
     policy = policies.build_policy(family, params)
     result = sim.run(window[0], window[1], initial_lots=lots,
                      initial_cash=cash0, policy=policy)
@@ -151,16 +169,20 @@ def _run_window(family, overrides, window, adapter, snap, sim_config_base,
     events, daily = result["events"], result["daily"]
     avg_val = float(daily["value"].mean()) if len(daily) else 0.0
     years = max((daily["date"].iloc[-1] - daily["date"].iloc[0]).days / 365, 1e-9)
-    sells = fees = 0.0
+    sells = buys = fees = 0.0
     if not events.empty:
         red = events[events["event"] == "REDEEM"]
         if len(red):
             sells = float((red["shares"].astype(float) * red["nav"].astype(float)).sum())
-            fees += sells * config.params["redeem_fee_rate"]
         buy = events[events["event"] == "BUY"]
         if len(buy):
-            fees += float(buy["amount"].astype(float).sum()) * config.params["subscribe_fee_rate"]
-    m["turnover_ann"] = sells / avg_val / years if avg_val > 0 else 0.0
+            buys = float(buy["amount"].astype(float).sum())
+        if "fee_cny" in events.columns:
+            fees = float(pd.to_numeric(events["fee_cny"], errors="coerce").fillna(0.0).sum())
+        else:
+            fees = (sells * config.params["redeem_fee_rate"] +
+                    buys * config.params["subscribe_fee_rate"])
+    m["turnover_ann"] = (sells + buys) / avg_val / years if avg_val > 0 else 0.0
     m["fees_total"] = fees
     m["cash_ratio_avg"] = float((daily["cash"] / daily["value"]).mean()) if len(daily) else 0.0
     return m
@@ -316,10 +338,12 @@ def run_validation(out_dir="reports") -> dict:
                                 sim_base, signals_val if family in ("B4", "B5") else None,
                                 base_target)
             trials_rows.append({
-                "fold": fold_i, "family": family, "params": tag,
+                "fold": fold_i, "test_role": fold.get("test_role", "diagnostic"),
+                "family": family, "params": tag,
                 "phase": "train", **{k: v for k, v in m_train.items() if v is not None}})
             trials_rows.append({
-                "fold": fold_i, "family": family, "params": tag,
+                "fold": fold_i, "test_role": fold.get("test_role", "diagnostic"),
+                "family": family, "params": tag,
                 "phase": "val", **{k: v for k, v in m_val.items() if v is not None}})
         # 按族在 validation 上风险优先选参，冻结后跑 test
         df = pd.DataFrame(trials_rows)
@@ -330,8 +354,9 @@ def run_validation(out_dir="reports") -> dict:
             m_test = _run_window(family, overrides, fold["test"], adapter, snap,
                                  sim_base, signals_test if family in ("B4", "B5") else None,
                                  base_target)
-            trials_rows.append({"fold": fold_i, "family": family,
-                                "params": pick["params"], "phase": "test", "frozen": True,
+            trials_rows.append({"fold": fold_i, "test_role": fold.get("test_role", "diagnostic"),
+                                "family": family, "params": pick["params"],
+                                "phase": "test", "frozen": True,
                                 **{k: v for k, v in m_test.items() if v is not None}})
             selected.setdefault(family, []).append(
                 {"fold": fold_i, "params": overrides, "val_mdd": pick["max_drawdown"],
@@ -345,25 +370,36 @@ def run_validation(out_dir="reports") -> dict:
     boot = stress_bootstrap(adapter, snap)
     crash = stress_2022_bond_crash(adapter, snap)
 
-    # 可行性判定（全部 OOS test 折）
+    # 重叠测试窗口只能作为诊断，禁止混合求均值后冒充独立OOS证据。
     test_rows = trials[trials.phase == "test"]
+    roles = test_rows.get("test_role", pd.Series(index=test_rows.index, dtype=str))
+    primary_rows = test_rows[roles == "primary_12m_single_window"]
+    diagnostic_rows = test_rows[roles.isin(["short_diagnostic", "overlapping_24m_diagnostic"])]
     feasibility = {}
     for family, grp in test_rows.groupby("family"):
-        oos_ok = ((grp["cagr"] > CAGR_TARGET) & (grp["max_drawdown"] <= MDD_BUDGET)).all()
+        grp_roles = grp.get("test_role", pd.Series(index=grp.index, dtype=str))
+        primary = grp[grp_roles == "primary_12m_single_window"]
+        oos_ok = (len(primary) > 0 and
+                  ((primary["cagr"] > CAGR_TARGET) &
+                   (primary["max_drawdown"] <= MDD_BUDGET)).all())
+        diag = grp[grp_roles != "primary_12m_single_window"]
         feasibility[family] = {
-            "all_folds_cagr_gt_5pct_and_mdd_le_4pct": bool(oos_ok),
-            "folds": grp[["fold", "cagr", "max_drawdown", "sharpe", "xirr"]].to_dict("records"),
+            "single_primary_12m_window_meets_targets": bool(oos_ok),
+            "primary_12m_windows": primary[["fold", "cagr", "max_drawdown", "sharpe", "xirr"]].to_dict("records"),
+            "diagnostic_overlapping_windows": diag[["fold", "test_role", "cagr",
+                                                     "max_drawdown", "sharpe", "xirr"]].to_dict("records"),
         }
-    any_feasible = any(v["all_folds_cagr_gt_5pct_and_mdd_le_4pct"]
+    any_feasible = any(v["single_primary_12m_window_meets_targets"]
                        for v in feasibility.values())
-    # 当前测试窗不足完整一年；半年收益年化放大不能作为4%长期目标的验收。
     oos_days = [len(pd.bdate_range(*fold["test"])) for fold in FOLDS]
-    validated_horizon = all(n >= 252 for n in oos_days)
-    # B4/B5 固定了起点 as-of 风格信号，并非每日重新采集。不可声称动态系统通过样本外验证。
+    independent_full_year_windows = int(primary_rows["fold"].nunique()) if len(primary_rows) else 0
+    validated_horizon = independent_full_year_windows >= 2
     style_signal_refresh_verified = False
-    # 帕累托前沿（test 折均值）
-    front = (test_rows.groupby("family")[["cagr", "max_drawdown"]].mean()
-             .reset_index().sort_values("max_drawdown"))
+    if independent_full_year_windows >= 2:
+        front = (primary_rows.groupby("family")[["cagr", "max_drawdown"]].mean()
+                 .reset_index().sort_values("max_drawdown"))
+    else:
+        front = pd.DataFrame(columns=["family", "cagr", "max_drawdown"])
     pareto = []
     best = -np.inf
     for _, r in front.iterrows():
@@ -371,6 +407,16 @@ def run_validation(out_dir="reports") -> dict:
             pareto.append({"family": r["family"], "cagr": r["cagr"],
                            "max_drawdown": r["max_drawdown"]})
             best = r["cagr"]
+    diagnostic_pareto = []
+    if len(diagnostic_rows):
+        diagnostic_front = (diagnostic_rows.groupby("family")[["cagr", "max_drawdown"]]
+                            .mean().reset_index().sort_values("max_drawdown"))
+        best_diag = -np.inf
+        for _, r in diagnostic_front.iterrows():
+            if r["cagr"] > best_diag:
+                diagnostic_pareto.append({"family": r["family"], "cagr": r["cagr"],
+                                          "max_drawdown": r["max_drawdown"]})
+                best_diag = r["cagr"]
 
     summary = {
         "asof": pd.Timestamp.now().isoformat(),
@@ -378,16 +424,19 @@ def run_validation(out_dir="reports") -> dict:
         "counterfactual_start": "COUNTERFACTUAL_START_PORTFOLIO（快照权重×标准化本金，非真实历史）",
         "selected": selected,
         "feasibility": feasibility,
-        "decision": ("INSUFFICIENT_OOS_HORIZON" if not validated_horizon
+        "decision": ("INSUFFICIENT_INDEPENDENT_OOS_WINDOWS" if not validated_horizon
                      else "FEASIBLE_CANDIDATES_EXIST" if any_feasible
                      else "NO_FEASIBLE_STRATEGY"),
         "oos_test_days": oos_days,
+        "independent_full_year_test_windows": independent_full_year_windows,
+        "overlapping_test_windows_excluded_from_primary_aggregation": True,
         "style_signal_refresh_verified": style_signal_refresh_verified,
         "pareto_front_test_mean": pareto,
+        "diagnostic_pareto_front_overlapping": diagnostic_pareto,
         "stress": {"bootstrap": boot, "bond_crash_2022": crash},
         "trials_file": "reports/oos_trials.csv",
         "status": "RESEARCH_ONLY",
-        "validation_version": "UNVALIDATED_SHORT_FOLDS",
+        "validation_version": "NON_OVERLAPPING_PRIMARY_OOS_GUARD_V1",
     }
     with open(os.path.join(out_dir, "oos_summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2, default=str)

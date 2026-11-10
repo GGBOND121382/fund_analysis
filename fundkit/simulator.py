@@ -49,6 +49,9 @@ class Lot:
     confirm_date: pd.Timestamp
     simulated: bool = False
     order_date: pd.Timestamp | None = None  # 滚动运作期必须使用实际申购申请日
+    cost_basis_cny: float | None = None
+    cost_basis_known: bool = False
+    basis_source: str = "unknown"
 
 
 @dataclass
@@ -112,6 +115,19 @@ class Simulator:
                 out[code] = {"nav_date": r["nav_date"].date().isoformat(),
                              "nav": float(r["unit_nav"]),
                              "total_return_nav": float(r["adj_nav_total_return"])}
+        return out
+
+    def _published_histories(self, decision_ts: pd.Timestamp) -> dict:
+        """逐基金返回决策时点已经公开的总回报净值历史。"""
+        out = {}
+        for code, grp in self._published_nav.items():
+            vis = grp[grp["published_at"] <= decision_ts]
+            if len(vis):
+                out[code] = [
+                    {"date": pd.Timestamp(row.nav_date).date().isoformat(),
+                     "total_return_nav": float(row.adj_nav_total_return)}
+                    for row in vis.itertuples(index=False)
+                ]
         return out
 
     # -- 主循环 -----------------------------------------------------------
@@ -191,25 +207,66 @@ class Simulator:
                 external_flows.append((day, -cfg.budget_per_day))
 
             # 策略决策（只见已公布净值）
-            decision_ts = day.tz_localize(CST) + pd.Timedelta(hours=15)
+            # 决策在场外基金常规15:00截止前5分钟；T日净值在决策时不可见，
+            # 但可按T日净值确认T日申购/赎回。QDII等特殊截止时间仍需逐基金配置。
+            decision_ts = day.tz_localize(CST) + pd.Timedelta(hours=14, minutes=55)
             pub_navs = self._published_state(decision_ts)
             holdings = {}
             for code, lot_list in lots.items():
-                shares = sum(l.shares for l in lot_list)
+                active_lots = [l for l in lot_list if l.shares > 1e-10]
+                shares = sum(l.shares for l in active_lots)
                 if shares <= 0:
                     continue
                 pub = pub_navs.get(code)
+                redeemable_lots = [l for l in active_lots if self._redeemable(code, l, day)]
+                redeemable_shares = sum(l.shares for l in redeemable_lots)
+                all_basis_known = bool(active_lots) and all(
+                    l.cost_basis_known and l.cost_basis_cny is not None for l in active_lots)
+                redeem_basis_known = bool(redeemable_lots) and all(
+                    l.cost_basis_known and l.cost_basis_cny is not None for l in redeemable_lots)
+                cost_basis = (sum(float(l.cost_basis_cny) for l in active_lots)
+                              if all_basis_known else None)
+                redeem_basis = (sum(float(l.cost_basis_cny) for l in redeemable_lots)
+                                if redeem_basis_known else None)
+                market_value = shares * pub["nav"] if pub else None
+                redeem_market_value = redeemable_shares * pub["nav"] if pub else None
+                position_dates = [
+                    pd.Timestamp(l.order_date if l.order_date is not None else l.confirm_date)
+                    for l in active_lots
+                    if l.order_date is not None or l.confirm_date is not None
+                ]
+                redeem_dates = [
+                    pd.Timestamp(l.order_date if l.order_date is not None else l.confirm_date)
+                    for l in redeemable_lots
+                    if l.order_date is not None or l.confirm_date is not None
+                ]
+                position_start = min(position_dates) if position_dates else None
+                redeemable_start = min(redeem_dates) if redeem_dates else None
                 holdings[code] = {
                     "shares": shares,
-                    "value_pub": shares * pub["nav"] if pub else None,
-                    "redeemable_shares": sum(l.shares for l in lot_list
-                                             if self._redeemable(code, l, day)),
+                    "value_pub": market_value,
+                    "redeemable_shares": redeemable_shares,
+                    "cost_basis_cny": cost_basis,
+                    "cost_basis_known": all_basis_known,
+                    "position_return": (market_value / cost_basis - 1.0
+                                        if market_value is not None and cost_basis and all_basis_known else None),
+                    "redeemable_market_value": redeem_market_value,
+                    "redeemable_cost_basis_cny": redeem_basis,
+                    "redeemable_cost_basis_known": redeem_basis_known,
+                    "position_start_date": (pd.Timestamp(position_start).date().isoformat()
+                                            if position_start is not None else None),
+                    "redeemable_start_date": (pd.Timestamp(redeemable_start).date().isoformat()
+                                              if redeemable_start is not None else None),
+                    "redeemable_position_return": (
+                        redeem_market_value / redeem_basis - 1.0
+                        if redeem_market_value is not None and redeem_basis and redeem_basis_known else None),
                 }
             visible_hist = [u for d, u in unit_hist
                             if d + pd.Timedelta(days=p.get("published_lag_days", 2)) <= day]
             state = {
                 "date": day, "cash": cash, "pending_value": sum(pending_cash.values()),
                 "nav": pub_navs,
+                "fund_nav_history": self._published_histories(decision_ts),
                 "holdings": holdings,
                 "value": cash + sum(pending_cash.values()) + sum(
                     h["value_pub"] for h in holdings.values() if h["value_pub"] is not None),
@@ -253,12 +310,19 @@ class Simulator:
                 nav_t = self._nav_at(code, day)
                 if nav_t is None or nav_t <= 0:
                     continue
-                net = amt * (1 - cfg.fee(code, "subscribe"))
-                lots[code].append(Lot(code, net / nav_t, day, order_date=day))
+                fee_amount = amt * cfg.fee(code, "subscribe")
+                net = amt - fee_amount
+                lots[code].append(Lot(
+                    code, net / nav_t, day, order_date=day,
+                    cost_basis_cny=amt, cost_basis_known=True,
+                    basis_source="simulated_purchase",
+                ))
                 cash -= amt
                 units += 0.0  # 组合内部调仓不改变单位数
                 events.append({"date": str(day.date()), "code": code,
-                               "event": "BUY", "amount": round(amt, 2), "nav": nav_t})
+                               "event": "BUY", "amount": round(amt, 2), "nav": nav_t,
+                               "fee_cny": round(fee_amount, 6),
+                               "net_invested_cny": round(net, 6)})
 
             # 赎回：逐笔 FIFO，锁定批次不可赎；T 日净值确认，T+lag 到账
             for code, want in (orders.get("redeem") or {}).items():
@@ -278,13 +342,25 @@ class Simulator:
                     nav_t = self._nav_at(code, day)
                     if nav_t is None:
                         break
-                    proceeds = take * nav_t * (1 - cfg.fee(code, "redeem"))
+                    gross_proceeds = take * nav_t
+                    fee_amount = gross_proceeds * cfg.fee(code, "redeem")
+                    proceeds = gross_proceeds - fee_amount
                     arrive = self._next_day(day, p["redeem_cash_lag_days"])
                     pending_cash[arrive] = pending_cash.get(arrive, 0.0) + proceeds
+                    basis_released = None
+                    if lot.cost_basis_known and lot.cost_basis_cny is not None and lot.shares > 0:
+                        ratio = min(1.0, take / lot.shares)
+                        basis_released = float(lot.cost_basis_cny) * ratio
+                        lot.cost_basis_cny = max(0.0, float(lot.cost_basis_cny) - basis_released)
                     lot.shares -= take
                     remain -= take
                     events.append({"date": str(day.date()), "code": code,
-                                   "event": "REDEEM", "shares": round(take, 2), "nav": nav_t})
+                                   "event": "REDEEM", "shares": round(take, 2), "nav": nav_t,
+                                   "gross_proceeds_cny": round(gross_proceeds, 6),
+                                   "fee_cny": round(fee_amount, 6),
+                                   "net_proceeds_cny": round(proceeds, 6),
+                                   "cost_basis_released_cny": (
+                                       None if basis_released is None else round(basis_released, 6))})
 
             # 估值与单位净值
             value = self._value(lots, cash, pending_cash, day)

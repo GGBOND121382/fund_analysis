@@ -162,3 +162,7 @@ python main.py optimize-strategy --asof 2026-11-10 --weight-pool 1200 --weight-c
 ```
 
 完整公式、搜索空间、数据契约和局限见 `docs/JOINT_OPTIMIZATION_V09.md`。所有输出保持 `RESEARCH_ONLY`；当前账户逐笔批次、真实费率、初始持仓转换成本及信用利差因子仍未完整接入，不能自动交易或声称达到5%/4%。
+
+## v1.0 risk-budgeted strategy upgrade
+
+See docs/UPGRADE_V10.md for robust return shrinkage, concentration guardrails, B5 stop-loss/trailing take-profit, cost-basis accounting, covariance-risk de-risking, index-fund scope, and non-overlapping OOS rules. This release remains research-only and does not claim the 5% net-return / 4% maximum-drawdown objective has been achieved.
