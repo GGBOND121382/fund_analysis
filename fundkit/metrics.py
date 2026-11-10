@@ -85,8 +85,8 @@ def compute_metrics(nav_df: pd.DataFrame, rf: float = 0.02, min_days: int = 60) 
     std = np.std(rets, ddof=1)
     sharpe = (np.mean(excess) / std * np.sqrt(TRADING_DAYS)) if std > 0 else np.nan
 
-    downside = rets[rets < rf_daily] - rf_daily
-    downside_std = np.std(downside, ddof=1) if len(downside) > 1 else 0.0
+    downside = np.minimum(rets - rf_daily, 0.0)
+    downside_std = np.sqrt(np.mean(downside ** 2)) if len(downside) else 0.0
     sortino = (np.mean(excess) / downside_std * np.sqrt(TRADING_DAYS)) if downside_std > 0 else np.nan
 
     cummax = np.maximum.accumulate(nav)

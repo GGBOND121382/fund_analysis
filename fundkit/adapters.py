@@ -151,7 +151,7 @@ class LocalDataAdapter:
         """模拟批次：按快照市值 / 快照日前最新单位净值反推份额。
 
         每基金一个模拟批次，confirmed_at = 快照日；021559 滚动持有批次
-        next_redeem_date 按 快照日+30天 的保守假设。全部标记 simulated=True。
+        不得推断 next_redeem_date。全部标记 simulated=True、赎回日未知。
         """
         snap = load_account_snapshot()
         snap_date = pd.Timestamp(snap["snapshot_date"])
@@ -180,8 +180,6 @@ class LocalDataAdapter:
                 "simulated": True,
                 "next_redeem_date": None,
             }
-            if code == "021559":  # 30天滚动持有：保守假设快照日起锁定30天
-                lot["next_redeem_date"] = (snap_date + timedelta(days=30)).strftime("%Y-%m-%d")
             rows.append(lot)
         return pd.DataFrame(rows)
 

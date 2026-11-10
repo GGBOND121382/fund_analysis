@@ -56,7 +56,7 @@ class PolicyTests(unittest.TestCase):
         buys = orders["subscribe"]
         self.assertNotIn("710301", buys)          # 超配基金不再买入
         self.assertLessEqual(buys.get("004400", 0), 500 + 1e-9)  # 受日限额
-        investable = 30000 - 0.10 * (state["value"] + 30000)
+        investable = 30000 - 0.10 * state["value"]
         self.assertLessEqual(sum(buys.values()), investable + 1e-6)
         self.assertGreater(sum(buys.values()), 500)  # 限额之外的低配基金吸收剩余
 
@@ -73,9 +73,8 @@ class PolicyTests(unittest.TestCase):
         fake = {"710301": {
             "combined_shift_evidence": {"state": shift},
             "risk_views": {"CURRENT_STYLE_REWEIGHTED": {"cdar95": cdar, "mdd": cdar}}}}
-        with mock.patch.object(policies, "_load_style_signals", return_value=fake), \
-             mock.patch.object(policies, "_plans", return_value=[]):
-            return policies.make_b4(PARAMS)
+        with mock.patch.object(policies, "_plans", return_value=[]):
+            return policies.make_b4({**PARAMS, "_style_signals": fake})
 
     def test_b4_pause_and_reenter_with_hysteresis(self):
         policy = self._b4_with_signals(cdar=0.03)  # 高于 pause 阈值 0.02
@@ -113,19 +112,81 @@ class PolicyTests(unittest.TestCase):
                  {"code": "004400", "daily_plan_cny": 500}]):
             policy = policies.make_b5(PARAMS)
         # 004400 净值从峰值回撤 4%（> 3% 暂停线）
-        state = make_state(cash=100000, holdings={"004400": 90000},
+        state = make_state(cash=100000, holdings={"004400": 20000},
                            navs={"004400": 0.96}, unit_hist=[1.0, 1.001])
-        policy(make_state(cash=100000, holdings={"004400": 90000},
+        policy(make_state(cash=100000, holdings={"004400": 20000},
                           navs={"004400": 1.0}, unit_hist=[1.0, 1.001]))  # 先建立峰值
         orders = policy(state)
         self.assertNotIn("004400", orders.get("subscribe", {}))
         # 净值恢复到距峰值 <1.5% 并持续冷却期：再入场
         for i in range(1, 5):
-            s = make_state(cash=100000, holdings={"004400": 90000},
+            s = make_state(cash=100000, holdings={"004400": 20000},
                            navs={"004400": 0.995}, unit_hist=[1.0, 1.001],
                            day=D0 + pd.Timedelta(days=i))
             orders = policy(s)
         self.assertIn("004400", orders.get("subscribe", {}))
+
+
+class PolicyFundSpecificRiskTests(unittest.TestCase):
+    def test_b5_uses_fund_specific_thresholds(self):
+        from fundkit.policies import make_b5
+        params = {
+            "target_weights": {"BOND": .4, "GOLD": .4, "cash": .2},
+            "equity_index_codes": [], "daily_limits": {},
+            "B3": {"check_frequency": "weekly", "weight_trigger": .02,
+                   "destination_fraction": .5, "allow_redeem": False},
+            "B4": {"pause_cdar95": .02, "pause_shift_states": ["POSSIBLE_SHIFT", "CONFIRMED_SHIFT"],
+                   "reenter_cooldown_days": 10, "reenter_cdar95_low": .01},
+            "B5": {"mdd_budget": .04, "internal_drawdown_margin": .01,
+                   "reenter_mdd_fraction": .6, "fund_pause_drawdown": .03,
+                   "fund_reenter_drawdown": .015,
+                   "fund_pause_drawdown_by_code": {"BOND": .01, "GOLD": .04},
+                   "fund_reenter_drawdown_by_code": {"BOND": .005, "GOLD": .02},
+                   "fund_redeem_fraction_by_code": {"BOND": 0.0, "GOLD": 0.0},
+                   "reenter_cooldown_days": 10, "allow_redeem": False,
+                   "portfolio_redeem_fraction": 0.0, "fund_redeem_fraction": 0.0,
+                   "cdar_lookback": 126, "cdar_guard_threshold": 1.0},
+        }
+        policy = make_b5(params)
+        def state(day, bond_tr, gold_tr):
+            return {"date": pd.Timestamp(day), "cash": 1000.0, "pending_value": 0.0,
+                    "value_quality": "COMPLETE", "holdings": {},
+                    "nav": {"BOND": {"nav": .9, "total_return_nav": bond_tr},
+                            "GOLD": {"nav": .9, "total_return_nav": gold_tr}},
+                    "unit_nav_history": [1.0] * 20}
+        policy(state("2025-01-01", 1.0, 1.0))  # establish peaks
+        out = policy(state("2025-01-02", .98, .98))
+        events = out.get("events", [])
+        paused = {e["code"] for e in events if e["action"] == "PAUSE_NEW_BUY"}
+        self.assertIn("BOND", paused)
+        self.assertNotIn("GOLD", paused)
+
+    def test_b5_uses_total_return_nav_not_ex_dividend_raw_nav(self):
+        from fundkit.policies import make_b5
+        params = {
+            "target_weights": {"F1": .5, "cash": .5},
+            "equity_index_codes": [], "daily_limits": {},
+            "B3": {"check_frequency": "weekly", "weight_trigger": .02,
+                   "destination_fraction": .5, "allow_redeem": False},
+            "B4": {"pause_cdar95": .02, "pause_shift_states": ["POSSIBLE_SHIFT", "CONFIRMED_SHIFT"],
+                   "reenter_cooldown_days": 10, "reenter_cdar95_low": .01},
+            "B5": {"mdd_budget": .04, "internal_drawdown_margin": .01,
+                   "reenter_mdd_fraction": .6, "fund_pause_drawdown": .03,
+                   "fund_reenter_drawdown": .015,
+                   "reenter_cooldown_days": 10, "allow_redeem": False,
+                   "portfolio_redeem_fraction": 0.0, "fund_redeem_fraction": 0.0,
+                   "cdar_lookback": 126, "cdar_guard_threshold": 1.0},
+        }
+        policy = make_b5(params)
+        base = {"cash": 1000.0, "pending_value": 0.0, "value_quality": "COMPLETE",
+                "holdings": {}, "unit_nav_history": [1.0] * 20}
+        s1 = {**base, "date": pd.Timestamp("2025-01-01"),
+              "nav": {"F1": {"nav": 1.0, "total_return_nav": 1.0}}}
+        s2 = {**base, "date": pd.Timestamp("2025-01-02"),
+              "nav": {"F1": {"nav": .9, "total_return_nav": 1.0}}}
+        policy(s1)
+        out = policy(s2)
+        self.assertFalse(any(e.get("action") == "PAUSE_NEW_BUY" for e in out.get("events", [])))
 
 
 if __name__ == "__main__":

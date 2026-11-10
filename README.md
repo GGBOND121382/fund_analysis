@@ -1,3 +1,5 @@
+> **算法联合优化 v0.9（2026-11-10）**：在v0.8基础上新增目标权重与B2/B3/B4/B5退出规则的外层联合搜索、滚动训练/验证/测试隔离、费用敏感性及按资产类别的基金级止损阈值。当前上传包没有 `data/nav/`，真实策略绩效仍为 DATA_BLOCKED。65项本地测试通过，仅验证数学与代码逻辑，不代表基金实盘业绩。
+
 # 场外基金日K线抓取与区间指标排序
 
 抓取全部场外基金的单位净值日K线，按自定义时间区间计算主流绩效指标并排序。**多数据源自动故障转移**，规避单一源限流。
@@ -75,11 +77,21 @@ fundkit/audit.py    数据质量与公开时点审核（python main.py audit）
 fundkit/simulator.py 组合现金流模拟器（TWR/XIRR/CDaR，限额/锁定/分红/到账延迟）
 fundkit/policies.py 策略族 B0-B5（定投基线/现金流再平衡/阈值/风格风控/回撤守卫）
 fundkit/style.py    风格识别（披露断点+滚动因子回归+三套风险视图）
+fundkit/weight_optimizer.py 训练期目标权重候选生成与情景风险筛选
+fundkit/joint_optimizer.py 目标权重×止盈止损规则外层联合搜索
 fundkit/collect_extra.py 补充采集（季报持仓披露 + 市场风险因子）
-config/account_snapshot.json  账户持仓快照（模拟批次口径，SIMULATED）
+config/account_snapshot.example.json  本地账户快照模板（需复制并填写为 account_snapshot.json）
 tests/              数学核验单元测试（MDD/CDaR/单位化现金流/as-of，9 条）
 docs/               算法层交接适配文档（step0 映射表）
 ```
+
+## 本地配置与数据保护
+
+公开仓库不包含个人账户快照、基金净值缓存、申赎流水、回测报告或历史决策文件。
+首次运行前，请复制 `config/account_snapshot.example.json` 为 `config/account_snapshot.json`，
+并按实际账户情况填写；再根据自己的基金列表和独立样本外验证结果调整 `config/policy_params.json`。
+`data/`、`reports/`、`decisions/` 及 `config/account_snapshot.json` 已加入 `.gitignore`，
+不要将个人账户数据或访问凭据提交到公共仓库。
 
 ## 算法层（定投+止盈止损联合优化，交接包 algorithm-handoff-v1.0）
 
@@ -100,7 +112,7 @@ docs/               算法层交接适配文档（step0 映射表）
   均为候选值，待第5步样本外验证冻结）
 - 第5步 样本外验证：`python main.py validate` → `reports/oos_trials.csv`（全部试验）、
   `reports/oos_summary.json`（风险优先选参、冻结 test 折、可行性判定、帕累托前沿、
-  块自助压力测试 P(MDD>5%) 与 2022-11 债灾回放）
+  块自助压力测试 P(MDD>4%) 与 2022-11 债灾回放）
 - 第6步 研究建议：`python main.py decide` → `decisions/YYYY-MM-DD.json`
   （jsonschema 校验，RESEARCH_ONLY）、`reports/fund_decisions.csv`、
   `reports/strategy_report.md`、`reports/full_research_audit.md`
@@ -117,3 +129,36 @@ docs/               算法层交接适配文档（step0 映射表）
 - 定开债/定开混合等基金按周披露净值（avg_gap ≈ 6），收益率曲线被"熨平"，夏普/索提诺会系统性虚高，建议排序时加 `--max-avg-gap 3`。
 - **分红/拆分复权**：`rank` 默认用后复权口径（除息日分红加回收益、份额折算日按比例放大），`--no-adjust` 可关闭。分红数据（`data/dividends.csv`）由 `python main.py dividends` 逐只抓取东财 F10 分红页生成，拆分数据存于 `data/splits.json`。**不要用 akshare 的批量接口 fund_fh_em，它只覆盖近期几个月的记录，用于复权会严重失真**。完整性经"累计净值−单位净值=累计分红"恒等式全量对账：无拆分基金 96.2% 完全一致；其余约 260 只为 2007-2015 年间的老基金，东财 F10 对其早期分红/拆分事件记录不全（数据源侧残缺，清单见 `data/dividend_mismatch.csv`），影响仅限于覆盖那些远古事件的超长区间。
 - 数据缓存在 `data/nav/` 下，`rank` 完全离线计算。
+
+---
+
+## v0.8（2026-11-10）目标权重优化升级
+
+**最新账户目标：年化净收益超过5%，组合最大回撤目标不超过4%**（此前文档中任何4%年化/5%回撤均为旧目标，已废弃）。
+
+本版新增 `fundkit/weight_optimizer.py`（有约束的联合收益情景目标权重搜索），`python main.py optimize-weights` 命令，和 `--weights-report` 的历史模拟时间冻结入口。真实净值不足时只返回 `DATA_BLOCKED`，不出交易指令。原`decide`在目标权重尚未验证时不再展示硬编码的45%/35%为正式目标。
+
+具体数学公式、超参数、局限与数据需求：**`docs/WEIGHT_OPTIMIZATION_V08.md`**。本版本的数学单元测试为53项；**测试通过不代表真实基金策略通过收益或最大回撤验收**。
+
+
+## v0.9（2026-11-10）目标权重 + 止盈止损联合优化
+
+正式目标统一为：**长期年化净收益严格超过5%，组合最大回撤风险预算不超过4%**。风险预算优先；找不到可行策略就返回不可行，不修改目标。
+
+新增：
+
+- `fundkit/joint_optimizer.py`：目标权重候选与 B2/B3/B4/B5 规则的联合外层搜索；验证期选参、测试期只跑冻结候选。
+- `fundkit/weight_optimizer.py::generate_weight_candidates`：生成风险—收益多样化权重候选，保留可能由动态退出规则改善的静态高风险候选。
+- B4 支持每21个工作日更新一次 as-of 风格信号；不读取未来公告。
+- B5 基金级止损信号改用分红调整后的总回报净值，并支持按基金代码设置不同暂停/恢复阈值。债券与黄金候选阈值区间不同，但都只是待验证参数。
+- 新 CLI：`python main.py optimize-strategy`。默认训练504日、验证252日、测试252日；费用压力情景默认为0bp/30bp。
+
+示例：
+
+```powershell
+python main.py optimize-strategy --asof 2026-11-10
+python main.py optimize-strategy --asof 2026-11-10 --folds 2 --step-days 252
+python main.py optimize-strategy --asof 2026-11-10 --weight-pool 1200 --weight-candidates 8 --weight-paths 128 --fee-stress-bps 0,10,30
+```
+
+完整公式、搜索空间、数据契约和局限见 `docs/JOINT_OPTIMIZATION_V09.md`。所有输出保持 `RESEARCH_ONLY`；当前账户逐笔批次、真实费率、初始持仓转换成本及信用利差因子仍未完整接入，不能自动交易或声称达到5%/4%。

@@ -25,7 +25,7 @@ from fundkit.adapters import (ACCOUNT_DRAWDOWN_UNVERIFIABLE, CST,
                               LocalDataAdapter, load_account_snapshot)
 
 SCHEMA_FILE = os.path.join("schemas", "decision.schema.json")
-MODEL_VERSION = "algorithm-handoff-v1.0+local-impl-0.6"
+MODEL_VERSION = "algorithm-joint-v0.9"
 
 ACTION_BY_STATE = {
     "NORMAL": "BUY_PROPOSAL",
@@ -54,7 +54,11 @@ def write_reports(decision: dict, out_dir="reports") -> tuple[str, str]:
     oos = {}
     oos_path = os.path.join(out_dir, "oos_summary.json")
     if os.path.exists(oos_path):
-        oos = json.load(open(oos_path, encoding="utf-8"))
+        with open(oos_path, encoding="utf-8") as fh:
+            candidate = json.load(fh)
+        # 禁止将旧模拟器产出的业绩纳入本次报告。
+        if candidate.get("validation_version") == MODEL_VERSION:
+            oos = candidate
 
     s = ["# 策略报告（RESEARCH_ONLY）", "",
          f"asof: {decision['asof']}｜状态: {decision['decision_status']}｜"
@@ -66,14 +70,14 @@ def write_reports(decision: dict, out_dir="reports") -> tuple[str, str]:
          "|---|---|---|---|---|---|"]
     for d in decision["fund_decisions"]:
         s.append(f"| {d['fund_code']} | {d['current_weight']:.1%} | "
-                 f"{(d['target_weight'] or 0):.0%} | {d['subscribe_cny']:.0f} | "
+                 f"{f'{d["target_weight"]:.0%}' if d['target_weight'] is not None else '未验证'} | {d['subscribe_cny']:.0f} | "
                  f"{d['action']} | {', '.join(d['rule_ids']) or '-'} |")
     s += ["", "## 关键风险", ""]
     boot = (oos.get("stress") or {}).get("bootstrap") or {}
-    if boot.get("p_mdd_exceed_5pct") is not None:
+    if boot.get("p_mdd_exceed_4pct") is not None:
         ci = boot["ci95"]
         s.append(f"- 块自助压力（{boot['n_paths']}×{boot['horizon_days']}日）: "
-                 f"P(MDD>5%) = {boot['p_mdd_exceed_5pct']:.1%} "
+                 f"P(MDD>4%) = {boot['p_mdd_exceed_4pct']:.1%} "
                  f"[{ci[0]:.1%}, {ci[1]:.1%}]，MDD 中位 {boot['mdd_median']:.2%}")
     crash = (oos.get("stress") or {}).get("bond_crash_2022") or {}
     if crash.get("portfolio_return") is not None:
@@ -102,11 +106,11 @@ def write_reports(decision: dict, out_dir="reports") -> tuple[str, str]:
               f"- 网格大小: {oos.get('grid_size')}（全部试验见 reports/oos_trials.csv）",
               f"- 可行性判定: **{oos.get('decision')}**", "",
               "### 各策略 test 折结果", "",
-              "| 策略 | 全部折满足 CAGR≥4% 且 MDD≤5% | 明细 |", "|---|---|---|"]
+              "| 策略 | 全部折满足 CAGR>5% 且 MDD≤4% | 明细 |", "|---|---|---|"]
         for fam, v in (oos.get("feasibility") or {}).items():
             det = "; ".join(f"fold{f['fold']} CAGR {f['cagr']:.2%} MDD {f['max_drawdown']:.2%}"
                             for f in v["folds"])
-            a.append(f"| {fam} | {'是' if v['all_folds_cagr_ge_4pct_and_mdd_le_5pct'] else '否'} | {det} |")
+            a.append(f"| {fam} | {'是' if v['all_folds_cagr_gt_5pct_and_mdd_le_4pct'] else '否'} | {det} |")
         a += ["", "### 帕累托前沿（test 均值）", ""]
         for p in oos.get("pareto_front_test_mean", []):
             a.append(f"- {p['family']}: CAGR {p['cagr']:.2%} / MDD {p['max_drawdown']:.2%}")
@@ -131,128 +135,122 @@ def write_reports(decision: dict, out_dir="reports") -> tuple[str, str]:
 
 def build_decision(asof: str | None = None, oos_summary_path="reports/oos_summary.json",
                    style_report_path="reports/style_report.json") -> dict:
+    """严格 fail-closed：无真实净值或未复验回测时，禁止输出正数交易建议。
+
+    截图只用于展示历史快照金额/比例；模拟批次不可推导真实可赎回日。
+    已有旧 OOS 报告与修正后算法版本不兼容，必须重新验证并冻结。
+    """
     adapter = LocalDataAdapter()
     snap = load_account_snapshot()
     params = policies.load_params()
-    asof_ts = pd.Timestamp(asof).tz_localize(CST) if asof else pd.Timestamp.now(
-        datetime.now().astimezone().tzinfo).tz_convert(CST)
+    asof_ts = pd.Timestamp(asof).tz_localize(CST) if asof else pd.Timestamp.now(tz=CST)
+    funds = snap["funds"]
+    codes = [f["code"] for f in funds]
+    nav_cache = {c: adapter.nav([c], asof_ts) for c in codes}
+    latest_nav = {c: float(df.iloc[-1]["unit_nav"])
+                  for c, df in nav_cache.items() if not df.empty}
+    missing = [c for c in codes if c not in latest_nav]
+    snapshot_total = sum(float(f["value_cny"]) for f in funds)
+    if snapshot_total <= 0:
+        raise ValueError("DATA_BLOCKED: 账户快照总额非正")
 
-    # 数据 hash（输入可复现性）
-    nav_cache = {c: adapter.nav([c], asof_ts) for c in [f["code"] for f in snap["funds"]]}
-    input_hash = _hash_dict({
-        "nav_latest": {c: str(df["nav_date"].max().date())
-                       for c, df in nav_cache.items() if not df.empty},
-        "factors": _sha256(os.path.join("data", "factors", "daily.csv")),
-        "disclosures": {c: _sha256(os.path.join("data", "disclosures", f"{c}.csv"))
-                        for c in [f["code"] for f in snap["funds"]]},
-    })
-
-    # 冻结策略：B5 参数取样本外验证所选（不可得时回退候选默认并注明）
-    frozen_note = "候选默认（未完成样本外选择）"
+    # 旧版 oos_summary 并未验证修复后的算法，不能当作可执行策略结果。
+    verified = False
+    oos = {}
     if os.path.exists(oos_summary_path):
-        oos = json.load(open(oos_summary_path, encoding="utf-8"))
-        sel = (oos.get("selected") or {}).get("B5") or []
-        if sel:
-            params["B5"] = {**params["B5"], **sel[-1]["params"]}
-            frozen_note = f"样本外验证所选（fold {sel[-1]['fold']}）"
-        oos_decision = oos.get("decision")
-        stress = oos.get("stress", {})
-    else:
-        oos_decision, stress = None, {}
-
-    # 当前账户状态（模拟批次，已公开净值估值）
-    lots_df = adapter.cashflows_and_lots()
-    pub = pd.concat([df for df in nav_cache.values() if not df.empty])
-    # 估值必须用单位净值（原始价）：份额按原始净值确认，乘复权净值会重复计分红
-    latest_nav = {c: float(g.iloc[-1]["unit_nav"]) for c, g in pub.groupby("fund_code")}
+        with open(oos_summary_path, encoding="utf-8") as fh:
+            oos = json.load(fh)
+        verified = (oos.get("validation_version") == MODEL_VERSION and
+                    oos.get("status") == "VALIDATED" and
+                    oos.get("decision") == "FEASIBLE_CANDIDATES_EXIST")
+    # 没有完整账户历史、锁定期批次与费用时，即使有验证也只输出研究候选。
+    blocked = bool(missing)
+    status = "DATA_BLOCKED" if blocked else "MANUAL_REVIEW"
+    note = (f"净值缺失: {','.join(missing)}；" if blocked else "") + (
+        "上次回测参数与本次修复代码不匹配；必须重新跑完整样本外验证。"
+        if not verified else "仅研究候选；真实账户流水及费率未核验。")
+    # 未经独立样本外验证的候选权重，禁止以“目标权重”身份出现在正式决策表。
+    target = ({k: v for k, v in params["target_weights"].items()
+               if not k.startswith("_")} if verified else {})
     style_report = {}
     if os.path.exists(style_report_path):
-        style_report = json.load(open(style_report_path, encoding="utf-8"))
+        with open(style_report_path, encoding="utf-8") as fh:
+            style_report = json.load(fh)
 
-    total = float(sum(r["shares_confirmed"] * latest_nav.get(r["fund_code"], 0)
-                      for _, r in lots_df.iterrows()))
-    weights = {r["fund_code"]: r["shares_confirmed"] * latest_nav.get(r["fund_code"], 0) / total
-               for _, r in lots_df.iterrows()} if total > 0 else {}
+    # 只在输入完整且优化器真实可被调用时，计算观察性 B2 配置建议。
+    # 无论如何不得把原日定投计划默认为优化结果。
+    suggested = {}
+    if not blocked:
+        from fundkit import storage
+        limits = {}
+        st = storage.load_trade_status()
+        if len(st) and "code" in st and "daily_limit" in st:
+            for _, row in st.iterrows():
+                if pd.notna(row["daily_limit"]) and float(row["daily_limit"]) > 0:
+                    limits[str(row["code"])] = float(row["daily_limit"])
+        p2 = {**params, "daily_limits": limits,
+              "equity_index_codes": codes and [f["code"] for f in funds
+                                               if f["category"] == "equity_index"]}
+        # 估值仅用快照金额作为观察性代理，不据此推导真实持仓批次。
+        state = {"cash": float(snap["new_cash_budget_cny_per_execution_day"]),
+                 "pending_value": 0.0,
+                 "value_quality": "COMPLETE",
+                 "holdings": {f["code"]: {"shares": f["value_cny"] / latest_nav[f["code"]],
+                                           "value_pub": f["value_cny"],
+                                           "redeemable_shares": 0.0}
+                              for f in funds},
+                 "nav": {c: {"nav": nav} for c, nav in latest_nav.items()}}
+        suggested = (policies.make_b2(p2)(state).get("subscribe") or {})
 
-    target = {k: v for k, v in params["target_weights"].items() if not k.startswith("_")}
     fund_decisions = []
-    for f in snap["funds"]:
+    for f in funds:
         code = f["code"]
+        wi = float(f["value_cny"]) / snapshot_total
         style_info = style_report.get(code, {})
-        style_state = style_info.get("current_style_state")
-        shift = (style_info.get("combined_shift_evidence") or {}).get("state")
-        value = weights.get(code, 0) * total
-        tw = target.get(code, 0.0)
-        # 动作推导：股指默认禁新买；其余按原计划继续（提案性质，RESEARCH_ONLY）
-        if f["category"] == "equity_index":
-            action, rule_ids = "PAUSE_NEW_BUY", ["B1.no_new_equity_index"]
-            sub = 0.0
-        else:
-            sub = f["daily_plan_cny"]
-            action = "BUY_PROPOSAL" if sub > 0 else "HOLD"
-            rule_ids = ["B0.continue_existing_plan"]
-        if style_state in (None, "UNKNOWN") and f["category"] == "bond":
-            rule_ids.append("style.UNKNOWN_uncertain_widen_stress")
-        if code == "021559":
-            rule_ids.append("rolling_lock_30d_per_lot")
-        if shift in ("POSSIBLE_SHIFT", "CONFIRMED_SHIFT"):
-            rule_ids.append(f"style_shift.{shift}")
-        dq = "SINGLE_SOURCE"
-        rationale = (
-            f"当前权重 {weights.get(code, 0):.1%}（目标 {tw:.0%}）；"
-            f"风格 {style_state or '未评估'}"
-            + (f"，迁移证据 {shift}" if shift else "")
-            + f"；{frozen_note}。RESEARCH_ONLY，不构成交易指令")
+        sf = style_info.get("current_style_state")
+        is_eq = f["category"] == "equity_index"
+        # 没有重跑验证前，只呈现算法的研究候选；实际交易金额必须置0。
+        sub = 0.0
+        action = "PAUSE_NEW_BUY" if is_eq else ("DATA_BLOCKED" if blocked else "HOLD")
+        rule_ids = (["B1.no_new_equity_index"] if is_eq else
+                    ["DATA_BLOCKED.no_nav"] if blocked else
+                    ["VALIDATION_REQUIRED.not_trade_ready"])
         fund_decisions.append({
-            "fund_code": code,
-            "current_value_cny": round(value, 2),
-            "current_weight": round(weights.get(code, 0), 4),
-            "target_weight": tw,
-            "subscribe_cny": sub,
-            "estimated_confirmed_units": (round(sub / latest_nav[code], 2)
-                                        if sub > 0 and code in latest_nav else None),
-            "redeem_review_cny": None,
-            "redeemable_lots": None,   # 模拟批次下不假造可赎回明细
-            "next_redeem_date": ("2026-12-05" if code == "021559" else None),
-            "action": action,
+            "fund_code": code, "current_value_cny": round(float(f["value_cny"]), 2),
+            "current_weight": round(wi, 6), "target_weight": target.get(code),
+            "subscribe_cny": sub, "estimated_confirmed_units": None,
+            "redeem_review_cny": None, "redeemable_lots": None,
+            "next_redeem_date": None, "action": action,
             "rule_ids": rule_ids,
-            "style_state": style_state,
-            "style_confidence": None,  # 不输出伪精确概率
-            "data_quality": dq,
+            "style_state": sf, "style_confidence": None,
+            "data_quality": "MISSING" if code in missing else "PROXY",
             "available_asof": asof_ts.isoformat(),
-            "source_refs": ["data/nav", "data/disclosures", "data/factors/daily.csv",
-                            "reports/style_report.json", "reports/oos_summary.json"],
-            "rationale": rationale,
+            "source_refs": ["config/account_snapshot.json", "data/nav"],
+            "rationale": (f"截图历史快照占比 {wi:.2%}；观察性B2分配"
+                          f" {suggested.get(code, 0):.2f}元/日（非交易建议）。"
+                          f"{note} 未知真实份额和可赎回日期，禁止自动交易。"),
         })
 
+    budget = float(snap["new_cash_budget_cny_per_execution_day"])
     decision = {
-        "asof": asof_ts.isoformat(),
-        "model_version": MODEL_VERSION,
+        "asof": asof_ts.isoformat(), "model_version": MODEL_VERSION,
         "config_hash": _sha256(os.path.join("config", "policy_params.json")),
-        "input_data_hash": input_hash,
-        "decision_status": ("RESEARCH_ONLY" if oos_decision != "NO_FEASIBLE_STRATEGY"
-                            else "NO_FEASIBLE_STRATEGY"),
-        "evidence_status": "PARTIAL",
-        "cash_budget_cny": snap["new_cash_budget_cny_per_execution_day"],
-        "recommended_cash_hold_cny": (
-            snap["new_cash_budget_cny_per_execution_day"]
-            - sum(d["subscribe_cny"] for d in fund_decisions)),
-        "portfolio_current_mdd": None,  # ACCOUNT_DRAWDOWN_UNVERIFIABLE
-        "portfolio_oos_cagr": None,
-        "portfolio_oos_sharpe": None,
-        "portfolio_oos_mdd": None,
-        "portfolio_oos_cdar95": None,
-        "scenario_mdd_exceed_5pct_rate": (
-            (stress.get("bootstrap") or {}).get("p_mdd_exceed_5pct")),
+        "input_data_hash": _hash_dict({
+            "nav_latest": {c: str(df["nav_date"].max().date())
+                           for c, df in nav_cache.items() if not df.empty},
+            "snapshot": _sha256("config/account_snapshot.json")}),
+        "decision_status": status,
+        "evidence_status": "INSUFFICIENT" if blocked else "PARTIAL",
+        "cash_budget_cny": budget, "recommended_cash_hold_cny": budget,
+        "portfolio_current_mdd": None, "portfolio_oos_cagr": None,
+        "portfolio_oos_sharpe": None, "portfolio_oos_mdd": None,
+        "portfolio_oos_cdar95": None, "scenario_mdd_exceed_4pct_rate": None,
         "fund_decisions": fund_decisions,
-        "_notes": [
-            ACCOUNT_DRAWDOWN_UNVERIFIABLE,
-            "本输出为研究建议（RESEARCH_ONLY），不自动交易；赎回仅审议性质",
-            f"参数状态：{frozen_note}",
-        ],
+        "_notes": [ACCOUNT_DRAWDOWN_UNVERIFIABLE, note,
+                   "任何观察性B2权重仅供数学调试，不是交易指令；无账户流水不推断赎回日。"],
     }
-
-    schema = json.load(open(SCHEMA_FILE, encoding="utf-8"))
+    with open(SCHEMA_FILE, encoding="utf-8") as fh:
+        schema = json.load(fh)
     jsonschema.validate({k: v for k, v in decision.items() if not k.startswith("_")},
                         schema)
     return decision

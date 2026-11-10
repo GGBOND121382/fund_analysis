@@ -1,5 +1,12 @@
-data/
-*.zip
+# Local fund/account data and generated research outputs
+/data/
+/reports/
+/decisions/
+/config/account_snapshot.json
+/config/policy_params.local.json
+*.py[cod]
 __pycache__/
-*.pyc
-result.csv
+.venv/
+venv/
+.env
+.env.*

@@ -24,6 +24,7 @@ def make_sim(nav_map, config: SimConfig | None = None, dividends=None):
             "nav_date": idx,
             "published_at": idx.tz_localize(CST),  # 测试假设当日凌晨即公开
             "adj_nav_total_return": v,
+            "unit_nav": v,
         })
     sim.calendar = sorted({d for s in sim._actual_nav.values() for d in s.index})
     sim._dividends = dividends or {}
@@ -98,11 +99,20 @@ class SimulatorTests(unittest.TestCase):
         early = sim._execute(initial_lots={"021559": [Lot("021559", 100, DAYS[0])]},
                              policy=lambda s: {"redeem": {"021559": 100}})
         self.assertIn("REDEEM_REJECTED_LOCKED", set(early["events"]["event"]))
-        # 第 31 自然日后首个周期窗口内赎回成功
-        late_day = DAYS[0] + pd.Timedelta(days=31)
-        redeemable = sim._redeemable("021559", lot, late_day)
+        # 仅到期日可赎回，次日必须拒绝，旧实现的连续5天开放是不正确的。
+        lot.order_date = DAYS[0]
+        maturity = DAYS[0] + pd.Timedelta(days=30)
+        redeemable = sim._redeemable("021559", lot, maturity)
         self.assertTrue(redeemable)
+        self.assertFalse(sim._redeemable("021559", lot, maturity + pd.Timedelta(days=1)))
         self.assertFalse(sim._redeemable("021559", lot, DAYS[0] + pd.Timedelta(days=10)))
+
+    def test_published_state_exposes_raw_and_total_return_nav_separately(self):
+        sim = make_sim({"004400": [1.0, 0.9]})
+        sim._published_nav["004400"].loc[:, "adj_nav_total_return"] = [1.0, 1.0]
+        state = sim._published_state(DAYS[1].tz_localize(CST))
+        self.assertAlmostEqual(state["004400"]["nav"], 0.9)
+        self.assertAlmostEqual(state["004400"]["total_return_nav"], 1.0)
 
     def test_dividend_keeps_unit_nav_continuous(self):
         nav = [1.0] * 20 + [0.9] * 20   # 除息日净值从 1.0 跌到 0.9

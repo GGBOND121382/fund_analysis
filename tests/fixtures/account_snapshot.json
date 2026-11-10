@@ -1,0 +1,100 @@
+{
+  "snapshot_date": "2026-01-01",
+  "source": "SYNTHETIC_TEST_FIXTURE_NOT_REAL_ACCOUNT_DATA",
+  "lots_mode": "SIMULATED",
+  "lots_note": "Synthetic test-only values. Never use as account data.",
+  "new_cash_budget_cny_per_execution_day": 1000,
+  "funds": [
+    {
+      "code": "710301",
+      "name": "Synthetic Test Fund 1",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "bond"
+    },
+    {
+      "code": "004400",
+      "name": "Synthetic Test Fund 2",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "bond"
+    },
+    {
+      "code": "021559",
+      "name": "Synthetic Test Fund 3",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "bond"
+    },
+    {
+      "code": "014846",
+      "name": "Synthetic Test Fund 4",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "bond"
+    },
+    {
+      "code": "000218",
+      "name": "Synthetic Test Fund 5",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "gold"
+    },
+    {
+      "code": "110020",
+      "name": "Synthetic Test Fund 6",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "equity_index"
+    },
+    {
+      "code": "096001",
+      "name": "Synthetic Test Fund 7",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "equity_index"
+    },
+    {
+      "code": "017641",
+      "name": "Synthetic Test Fund 8",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "equity_index"
+    },
+    {
+      "code": "016452",
+      "name": "Synthetic Test Fund 9",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "equity_index"
+    },
+    {
+      "code": "019736",
+      "name": "Synthetic Test Fund 10",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "equity_index"
+    },
+    {
+      "code": "019172",
+      "name": "Synthetic Test Fund 11",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "equity_index"
+    },
+    {
+      "code": "539001",
+      "name": "Synthetic Test Fund 12",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "equity_index"
+    },
+    {
+      "code": "019441",
+      "name": "Synthetic Test Fund 13",
+      "value_cny": 1000.0,
+      "daily_plan_cny": 0,
+      "category": "equity_index"
+    }
+  ]
+}

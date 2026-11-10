@@ -13,7 +13,7 @@ state 只含决策时点已公开的信息（由 simulator 保证），含：
                           时只记 REDUCE_REVIEW 事件）
 - B4 style_factor_risk:   B2 + 风格/风险状态机（PAUSE/REENTER 带迟滞与冷却期），
                           信号来自 style 模块的披露断点与反事实压力
-- B5 joint_mdd_cdar:      B4 + 组合回撤预算守卫（预算 5% − 内控缓冲）+
+- B5 joint_mdd_cdar:      B4 + 组合回撤预算守卫（预算 4% − 内控缓冲）+
                           逐基金回撤暂停/再入场闭环
 
 所有策略输出均为 RESEARCH_ONLY：不自动交易；赎回仅"审议"性质。
@@ -30,6 +30,7 @@ import pandas as pd
 from functools import lru_cache
 
 from fundkit.adapters import load_account_snapshot
+from fundkit.finance_math import drawdown_path, empirical_cdar
 
 PARAMS_FILE = os.path.join("config", "policy_params.json")
 STYLE_REPORT_FILE = os.path.join("reports", "style_report.json")
@@ -51,11 +52,15 @@ def _plans() -> list[dict]:
 
 
 def _weights(state) -> tuple[dict, float]:
-    """当前各基金已公开估值权重 + 组合已公开总估值。"""
-    total = state["cash"]
+    """按截至决策时点已公开原始净值估值；缺任意非零仓位数据则拒绝下单。"""
+    if state.get("value_quality") == "MISSING":
+        return {}, 0.0
+    total = float(state["cash"]) + float(state.get("pending_value", 0.0))
     vals = {}
     for code, h in state["holdings"].items():
-        v = h["value_pub"] if h["value_pub"] is not None else 0.0
+        if h["shares"] > 0 and h["value_pub"] is None:
+            return {}, 0.0
+        v = float(h["value_pub"] or 0.0)
         vals[code] = v
         total += v
     if total <= 0:
@@ -65,41 +70,32 @@ def _weights(state) -> tuple[dict, float]:
 
 def _water_filling(cash: float, weights: dict, total: float, target: dict,
                    limits: dict, allowed: list[str]) -> dict:
-    """赤字注水法分配现金：使配置向 w* 靠拢（内层 QP 的近似解，03 D2）。
+    """在已含现金的总资产 V 上，求非负有界最小二乘补足目标仓位。
 
-    每轮把现金按目标赤字比例注入最低配基金，受日限额截断；
-    迭代至现金耗尽或无赤字。返回 {code: 金额}。
+    min Σ_i (v_i+a_i - w_i^* V)^2, 0≤a_i≤limit_i, Σa_i≤cash。
+    解析水位 a_i=clip(deficit_i-λ, 0, cap_i)，λ由二分法寻找。
+    不把 cash 加入 total 第二次；剩余现金保留。
     """
-    buys: dict[str, float] = {}
-    values = {c: w * total for c, w in weights.items()}
-    cash_left = cash
-    for _ in range(20):
-        if cash_left <= 1e-6:
-            break
-        deficits = {}
-        for c in allowed:
-            tw = target.get(c, 0.0)
-            cur = values.get(c, 0.0) + buys.get(c, 0.0)
-            deficits[c] = max(0.0, tw * (total + cash) - cur)
-        # 现金自身也是目标资产：先满足 cash_floor 以外的部分才投放
-        active = {c: d for c, d in deficits.items() if d > 1e-6}
-        if not active:
-            break
-        s = sum(active.values())
-        progressed = False
-        for c, d in active.items():
-            amt = min(cash_left * d / s, d, cash_left)
-            cap = limits.get(c)
-            if cap is not None:
-                already = buys.get(c, 0.0)
-                amt = min(amt, max(0.0, cap - already))
-            if amt > 1e-6:
-                buys[c] = buys.get(c, 0.0) + amt
-                cash_left -= amt
-                progressed = True
-        if not progressed:
-            break
-    return buys
+    if total <= 0 or cash <= 0:
+        return {}
+    allowed = sorted(set(allowed))
+    deficit = np.array([max(0.0, target.get(c, 0.0) * total -
+                            weights.get(c, 0.0) * total) for c in allowed], dtype=float)
+    cap = np.array([max(0.0, float(limits.get(c, float("inf")))) for c in allowed])
+    desired = np.minimum(deficit, cap)
+    if desired.sum() <= cash:
+        alloc = desired
+    else:
+        low, high = 0.0, float(np.max(deficit))
+        for _ in range(80):
+            mid = (low + high) / 2.0
+            alloc = np.minimum(np.maximum(deficit - mid, 0.0), cap)
+            if alloc.sum() > cash:
+                low = mid
+            else:
+                high = mid
+        alloc = np.minimum(np.maximum(deficit - high, 0.0), cap)
+    return {c: float(x) for c, x in zip(allowed, alloc) if x > 1e-8}
 
 
 # -- B0 / B1 ---------------------------------------------------------------
@@ -121,7 +117,7 @@ def make_b2(params: dict):
               if k != "cash" and not k.startswith("_")}
     equity = set(params.get("equity_index_codes", ()))
     plans = {f["code"] for f in _plans() if f["daily_plan_cny"] > 0}
-    allowed = sorted((set(target) | plans) - equity)
+    allowed = sorted(set(target) - equity)
     limits = params.get("daily_limits", {})  # 真实申购限额（fund_status 快照）
 
     def policy(state) -> dict:
@@ -130,7 +126,7 @@ def make_b2(params: dict):
             return {}
         cash_floor = params["target_weights"].get("cash", 0.0)
         # 保留现金下限后的可投放现金
-        investable = max(0.0, state["cash"] - cash_floor * (total + state["cash"]))
+        investable = max(0.0, state["cash"] - cash_floor * total)
         if investable <= 0:
             return {}
         buys = _water_filling(investable, weights, total, target, limits, allowed)
@@ -187,11 +183,25 @@ def make_b4(params: dict, make_base=None):
     base = (make_base or make_b2)(params)
     p4 = params["B4"]
     # 优先使用调用方注入的 as-of 信号（回测防未来信息），否则读当前 style 报告
-    signals = params.get("_style_signals") or _load_style_signals()
+    # 历史回测禁止读取当前 reports/style_report.json，否则会泄露未来信息。
+    signals = params.get("_style_signals") or {}
+    # 外层联合优化可注入按披露时点预计算的风格时间线：
+    # {"YYYY-MM-DD": {fund_code: style_signal}}。每天只读取不晚于当日的最近一次信号。
+    signals_by_date = params.get("_style_signals_by_date") or {}
+    signal_dates = sorted(signals_by_date)
     z_state: dict[str, dict] = {}  # code -> {"state": ..., "paused_since": ..., "stable_days": int}
 
+    def signal_asof(code: str, day: pd.Timestamp):
+        if not signal_dates:
+            return signals.get(code)
+        key = pd.Timestamp(day).strftime("%Y-%m-%d")
+        eligible = [d for d in signal_dates if d <= key]
+        if not eligible:
+            return None
+        return signals_by_date[eligible[-1]].get(code)
+
     def fund_paused(code: str, day: pd.Timestamp) -> bool:
-        sig = signals.get(code)
+        sig = signal_asof(code, day)
         if not sig:
             return False
         z = z_state.setdefault(code, {"state": "NORMAL", "paused_since": None,
@@ -229,7 +239,7 @@ def make_b4(params: dict, make_base=None):
 def make_b5(params: dict):
     base = make_b4(params)
     p5 = params["B5"]
-    guard = {"de_risk": False, "stable": 0}
+    guard = {"de_risk": False, "stable": 0, "exit_requested": False}
     fund_state: dict[str, dict] = {}
     peaks: dict[str, float] = {}
 
@@ -239,32 +249,54 @@ def make_b5(params: dict):
         mdd_now = 0.0
         if len(hist) >= 2:
             arr = np.asarray(hist)
-            mdd_now = float(np.max(1 - arr / np.maximum.accumulate(arr)))
+            mdd_now = float(1 - arr[-1] / np.max(arr))  # 当前水下回撤，可恢复；不是历史MDD
         soft = p5["mdd_budget"] - p5["internal_drawdown_margin"]
         hard_recover = soft * p5["reenter_mdd_fraction"]
-        if not guard["de_risk"] and mdd_now > soft:
-            guard["de_risk"], guard["stable"] = True, 0
+        win = hist[-int(p5.get("cdar_lookback", 126)):]
+        cdar_now = (empirical_cdar(drawdown_path(win), .95)
+                    if len(win) >= 10 else 0.0)
+        cdar_alert = cdar_now > p5.get("cdar_guard_threshold", float("inf"))
+        if not guard["de_risk"] and (mdd_now > soft or cdar_alert):
+            guard.update(de_risk=True, stable=0, exit_requested=False)
         elif guard["de_risk"]:
             guard["stable"] = guard["stable"] + 1 if mdd_now < hard_recover else 0
             if guard["stable"] >= p5["reenter_cooldown_days"]:
-                guard["de_risk"] = False
+                guard.update(de_risk=False, exit_requested=False)
         if guard["de_risk"]:
-            orders["subscribe"] = {}  # 回撤守卫：全部新增留现金
+            orders["subscribe"] = {}  # 暂停新增；并非已经实现存量风险降低
             orders.setdefault("events", []).append(
                 {"code": "PORTFOLIO", "action": "DE_RISK_CASH",
-                 "reason": f"组合MDD {mdd_now:.2%} 超过软预算 {soft:.2%}"})
+                 "reason": f"当前回撤 {mdd_now:.2%} / 滚动CDaR {cdar_now:.2%}；警戒 {soft:.2%}"})
+            if not guard["exit_requested"]:
+                # 可选的真实减仓执行，仅用于交易模拟/回测（不是自动交易）。
+                # 若为模拟锁定批次，redeemable_shares=0，绝不猜可赎日期。
+                frac = max(0.0, min(1.0, float(p5.get("portfolio_redeem_fraction", .5))))
+                for code, h in state["holdings"].items():
+                    shares = float(h.get("redeemable_shares") or 0) * frac
+                    if shares > 1e-8:
+                        kind = "redeem" if p5.get("allow_redeem", False) else "redeem_review"
+                        orders.setdefault(kind, {})[code] = shares
+                if p5.get("allow_redeem", False):
+                    guard["exit_requested"] = True
             return orders
 
         # 逐基金回撤暂停/再入场（按已公开净值）
         for c, pub in (state["nav"] or {}).items():
-            nav = pub["nav"]
+            # 风险信号使用分红调整后的总回报指数；raw unit NAV 仅用于真实成交/估值。
+            nav = float(pub.get("total_return_nav") or pub["nav"])
             peaks[c] = max(peaks.get(c, nav), nav)
             dd = 1 - nav / peaks[c]
+            pause_map = p5.get("fund_pause_drawdown_by_code", {})
+            reenter_map = p5.get("fund_reenter_drawdown_by_code", {})
+            pause_threshold = float(pause_map.get(c, p5["fund_pause_drawdown"]))
+            reenter_threshold = float(reenter_map.get(c, p5["fund_reenter_drawdown"]))
+            if not (0 <= reenter_threshold < pause_threshold < 1):
+                raise ValueError(f"{c} 基金级止损/恢复阈值非法")
             z = fund_state.setdefault(c, {"paused": False, "stable": 0})
-            if not z["paused"] and dd > p5["fund_pause_drawdown"]:
+            if not z["paused"] and dd > pause_threshold:
                 z["paused"], z["stable"] = True, 0
             elif z["paused"]:
-                z["stable"] = z["stable"] + 1 if dd < p5["fund_reenter_drawdown"] else 0
+                z["stable"] = z["stable"] + 1 if dd < reenter_threshold else 0
                 if z["stable"] >= p5["reenter_cooldown_days"]:
                     z["paused"] = False
             if z["paused"]:
@@ -272,6 +304,19 @@ def make_b5(params: dict):
                 orders.setdefault("events", []).append(
                     {"code": c, "action": "PAUSE_NEW_BUY",
                      "reason": f"基金回撤 {dd:.2%}（B5）"})
+                if not z.get("exit_requested", False):
+                    h = state["holdings"].get(c, {})
+                    redeem_map = p5.get("fund_redeem_fraction_by_code", {})
+                    redeem_fraction = float(redeem_map.get(c, p5.get("fund_redeem_fraction", .5)))
+                    shares = float(h.get("redeemable_shares") or 0) * max(
+                        0.0, min(1.0, redeem_fraction))
+                    if shares > 1e-8:
+                        kind = "redeem" if p5.get("allow_redeem", False) else "redeem_review"
+                        orders.setdefault(kind, {})[c] = shares
+                        if p5.get("allow_redeem", False):
+                            z["exit_requested"] = True
+            else:
+                z["exit_requested"] = False
         return orders
 
     return policy

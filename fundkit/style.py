@@ -76,41 +76,43 @@ def rolling_regression(returns: np.ndarray, factors: np.ndarray,
     有效样本不足时该行 beta 为 NaN（FACTOR_UNIDENTIFIED 由调用方判定）。
     """
     T, K = factors.shape
-    # 因子标准化（全样本矩仅用于尺度，方向由滚动拟合决定）
-    f_mean = np.nanmean(factors, axis=0)
-    f_std = np.nanstd(factors, axis=0)
-    f_std[f_std == 0] = 1.0
-    F = (factors - f_mean) / f_std
+    # 仅用截至 t 的滚动样本标准化，避免未来数据泄露；最终系数还原为原始因子单位。
     rows = []
-    prev_beta = np.zeros(K)
+    prev_beta_raw = np.zeros(K)
     for t in range(T):
         lo = max(0, t - lookback + 1)
-        idx = slice(lo, t + 1)
-        y, X = returns[idx], F[idx]
-        valid = ~np.isnan(X).any(axis=1) & ~np.isnan(y)
-        y, X = y[valid], X[valid]
+        y0, X0 = returns[lo:t + 1], factors[lo:t + 1]
+        valid = np.isfinite(X0).all(axis=1) & np.isfinite(y0)
+        y, Xraw = y0[valid], X0[valid]
         if len(y) < min_samples:
-            rows.append({"alpha": np.nan, "r2": np.nan, "cond": np.nan, "n_eff": len(y),
-                         **{f"beta_{c}": np.nan for c in range(K)}})
+            rows.append({"alpha": np.nan, "r2": np.nan, "cond": np.nan,
+                         "n_eff": len(y), **{f"beta_{c}": np.nan for c in range(K)}})
             continue
-        w = 0.5 ** ((t - (lo + np.where(valid)[0])) / halflife)
+        mean = Xraw.mean(axis=0)
+        scale = Xraw.std(axis=0)
+        scale[scale < 1e-12] = 1.0
+        X = (Xraw - mean) / scale
+        w = 0.5 ** ((t - (lo + np.flatnonzero(valid))) / halflife)
         W = w / w.sum()
         Xa = np.column_stack([np.ones(len(y)), X])
         A = (Xa * W[:, None]).T @ Xa
-        P = np.diag([0.0] + [ridge] * K) + np.diag([0.0] + [smooth] * K)
-        b_smooth = np.concatenate([[0.0], smooth * prev_beta])
+        P = np.diag([0.0] + [ridge + smooth] * K)
+        # 前期原始系数转回本窗口标准化尺度，平滑项才有可比意义。
+        b_smooth = np.concatenate([[0.0], smooth * prev_beta_raw * scale])
         try:
             coef = np.linalg.solve(A + P, (Xa * W[:, None]).T @ y + b_smooth)
         except np.linalg.LinAlgError:
             coef = np.linalg.lstsq(A + P, (Xa * W[:, None]).T @ y + b_smooth,
                                    rcond=None)[0]
-        resid = y - Xa @ coef
+        beta_raw = coef[1:] / scale
+        alpha_raw = coef[0] - float(mean @ beta_raw)
+        resid = y - (alpha_raw + Xraw @ beta_raw)
         tss = float(np.sum(W * (y - np.average(y, weights=W)) ** 2))
         r2 = 1 - float(np.sum(W * resid ** 2)) / tss if tss > 0 else np.nan
         cond = float(np.linalg.cond(A + P))
-        prev_beta = coef[1:]
-        rows.append({"alpha": coef[0], "r2": r2, "cond": cond, "n_eff": len(y),
-                     **{f"beta_{k}": b for k, b in enumerate(coef[1:])}})
+        prev_beta_raw = beta_raw.copy()
+        rows.append({"alpha": alpha_raw, "r2": r2, "cond": cond, "n_eff": len(y),
+                     **{f"beta_{k}": b for k, b in enumerate(beta_raw)}})
     return pd.DataFrame(rows)
 
 
@@ -132,21 +134,24 @@ def disclosure_breakpoints(timeline: pd.DataFrame, confirm_reports=2) -> list[di
     out = []
     if timeline.empty:
         return out
-    eq = timeline["equity_nav_pct"].fillna(0.0)
-    cb = timeline["convertible_nav_pct_lower_bound"].fillna(0.0)
-    risky = (eq + cb) > 0.5
+    eq = pd.to_numeric(timeline["equity_nav_pct"], errors="coerce")
+    cb = pd.to_numeric(timeline["convertible_nav_pct_lower_bound"], errors="coerce")
+    # 重仓 lower bound=0 不是可转债实际仓位为零；只确认已披露股票比例显著下降。
+    risky = eq > 0.5
     for i in range(confirm_reports, len(timeline)):
         window = risky.iloc[i - confirm_reports + 1: i + 1]
         # 只在"前一报告期仍有风险仓位、随后连续 N 期归零"的转折点报告一次
-        if not window.any() and bool(risky.iloc[i - confirm_reports]):
+        if eq.iloc[i - confirm_reports + 1:i + 1].notna().all() and \
+                not window.any() and pd.notna(eq.iloc[i - confirm_reports]) and \
+                bool(risky.iloc[i - confirm_reports]):
             prev = timeline.iloc[i - confirm_reports]
             cur = timeline.iloc[i]
             out.append({
-                "type": "EQUITY_CB_EXIT",
+                "type": "DISCLOSED_EQUITY_REDUCTION",
                 "confirmed_at": str(cur["published_at"].date()),
-                "evidence": (f"股票+转债占净值比 {prev['report_asof']} 期 "
-                             f"{(prev['equity_nav_pct'] or 0) + (prev['convertible_nav_pct_lower_bound'] or 0):.1f}% "
-                             f"→ 连续 {confirm_reports} 期 ≤0.5%（截至 {cur['report_asof']}）"),
+                "evidence": (f"披露股票占净值比例从 {prev['report_asof']} 期 "
+                             f"{float(prev['equity_nav_pct']):.1f}% → 连续 {confirm_reports} "
+                             f"期 ≤0.5%（截至 {cur['report_asof']}）；转债重仓下限不代表完整仓位"),
             })
     return out
 
@@ -160,12 +165,14 @@ def classify_state(timeline_row: pd.Series | None, betas: dict | None,
     if timeline_row is None:
         return "UNKNOWN", "无披露数据"
     eq = timeline_row.get("equity_nav_pct")
-    cb = timeline_row.get("convertible_nav_pct_lower_bound") or 0
-    tier2 = timeline_row.get("bank_tier2_nav_pct_lower_bound") or 0
-    perp = timeline_row.get("bank_perpetual_nav_pct_lower_bound") or 0
-    credit = timeline_row.get("credit_bond_nav_pct_lower_bound") or 0
-    if (eq or 0) + cb > 3:
-        return "EQUITY_CB_ENHANCED", f"股票{eq or 0:.1f}%+转债{cb:.1f}%"
+    def known(v):
+        return float(v) if pd.notna(v) else 0.0
+    cb = known(timeline_row.get("convertible_nav_pct_lower_bound"))
+    tier2 = known(timeline_row.get("bank_tier2_nav_pct_lower_bound"))
+    perp = known(timeline_row.get("bank_perpetual_nav_pct_lower_bound"))
+    credit = known(timeline_row.get("credit_bond_nav_pct_lower_bound"))
+    if known(eq) + cb > 3:
+        return "EQUITY_CB_ENHANCED", f"股票{known(eq):.1f}%+转债重仓下限{cb:.1f}%"
     if tier2 + perp + credit > 10:
         return "CREDIT_BANK_CAPITAL", f"信用{tier2 + perp + credit:.1f}%（重仓下限）"
     if betas and r2 is not None and r2 > 0.3:
@@ -223,7 +230,7 @@ def combined_style_state(disc_shifts: list[dict], beta_path: pd.DataFrame,
 def risk_views(adapter: LocalDataAdapter, code: str, until, factor_df: pd.DataFrame,
                reg: pd.DataFrame, shift_date: str | None) -> dict:
     """AS_TRADED_HISTORY / CURRENT_STYLE_REWEIGHTED / CURRENT_STYLE_REALIZED 的 MDD/CDaR95。"""
-    from tests import finance_math as fm
+    from fundkit import finance_math as fm
 
     rets = fund_returns(adapter, code, until)
     out = {}
@@ -244,30 +251,50 @@ def risk_views(adapter: LocalDataAdapter, code: str, until, factor_df: pd.DataFr
         out["CURRENT_STYLE_REALIZED"] = {
             **stats(realized["ret"].to_numpy()), "since": shift_date,
             "note": "风格确认后公开净值样本，样本短、证据弱"}
-    # 反事实：当前 beta × 历史因子冲击 + 残差自助
-    # 02 E：残差不得沿用旧股票时代的厚尾分布，取风格确认后（或最近一年）样本
+    # 当前风险敞口 × 历史联合因子路径 + *真实回归残差*区块重采样。
+    # 多条反事实路径，输出分布分位数；绝不将单条路径称为确定的风险。
     if not reg.empty and not factor_df.empty and len(factor_df) > 60:
         last = reg.iloc[-1]
         beta_cols = [c for c in reg.columns if c.startswith("beta_")]
-        if not last[beta_cols].isna().any():
+        if beta_cols and np.isfinite(last[beta_cols].to_numpy(float)).all():
             beta = last[beta_cols].to_numpy(float)
-            alpha = float(last["alpha"]) * 0.5  # alpha 收缩 0.5（候选超参）
-            F = factor_df[FACTOR_COLS].to_numpy(float)
-            ok = ~np.isnan(F).any(axis=1)
-            F = F[ok]
-            resid_pool = rets
+            alpha = float(last["alpha"]) * 0.5  # 候选截距收缩，非真实 carry 预测
+            joined = pd.merge(rets, factor_df[["date"] + FACTOR_COLS],
+                              on="date", how="inner").dropna()
             if shift_date:
-                resid_pool = rets[rets["date"] >= pd.Timestamp(shift_date)]
-            elif len(rets) > 252:
-                resid_pool = rets.tail(252)
-            resid = resid_pool["ret"].to_numpy()
-            resid = resid[np.isfinite(resid)]
-            rng = np.random.default_rng(42)
-            eps = rng.choice(resid, size=len(F), replace=True) if len(resid) > 30 else 0.0
-            cf = alpha + F @ beta + eps
-            out["CURRENT_STYLE_REWEIGHTED"] = {
-                **stats(cf),
-                "note": "COUNTERFACTUAL_STRESS：当前敞口×历史因子冲击+近期残差自助，非真实历史业绩"}
+                post = joined[joined["date"] >= pd.Timestamp(shift_date)]
+            else:
+                post = joined.tail(252)
+            if len(post) >= 60:
+                F_recent = post[FACTOR_COLS].to_numpy(float)
+                residual = post["ret"].to_numpy(float) - (
+                    float(last["alpha"]) + F_recent @ beta)
+                residual -= residual.mean()  # 冲击残差去均值，不重复加入因子收益
+                factor_history = factor_df[FACTOR_COLS].dropna().to_numpy(float)
+                horizon = min(252, len(factor_history))
+                if horizon >= 60:
+                    n_paths, block = 400, 10
+                    rng = np.random.default_rng(42)
+                    mdds, cdars = [], []
+                    for _ in range(n_paths):
+                        nf = int(np.ceil(horizon / block))
+                        fstarts = rng.integers(0, len(factor_history)-block+1, size=nf)
+                        estarts = rng.integers(0, len(residual)-block+1, size=nf)
+                        shock = np.concatenate([factor_history[j:j+block] @ beta
+                                                for j in fstarts])[:horizon]
+                        eps = np.concatenate([residual[j:j+block]
+                                              for j in estarts])[:horizon]
+                        r = np.maximum(alpha + shock + eps, -0.999)
+                        path = np.r_[1.0, np.cumprod(1 + r)]
+                        mdds.append(fm.max_drawdown(path.tolist()))
+                        cdars.append(fm.empirical_cdar(fm.drawdown_path(path.tolist()), 0.95))
+                    out["CURRENT_STYLE_REWEIGHTED"] = {
+                        "n_paths": n_paths, "horizon_days": horizon, "n": horizon,
+                        "mdd": float(np.quantile(mdds, .95)),
+                        "cdar95": float(np.quantile(cdars, .95)),
+                        "mdd_median": float(np.median(mdds)),
+                        "cdar95_median": float(np.median(cdars)),
+                        "note": "COUNTERFACTUAL_STRESS：当前敞口×历史联合因子路径+当前残差区块重采样；95%情景分位数，非未来保证"}
     return out
 
 
@@ -314,7 +341,7 @@ def analyze_fund(adapter: LocalDataAdapter, code: str, until, params=None) -> di
         "latest_betas": last_beta,
         "latest_r2": r2,
         "regression_cond_latest": float(reg["cond"].iloc[-1]) if not reg.empty else None,
-        "factor_unidentified": bool(reg.empty or last_beta is None),
+        "factor_unidentified": bool(reg.empty or last_beta is None or r2 is None or r2 < 0.20),
         "risk_views": views,
         "caveats": [
             "alpha 与 carry 分离：不将风格确认后收益自动外推（02 G）",

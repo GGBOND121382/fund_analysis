@@ -1,0 +1,8 @@
+{
+  "snapshot_date": "YYYY-MM-DD",
+  "source": "USER_PROVIDED_LOCAL_SNAPSHOT",
+  "lots_mode": "SIMULATED",
+  "lots_note": "Replace this template with your own verified account snapshot. Simulated lots do not establish real redeemable units or historical account drawdown.",
+  "new_cash_budget_cny_per_execution_day": 0,
+  "funds": []
+}

@@ -18,7 +18,7 @@
     "portfolio_oos_sharpe": {"type": ["number", "null"]},
     "portfolio_oos_mdd": {"type": ["number", "null"], "minimum": 0},
     "portfolio_oos_cdar95": {"type": ["number", "null"], "minimum": 0},
-    "scenario_mdd_exceed_5pct_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "scenario_mdd_exceed_4pct_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
     "fund_decisions": {
       "type": "array",
       "items": {

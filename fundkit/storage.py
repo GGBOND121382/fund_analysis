@@ -122,7 +122,8 @@ def load_splits() -> dict:
     path = os.path.join(DATA_DIR, "splits.json")
     if not os.path.exists(path):
         return {}
-    raw = json.load(open(path))
+    with open(path, encoding="utf-8") as fh:
+        raw = json.load(fh)
     return {c: [tuple(x) for x in v] for c, v in raw.items()}
 
 

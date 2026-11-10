@@ -12,20 +12,20 @@
 - 申赎费率默认 0（未知），可逐基金配置
 - 确认/到账延迟：申购 T 日净值确认，赎回 T 日净值确认、T+2 自然日到账（可配）
 - 现金收益率默认 0
-- 021559 滚动持有：批次自确认日起锁 30 个自然日，其后每 30 天开放 5 天窗口（近似，可配）
+- 021559 滚动持有：每笔份额按申请日后第30个自然日到期（顺延至基金交易日），仅到期日可赎；真实申请/确认流水缺失时初始模拟批次不可赎
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pandas as pd
 
 from fundkit import storage
 from fundkit.adapters import CST, LocalDataAdapter
-from tests import finance_math as fm
+from fundkit.finance_math import max_drawdown, drawdown_path, empirical_cdar
 
 SIM_DEFAULTS = {
     "redeem_cash_lag_days": 2,      # 赎回确认后到账延迟（自然日；QDII 实际更长，可配）
@@ -34,7 +34,6 @@ SIM_DEFAULTS = {
     "redeem_fee_rate": 0.0,
     "cash_annual_rate": 0.0,        # 现金年化收益（小数）
     "rolling_lock_days": 30,        # 滚动持有锁定天数（021559）
-    "rolling_open_window_days": 5,  # 每个滚动周期的开放窗口（近似假设）
     "rf": 0.02,                     # 无风险利率（年化小数，用于 Sharpe/Sortino）
     "published_lag_days": 2,        # 与 adapters 的披露延迟规则一致（决策可见性）
 }
@@ -49,6 +48,7 @@ class Lot:
     shares: float
     confirm_date: pd.Timestamp
     simulated: bool = False
+    order_date: pd.Timestamp | None = None  # 滚动运作期必须使用实际申购申请日
 
 
 @dataclass
@@ -74,6 +74,7 @@ class Simulator:
         self._actual_nav: dict[str, pd.Series] = {}
         self._published_nav: dict[str, pd.DataFrame] = {}
         self._dividends = storage.load_dividends()
+        self._splits = storage.load_splits()
 
     # -- 数据准备 ---------------------------------------------------------
 
@@ -81,11 +82,13 @@ class Simulator:
         start, end = pd.Timestamp(start), pd.Timestamp(end)
         for code in self.codes:
             df = storage.load_nav(code)
-            self._actual_nav[code] = df.set_index("date")["nav"]
+            if df.empty or not {"date", "nav"}.issubset(df.columns):
+                raise ValueError(f"DATA_BLOCKED: {code} 缺失原始单位净值")
+            self._actual_nav[code] = df.set_index("date")["nav"].sort_index()
         pub = self.adapter.nav(self.codes, pd.Timestamp(end).tz_localize(CST))
         for code, grp in pub.groupby("fund_code"):
             self._published_nav[code] = grp[["nav_date", "published_at",
-                                             "adj_nav_total_return"]].reset_index(drop=True)
+                                             "unit_nav", "adj_nav_total_return"]].reset_index(drop=True)
         dates = set()
         for s in self._actual_nav.values():
             dates |= set(s.loc[start:end].index)
@@ -107,7 +110,8 @@ class Simulator:
             if len(vis):
                 r = vis.iloc[-1]
                 out[code] = {"nav_date": r["nav_date"].date().isoformat(),
-                             "nav": float(r["adj_nav_total_return"])}
+                             "nav": float(r["unit_nav"]),
+                             "total_return_nav": float(r["adj_nav_total_return"])}
         return out
 
     # -- 主循环 -----------------------------------------------------------
@@ -122,7 +126,7 @@ class Simulator:
         """主循环（与数据加载分离，测试可注入合成净值后直接调用）。"""
         cfg, p = self.config, self.config.params
         cash = float(initial_cash)
-        lots: dict[str, list[Lot]] = {c: list(v) for c, v in (initial_lots or {}).items()}
+        lots: dict[str, list[Lot]] = {c: [replace(l) for l in v] for c, v in (initial_lots or {}).items()}
         for c in self.codes:
             lots.setdefault(c, [])
         pending_cash: dict[pd.Timestamp, float] = {}   # 到账日 -> 金额（赎回/分红在途）
@@ -145,14 +149,17 @@ class Simulator:
             prev_date = day
             # 在途资金到账
             cash += pending_cash.pop(day, 0.0)
-            # 外部预算注入：按注入前单位净值折算份额（TWR 单位化，入金不改变净值）
-            if cfg.budget_per_day > 0:
-                if units > 0:
-                    units += cfg.budget_per_day / unit_nav
-                else:
-                    units = cfg.budget_per_day / 1.0
-                cash += cfg.budget_per_day
-                external_flows.append((day, -cfg.budget_per_day))
+            # 份额折算：原始单位净值下降时份额需同步放大，否则净资产虚假亏损。
+            for code, lot_list in lots.items():
+                for split_date, ratio in self._splits.get(code, ()):
+                    if pd.Timestamp(split_date) == day:
+                        k = float(ratio)
+                        if not np.isfinite(k) or k <= 0:
+                            raise ValueError(f"DATA_BLOCKED: {code} 非法折算比例")
+                        for lot in lot_list:
+                            lot.shares *= k
+                        events.append({"date": str(day.date()), "code": code,
+                                       "event": "SPLIT", "ratio": k})
 
             # 分红（现金分红模式；红利再投资未配置，属未知项）
             for code, lot_list in lots.items():
@@ -166,6 +173,22 @@ class Simulator:
                         pending_cash[arrive] = pending_cash.get(arrive, 0.0) + amt
                         events.append({"date": str(day.date()), "code": code,
                                        "event": "DIVIDEND", "amount": round(amt, 2)})
+
+            # 外部资金于 T 日价格变动及除息记账之后注入，按注入当时的组合净值发行单位。
+            # 与随后同日 T 净值买入相符；不可用上一日 unit_nav 发行份额。
+            preflow_value = self._value(lots, cash, pending_cash, day)
+            if units > 0:
+                unit_nav = preflow_value / units
+                if unit_nav <= 0:
+                    raise ValueError("DATA_BLOCKED: 组合单位净值非正")
+            else:
+                unit_nav = 1.0
+                if preflow_value > 0:
+                    units = preflow_value
+            if cfg.budget_per_day > 0:
+                units += cfg.budget_per_day / unit_nav
+                cash += cfg.budget_per_day
+                external_flows.append((day, -cfg.budget_per_day))
 
             # 策略决策（只见已公布净值）
             decision_ts = day.tz_localize(CST) + pd.Timedelta(hours=15)
@@ -182,15 +205,18 @@ class Simulator:
                     "redeemable_shares": sum(l.shares for l in lot_list
                                              if self._redeemable(code, l, day)),
                 }
+            visible_hist = [u for d, u in unit_hist
+                            if d + pd.Timedelta(days=p.get("published_lag_days", 2)) <= day]
             state = {
-                "date": day, "cash": cash,
+                "date": day, "cash": cash, "pending_value": sum(pending_cash.values()),
                 "nav": pub_navs,
                 "holdings": holdings,
-                "value": self._value(lots, cash, pending_cash, day),
-                "unit_nav": unit_nav,
-                # 已公开口径的组合单位净值历史（lag 内的最近净值决策时不可得）
-                "unit_nav_history": [u for d, u in unit_hist
-                                     if d + pd.Timedelta(days=p.get("published_lag_days", 2)) <= day],
+                "value": cash + sum(pending_cash.values()) + sum(
+                    h["value_pub"] for h in holdings.values() if h["value_pub"] is not None),
+                "value_quality": "COMPLETE" if all(h["value_pub"] is not None
+                                                  for h in holdings.values()) else "MISSING",
+                "unit_nav": visible_hist[-1] if visible_hist else None,
+                "unit_nav_history": visible_hist,
             }
             orders = policy(state) if policy else {}
 
@@ -220,11 +246,15 @@ class Simulator:
                 amt = min(amt, cash)
                 if amt <= 0:
                     continue
+                if code not in self._actual_nav or day not in self._actual_nav[code].index:
+                    events.append({"date": str(day.date()), "code": code,
+                                   "event": "BUY_REJECTED_NO_TRADE_NAV"})
+                    continue
                 nav_t = self._nav_at(code, day)
-                if nav_t is None:
+                if nav_t is None or nav_t <= 0:
                     continue
                 net = amt * (1 - cfg.fee(code, "subscribe"))
-                lots[code].append(Lot(code, net / nav_t, day))
+                lots[code].append(Lot(code, net / nav_t, day, order_date=day))
                 cash -= amt
                 units += 0.0  # 组合内部调仓不改变单位数
                 events.append({"date": str(day.date()), "code": code,
@@ -241,6 +271,10 @@ class Simulator:
                                        "event": "REDEEM_REJECTED_LOCKED"})
                         continue
                     take = min(lot.shares, remain)
+                    if code not in self._actual_nav or day not in self._actual_nav[code].index:
+                        events.append({"date": str(day.date()), "code": code,
+                                       "event": "REDEEM_REJECTED_NO_TRADE_NAV"})
+                        break
                     nav_t = self._nav_at(code, day)
                     if nav_t is None:
                         break
@@ -276,13 +310,33 @@ class Simulator:
         return target
 
     def _redeemable(self, code: str, lot: Lot, day: pd.Timestamp) -> bool:
+        """滚动基金仅在该笔份额对应的运作期到期日可赎回；未知申请日锁定。
+
+        到期日基于申购申请日+30*k自然日并按交易日历顺延，非5日窗口。
+        合同特定日期规则/渠道日历未知时须补真实流水再复核。
+        """
         if code not in ROLLING_LOCK_FUNDS:
             return True
-        p = self.config.params
-        elapsed = (day - lot.confirm_date).days
-        if elapsed < p["rolling_lock_days"]:
+        if lot.simulated or lot.order_date is None:
             return False
-        return (elapsed - p["rolling_lock_days"]) % p["rolling_lock_days"] < p["rolling_open_window_days"]
+        order_day = pd.Timestamp(lot.order_date).normalize()
+        day = pd.Timestamp(day).normalize()
+        if day < order_day + pd.Timedelta(days=30):
+            return False
+        # 一个顺延日期对应一个真实赎回日；双重检测不允许连续开放窗口。
+        elapsed = (day - order_day).days
+        for k in range(1, elapsed // 30 + 1):
+            maturity = order_day + pd.Timedelta(days=30 * k)
+            dates = self._actual_nav.get(code)
+            if dates is None:
+                return False
+            future = dates.index[dates.index >= maturity]
+            if len(future) == 0:
+                continue  # 交易日历不足，不能猜未来到期日
+            eligible = pd.Timestamp(future[0]).normalize()
+            if day == eligible:
+                return True
+        return False
 
     def _value(self, lots, cash, pending_cash, day) -> float:
         v = cash + sum(pending_cash.values())
@@ -303,12 +357,12 @@ class Simulator:
         ex = rets - rf / td
         std = np.std(rets, ddof=1) if len(rets) > 1 else 0.0
         sharpe = float(np.mean(ex) / std * np.sqrt(td)) if std > 0 else None
-        dn = rets[rets < rf / td] - rf / td
-        dstd = np.std(dn, ddof=1) if len(dn) > 1 else 0.0
+        # 下行偏差：对全体观测期取 min(r-rf,0) 的均方根，不是负收益子样本标准差。
+        dstd = float(np.sqrt(np.mean(np.minimum(ex, 0.0) ** 2))) if len(ex) else 0.0
         sortino = float(np.mean(ex) / dstd * np.sqrt(td)) if dstd > 0 else None
         nav_list = nav.tolist()
-        mdd = fm.max_drawdown(nav_list) if nav_list else 0.0
-        cdar = fm.empirical_cdar(fm.drawdown_path(nav_list), alpha=0.95) if nav_list else 0.0
+        mdd = max_drawdown(nav_list) if nav_list else 0.0
+        cdar = empirical_cdar(drawdown_path(nav_list), alpha=0.95) if nav_list else 0.0
         xirr = self._xirr(flows, daily["value"].iloc[-1], daily["date"].iloc[-1])
         return {"total_return_twr": total, "cagr": cagr, "ann_vol": vol,
                 "sharpe": sharpe, "sortino": sortino, "max_drawdown": mdd,
@@ -341,9 +395,11 @@ def lots_from_snapshot(adapter: LocalDataAdapter | None = None) -> tuple[dict[st
     """从模拟批次配置生成初始持仓（全部 simulated=True）。"""
     adapter = adapter or LocalDataAdapter()
     df = adapter.cashflows_and_lots()
+    if df.empty:
+        raise ValueError("DATA_BLOCKED: 本地净值缺失，无法反推模拟批次")
     lots: dict[str, list[Lot]] = {}
     for _, r in df.iterrows():
         lots.setdefault(r["fund_code"], []).append(Lot(
             r["fund_code"], float(r["shares_confirmed"]),
-            pd.Timestamp(r["confirmed_at"]), simulated=True))
+            pd.Timestamp(r["confirmed_at"]), simulated=True, order_date=None))
     return lots, json.dumps(df["order_id"].tolist())[:0] or "SIMULATED"

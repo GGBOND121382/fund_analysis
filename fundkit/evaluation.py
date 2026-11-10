@@ -6,8 +6,8 @@
 3. 每个窗口起点用**明确标注的反事实组合**（快照权重×标准化本金，
    COUNTERFACTUAL_START_PORTFOLIO——不是用户真实历史）
 4. B4/B5 的风格信号按窗口起点 as-of 重算（不得用今天的 style_report 回填历史）
-5. 压力测试：块自助法组合 MDD 分布（P(MDD>5%) 及置信区间）+ 2022年11月债灾回放
-6. 可行性：OOS 同时满足 CAGR≥4% 且 MDD≤5% 才可行，否则 NO_FEASIBLE_STRATEGY +
+5. 压力测试：块自助法组合 MDD 分布（P(MDD>4%) 及置信区间）+ 2022年11月债灾回放
+6. 可行性：OOS 同时满足 CAGR>5% 且 MDD≤4% 才可行，否则 NO_FEASIBLE_STRATEGY +
    风险—收益帕累托前沿（04/06 禁止为凑 4% 调高收益假设）
 """
 
@@ -21,12 +21,12 @@ import pandas as pd
 
 from fundkit import policies, simulator, style
 from fundkit.adapters import CST, LocalDataAdapter, load_account_snapshot
-from tests import finance_math as fm
+from fundkit import finance_math as fm
 
 CAPITAL = 195123.58  # 标准化本金（快照总额），反事实起点
 BUDGET_PER_DAY = 1005.0
-MDD_BUDGET = 0.05
-CAGR_TARGET = 0.04
+MDD_BUDGET = 0.04
+CAGR_TARGET = 0.05
 
 FOLDS = [
     {"train": ("2023-06-01", "2025-06-01"), "val": ("2025-06-01", "2025-12-01"),
@@ -51,8 +51,18 @@ GRID = [
 def _params_for(family: str, overrides: dict) -> dict:
     params = policies.load_params()
     if family == "B2":
-        params["target_weights"] = {**params["target_weights"],
-                                    "cash": overrides.get("cash", 0.05)}
+        # 更改现金目标时，非现金权重必须按比例重新归一化，否则总权重≠1。
+        target = dict(params["target_weights"])
+        cash_weight = float(overrides.get("cash", 0.05))
+        original_risky = sum(float(v) for k, v in target.items()
+                             if k != "cash" and not k.startswith("_"))
+        if not 0 <= cash_weight <= 1 or original_risky <= 0:
+            raise ValueError("目标现金权重或风险权重无效")
+        params["target_weights"] = {
+            k: ((float(v) * (1 - cash_weight) / original_risky)
+                if k not in ("cash",) and not k.startswith("_") else v)
+            for k, v in target.items()}
+        params["target_weights"]["cash"] = cash_weight
     elif family == "B3":
         params["B3"] = {**params["B3"], **overrides}
     elif family == "B4":
@@ -96,7 +106,7 @@ def _initial_lots(adapter: LocalDataAdapter, snap: dict, start: str,
             df = df[df["nav_date"] <= start_ts]
             if df.empty:
                 continue  # 基金尚无数据：该份额留现金（由调用方处理）
-            nav0 = float(df.iloc[-1]["adj_nav_total_return"])
+            nav0 = float(df.iloc[-1]["unit_nav"])
         except Exception:  # noqa: BLE001
             continue
         lots[code] = [simulator.Lot(code, value / nav0, start_ts, simulated=True)]
@@ -129,7 +139,7 @@ def _run_window(family, overrides, window, adapter, snap, sim_config_base,
 
 
 def _select_risk_first(trials: pd.DataFrame) -> pd.Series:
-    """风险优先选择：先 MDD≤5%，再 CAGR 最大；都不满足时选 MDD 最小（如实记录）。"""
+    """风险优先选择：先 MDD≤4%，再 CAGR 最大；都不满足时选 MDD 最小（如实记录）。"""
     feasible = trials[trials["max_drawdown"] <= MDD_BUDGET]
     pool = feasible if len(feasible) else trials
     key = "cagr" if len(feasible) else "max_drawdown"
@@ -140,65 +150,100 @@ def _select_risk_first(trials: pd.DataFrame) -> pd.Series:
 
 def stress_bootstrap(adapter: LocalDataAdapter, snap: dict, horizon=252,
                      block=20, n_paths=2000, lookback_days=756, seed=42) -> dict:
-    """块自助法：当前组合权重 × 近三年各基金真实日收益，估计 horizon 内 MDD>5% 频率。
-
-    组合为当前快照权重（成立不足三年的基金按可得样本）。数据驱动，不伪造冲击。
-    """
+    """按共同日期对齐历史日收益并对组合收益进行整块自助；缺数据直接阻断。"""
+    if horizon <= 0 or block <= 0 or n_paths <= 0:
+        raise ValueError("horizon/block/n_paths 必须为正数")
     rng = np.random.default_rng(seed)
     total = sum(f["value_cny"] for f in snap["funds"])
-    rets = {}
+    series = []
+    weights = []
+    missing = []
     for f in snap["funds"]:
-        df = adapter.nav([f["code"]], pd.Timestamp.now().tz_localize(CST))
-        if df.empty:
+        code = f["code"]
+        df = adapter.nav([code], pd.Timestamp.now(tz=CST))
+        if df.empty or len(df) < 2:
+            missing.append(code)
             continue
-        r = df.sort_values("nav_date")["adj_nav_total_return"].pct_change().dropna()
-        rets[f["code"]] = (f["value_cny"] / total, r.tail(lookback_days).to_numpy())
-    if not rets:
-        return {"error": "no data"}
-    min_len = min(len(r) for _, r in rets.values())
-    if min_len < block * 5:
-        return {"error": "insufficient common history"}
-    R = np.column_stack([r[-min_len:] for _, r in rets.values()])
-    w = np.array([wt for wt, _ in rets.values()])
-    port = R @ w  # 组合日收益序列
-    exceed, mdds = 0, []
+        df = df.sort_values("nav_date").drop_duplicates("nav_date", keep="last")
+        ser = (df.set_index("nav_date")["adj_nav_total_return"].astype(float)
+               .pct_change(fill_method=None).rename(code)).dropna()
+        if ser.empty or not np.isfinite(ser.to_numpy()).all():
+            missing.append(code)
+            continue
+        series.append(ser)
+        weights.append(float(f["value_cny"]) / total)
+    if missing:
+        return {"error": "DATA_BLOCKED_INCOMPLETE_ASSET_RETURNS", "missing_codes": missing}
+    if not series:
+        return {"error": "DATA_BLOCKED_NO_NAV"}
+    aligned = pd.concat(series, axis=1, join="inner").dropna().tail(lookback_days)
+    if len(aligned) < block * 5:
+        return {"error": "DATA_BLOCKED_INSUFFICIENT_COMMON_DATES",
+                "n_common": len(aligned)}
+    R = aligned.to_numpy(float)
+    port = R @ np.asarray(weights)
+    mdds = []
     for _ in range(n_paths):
         n_blocks = int(np.ceil(horizon / block))
-        starts = rng.integers(0, len(port) - block, size=n_blocks)
-        path = np.concatenate([port[s: s + block] for s in starts])[:horizon]
-        nav = np.cumprod(1 + path)
-        m = fm.max_drawdown(nav.tolist())
-        mdds.append(m)
-        exceed += m > MDD_BUDGET
-    p = exceed / n_paths
-    ci = 1.96 * np.sqrt(p * (1 - p) / n_paths)
+        starts = rng.integers(0, len(port) - block + 1, size=n_blocks)
+        path = np.concatenate([port[s:s + block] for s in starts])[:horizon]
+        nav = np.r_[1.0, np.cumprod(1 + path)]
+        mdds.append(fm.max_drawdown(nav.tolist()))
+    mdds = np.asarray(mdds)
+    k = int(np.sum(mdds > MDD_BUDGET))
+    rate = k / n_paths
+    z = 1.95996398454
+    denom = 1 + z * z / n_paths
+    center = (rate + z * z / (2 * n_paths)) / denom
+    half = z * np.sqrt(rate * (1 - rate) / n_paths +
+                       z * z / (4 * n_paths * n_paths)) / denom
     return {"horizon_days": horizon, "block_days": block, "n_paths": n_paths,
-            "p_mdd_exceed_5pct": p, "ci95": [max(0, p - ci), min(1, p + ci)],
-            "mdd_median": float(np.median(mdds)), "mdd_p95": float(np.quantile(mdds, 0.95))}
+            "n_common_dates": len(aligned),
+            "p_mdd_exceed_4pct": rate,
+            "ci95": [max(0.0, center - half), min(1.0, center + half)],
+            "mdd_median": float(np.median(mdds)),
+            "mdd_p95": float(np.quantile(mdds, 0.95)),
+            "note": "仅历史联合冲击的区块重采样估计，非未来风险保证"}
 
 
 def stress_2022_bond_crash(adapter: LocalDataAdapter, snap: dict,
                            window=("2022-10-31", "2022-12-15")) -> dict:
-    """2022年11月债灾真实回放：当前权重在当时的组合收益（AS_TRADED 冲击）。"""
+    """当前权重买入持有回放：缺基金历史时明确拒绝计算，不填0收益。"""
     total = sum(f["value_cny"] for f in snap["funds"])
-    losses = {}
+    ser = []
+    weights = []
+    missing = []
+    per_fund = {}
     for f in snap["funds"]:
         code = f["code"]
-        try:
-            df = adapter.nav([code], pd.Timestamp(window[1]).tz_localize(CST))
-            w_df = df[(df["nav_date"] >= window[0]) & (df["nav_date"] <= window[1])]
-            if len(w_df) < 2:
-                losses[code] = None
-                continue
-            nav = w_df.sort_values("nav_date")["adj_nav_total_return"]
-            losses[code] = float(nav.iloc[-1] / nav.iloc[0] - 1)
-        except Exception:  # noqa: BLE001
-            losses[code] = None
-    port = sum(f["value_cny"] / total * (losses.get(f["code"]) or 0.0)
-               for f in snap["funds"])
-    return {"window": window, "portfolio_return": port,
-            "per_fund": {c: r for c, r in losses.items()},
-            "note": "当前权重×2022-11债灾真实区间收益；成立晚于窗口的基金按0计并列出"}
+        df = adapter.nav([code], pd.Timestamp(window[1]).tz_localize(CST) +
+                         pd.Timedelta(days=4))
+        df = df[(df["nav_date"] >= window[0]) & (df["nav_date"] <= window[1])]
+        if len(df) < 2:
+            missing.append(code)
+            per_fund[code] = None
+            continue
+        s = df.sort_values("nav_date").set_index("nav_date")["adj_nav_total_return"]
+        if not s.index.is_unique:
+            s = s[~s.index.duplicated(keep="last")]
+        per_fund[code] = float(s.iloc[-1] / s.iloc[0] - 1)
+        ser.append(s.rename(code))
+        weights.append(float(f["value_cny"]) / total)
+    if missing:
+        return {"window": window, "portfolio_return": None,
+                "portfolio_max_drawdown": None, "per_fund": per_fund,
+                "missing_codes": missing, "error": "DATA_BLOCKED_INCOMPLETE_2022_HISTORY",
+                "note": "缺失基金不能按0收益填充"}
+    common = pd.concat(ser, axis=1, join="inner").dropna()
+    if len(common) < 2:
+        return {"window": window, "portfolio_return": None,
+                "portfolio_max_drawdown": None, "error": "DATA_BLOCKED_NO_COMMON_DATES"}
+    rel = common.div(common.iloc[0])
+    value = rel.to_numpy(float) @ np.asarray(weights)
+    return {"window": window, "portfolio_return": float(value[-1] - 1),
+            "portfolio_max_drawdown": fm.max_drawdown(value.tolist()),
+            "per_fund": per_fund,
+            "note": "反事实当前持仓买入持有回放，非历史实际投资组合；无风格迁移修正"}
 
 
 # -- 主流程 -------------------------------------------------------------------
@@ -216,6 +261,13 @@ def run_validation(out_dir="reports") -> dict:
             limits[c] = float(status[c])
     sim_base = {"daily_limits": limits, "equity_index_codes": equity}
     bond_funds = [f["code"] for f in snap["funds"] if f["category"] == "bond"]
+
+    # 必须先补齐本地原始基金净值。缺数据不得用旧 reports/ 回填伪结果。
+    absent = [code for code in codes if adapter.nav([code], pd.Timestamp.now(tz=CST)).empty]
+    if absent:
+        return {"status": "DATA_BLOCKED", "decision": "NOT_VALIDATED",
+                "missing_nav_codes": absent,
+                "note": "缺少历史净值；未运行任何收益回测；不得复用旧版报告"}
 
     trials_rows, selected = [], {}
     for fold_i, fold in enumerate(FOLDS):
@@ -262,13 +314,18 @@ def run_validation(out_dir="reports") -> dict:
     test_rows = trials[trials.phase == "test"]
     feasibility = {}
     for family, grp in test_rows.groupby("family"):
-        oos_ok = ((grp["cagr"] >= CAGR_TARGET) & (grp["max_drawdown"] <= MDD_BUDGET)).all()
+        oos_ok = ((grp["cagr"] > CAGR_TARGET) & (grp["max_drawdown"] <= MDD_BUDGET)).all()
         feasibility[family] = {
-            "all_folds_cagr_ge_4pct_and_mdd_le_5pct": bool(oos_ok),
+            "all_folds_cagr_gt_5pct_and_mdd_le_4pct": bool(oos_ok),
             "folds": grp[["fold", "cagr", "max_drawdown", "sharpe", "xirr"]].to_dict("records"),
         }
-    any_feasible = any(v["all_folds_cagr_ge_4pct_and_mdd_le_5pct"]
+    any_feasible = any(v["all_folds_cagr_gt_5pct_and_mdd_le_4pct"]
                        for v in feasibility.values())
+    # 当前测试窗不足完整一年；半年收益年化放大不能作为4%长期目标的验收。
+    oos_days = [len(pd.bdate_range(*fold["test"])) for fold in FOLDS]
+    validated_horizon = all(n >= 252 for n in oos_days)
+    # B4/B5 固定了起点 as-of 风格信号，并非每日重新采集。不可声称动态系统通过样本外验证。
+    style_signal_refresh_verified = False
     # 帕累托前沿（test 折均值）
     front = (test_rows.groupby("family")[["cagr", "max_drawdown"]].mean()
              .reset_index().sort_values("max_drawdown"))
@@ -286,12 +343,16 @@ def run_validation(out_dir="reports") -> dict:
         "counterfactual_start": "COUNTERFACTUAL_START_PORTFOLIO（快照权重×标准化本金，非真实历史）",
         "selected": selected,
         "feasibility": feasibility,
-        "decision": ("FEASIBLE_CANDIDATES_EXIST" if any_feasible
+        "decision": ("INSUFFICIENT_OOS_HORIZON" if not validated_horizon
+                     else "FEASIBLE_CANDIDATES_EXIST" if any_feasible
                      else "NO_FEASIBLE_STRATEGY"),
+        "oos_test_days": oos_days,
+        "style_signal_refresh_verified": style_signal_refresh_verified,
         "pareto_front_test_mean": pareto,
         "stress": {"bootstrap": boot, "bond_crash_2022": crash},
         "trials_file": "reports/oos_trials.csv",
         "status": "RESEARCH_ONLY",
+        "validation_version": "UNVALIDATED_SHORT_FOLDS",
     }
     with open(os.path.join(out_dir, "oos_summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2, default=str)
