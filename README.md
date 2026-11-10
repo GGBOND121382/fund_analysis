@@ -187,3 +187,6 @@ python scripts/run_v10_research.py --asof YYYY-MM-DD
 该脚本依次执行数据审计、组合风险分析、目标权重优化、权重/止盈止损联合搜索、滚动样本外验证和报告导出。结果写入 `reports/v10_research_run.json`。若返回码为2，表示数据阻断、样本外证据不足或某一步失败；不能视为策略通过。脚本不会联网补造本地缓存，也不会下单。
 
 v1.0.1 的Sharpe默认使用2%年化无风险利率假设，可用 `--risk-free-rate` 调整；首次反事实建仓申购费也计入回测净值。
+
+
+**Live monitoring limitation:** B5's pause/recovery/cooldown state is currently in-memory inside a simulation. Persistent state storage, restart recovery, idempotent order submission and actual-position reconciliation are not implemented; do not run this as a live auto-trading monitor.

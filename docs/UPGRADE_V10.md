@@ -124,12 +124,13 @@ Given the current common-history limitation (previously 507 common trading days)
 
 This upgrade does not yet provide:
 - a complete holdings-based bond risk engine with verified modified duration, spread duration, bank capital-bond exposure, and liquidity measures;
+- persistent storage/reconciliation for B5 pause states, recovery counters, redemption cooldowns, and high-water marks across monitor process restarts;
 - historical fund-specific subscription/redemption fee schedules and actual account acquisition batches (the backtest uses explicit uniform fee stress assumptions, including initial counterfactual purchases);
 - reliable historical dealing cutoffs and settlement calendars for each QDII fund;
 - multiple independent full-year OOS windows for the complete current fund universe;
 - proof that any strategy achieves net CAGR >5% while keeping MDD <=4%; Sharpe ranking is an additional selection metric, not a substitute for either hard research target.
 
-Do not describe candidate weights or stop/take-profit thresholds as investment recommendations until local data audit, fee/lot integration, and independent OOS validation pass.
+Do not describe candidate weights or stop/take-profit thresholds as investment recommendations until local data audit, fee/lot integration, and independent OOS validation pass. B5's state is currently held in the policy closure during a simulation; without a persistent state store and order/position reconciliation it is not a reliable live monitoring or execution service.
 
 ## 9. Verification
 

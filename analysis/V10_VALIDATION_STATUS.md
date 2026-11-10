@@ -24,6 +24,7 @@ The v1.0.1 research branch contains:
 - No result currently establishes that any strategy satisfies both the 5% net-return target and 4% drawdown budget across independent full-year OOS windows.
 - Account drawdown remains unverifiable without actual account cashflows and acquisition lots. Counterfactual start portfolios are not actual account history.
 - Uniform fee stress assumptions are not actual fund-specific fee schedules.
+- B5 pause/recovery/cooldown state is in-memory during a simulation. Persistent state storage, restart recovery, live order idempotency and position reconciliation are not implemented; this is not yet a production monitoring service.
 
 ## Required local acceptance
 
