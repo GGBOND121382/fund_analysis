@@ -743,8 +743,10 @@ def cmd_decide(args):
     print(f"决策状态: {d['decision_status']}｜证据: {d['evidence_status']}")
     print(f"每日预算 {d['cash_budget_cny']:.0f} 元，建议留现金 {d['recommended_cash_hold_cny']:.0f} 元")
     for fd in d["fund_decisions"]:
+        tw_str = (f"{fd['target_weight']:.0%}"
+                  if fd["target_weight"] is not None else "未验证")
         print(f"  {fd['fund_code']} 权重{fd['current_weight']:.1%}→目标"
-              f"{f'{fd["target_weight"]:.0%}' if fd['target_weight'] is not None else '未验证'} 申购{fd['subscribe_cny']:.0f} {fd['action']}")
+              f"{tw_str} 申购{fd['subscribe_cny']:.0f} {fd['action']}")
     print(f"\n输出: {path}, reports/fund_decisions.csv, {p1}, {p2}")
 
 

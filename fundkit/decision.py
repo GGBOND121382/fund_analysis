@@ -69,8 +69,9 @@ def write_reports(decision: dict, out_dir="reports") -> tuple[str, str]:
          "| 代码 | 当前权重 | 目标权重 | 建议申购(元/日) | 动作 | 依据 |",
          "|---|---|---|---|---|---|"]
     for d in decision["fund_decisions"]:
+        tw_str = (f"{d['target_weight']:.0%}" if d["target_weight"] is not None else "未验证")
         s.append(f"| {d['fund_code']} | {d['current_weight']:.1%} | "
-                 f"{f'{d["target_weight"]:.0%}' if d['target_weight'] is not None else '未验证'} | {d['subscribe_cny']:.0f} | "
+                 f"{tw_str} | {d['subscribe_cny']:.0f} | "
                  f"{d['action']} | {', '.join(d['rule_ids']) or '-'} |")
     s += ["", "## 关键风险", ""]
     boot = (oos.get("stress") or {}).get("bootstrap") or {}

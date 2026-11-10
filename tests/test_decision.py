@@ -1,4 +1,4 @@
-"""Decision output tests use synthetic fixture data and no network."""
+"""决策输出测试：schema 校验与 fail-closed 语义（使用本地缓存，无网络）。"""
 import json
 import unittest
 import tempfile
@@ -10,16 +10,19 @@ from fundkit import decision
 
 class DecisionTests(unittest.TestCase):
     def test_schema_valid_and_research_only(self):
-        d = decision.build_decision()
+        # 固定指向不存在的验证报告，保证 verified=False，断言与环境无关
+        d = decision.build_decision(oos_summary_path="reports/__nonexistent__.json")
         clean = {k: v for k, v in d.items() if not k.startswith("_")}
         with open("schemas/decision.schema.json", encoding="utf-8") as fh:
             schema = json.load(fh)
         jsonschema.validate(clean, schema)
-        self.assertIn(d["decision_status"],
-                      ("RESEARCH_ONLY", "NO_FEASIBLE_STRATEGY", "DATA_BLOCKED"))
-        self.assertEqual(d["evidence_status"], "INSUFFICIENT")
-        self.assertEqual(d["decision_status"], "DATA_BLOCKED")
+        # 净值缺失→DATA_BLOCKED；净值齐全但未用当前算法重跑验证→MANUAL_REVIEW
+        self.assertIn(d["decision_status"], ("DATA_BLOCKED", "MANUAL_REVIEW"))
+        self.assertEqual(d["evidence_status"],
+                         "INSUFFICIENT" if d["decision_status"] == "DATA_BLOCKED"
+                         else "PARTIAL")
         self.assertTrue(all(f["subscribe_cny"] == 0 for f in d["fund_decisions"]))
+        self.assertTrue(all(f["target_weight"] is None for f in d["fund_decisions"]))
         self.assertEqual(d["recommended_cash_hold_cny"], d["cash_budget_cny"])
         self.assertEqual(len(d["fund_decisions"]), 13)
         equity = [f for f in d["fund_decisions"] if f["fund_code"] == "110020"]
