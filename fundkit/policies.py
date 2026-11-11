@@ -585,6 +585,7 @@ def build_policy(name: str, params: dict | None = None):
         "B3": lambda: make_b3(params),
         "B4": lambda: make_b4(params),
         "B5": lambda: make_b5(params),
+        "B6": lambda: __import__("fundkit.v11_policy", fromlist=["make_b6"]).make_b6(params),
     }
     if name not in table:
         raise ValueError(f"未知策略 {name}，可选: {', '.join(table)}")
