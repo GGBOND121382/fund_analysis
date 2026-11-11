@@ -16,10 +16,11 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 PROTOCOLS = {
-    "halfyear": dict(train_days=252, validation_days=126, test_days=126,
-                     step_days=126, folds=1),
+    # 507 common dates -> 252+3 embargo+120+3 embargo+120 = 498.
+    "halfyear": dict(train_days=252, validation_days=120, test_days=120,
+                     step_days=120, folds=1, embargo_days=3),
     "quarterly": dict(train_days=252, validation_days=63, test_days=63,
-                      step_days=63, folds=2),
+                      step_days=63, folds=2, embargo_days=3),
 }
 
 
