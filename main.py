@@ -472,8 +472,18 @@ def cmd_optimize_strategy(args):
             json.dump(payload, fh, ensure_ascii=False, indent=2, default=str)
         print(f"DATA_BLOCKED: {reason}；已写入 reports/joint_strategy_optimization.json")
 
-    if min(args.train_days, args.validation_days, args.test_days) < 252:
-        write_blocked("INSUFFICIENT_OOS_HORIZON: 训练、验证和测试窗口均不得少于252个有效交易日")
+    exploratory = bool(getattr(args, "exploratory", False))
+    strategy_scope = getattr(args, "strategy_scope", "all")
+    if exploratory:
+        # Explicit partial-year research protocol; not full annual OOS validation.
+        if strategy_scope != "b6-ablation":
+            write_blocked("EXPLORATORY_SCOPE_REQUIRED: choose b6-ablation")
+            return
+        if args.train_days < 252 or args.validation_days < 63 or args.test_days < 63:
+            write_blocked("EXPLORATORY_MINIMUM: train >=252, validation/test >=63 sessions")
+            return
+    elif min(args.train_days, args.validation_days, args.test_days) < 252:
+        write_blocked("INSUFFICIENT_OOS_HORIZON: full validation requires >=252 in all three splits")
         return
     snap = load_account_snapshot()
     all_funds = snap["funds"]
@@ -679,6 +689,9 @@ def cmd_optimize_strategy(args):
     all_results = []
     asset_categories = {str(f["code"]): str(f.get("category", "unknown")) for f in all_funds}
     rules = joint_optimizer.build_rule_grid(asset_categories)
+    if strategy_scope == "b6-ablation":
+        rules = [r for r in rules if r["family"] == "B6" or
+                 (r["family"] == "B2" and r["rule_id"] == "B2_cashflow_only")]
     # CLI 费率按 bp 输入，转换成小数；例如 0,30 -> 0,0.003。
     fee_rates = tuple(float(x.strip()) / 10000.0
                       for x in args.fee_stress_bps.split(",") if x.strip())
@@ -686,7 +699,8 @@ def cmd_optimize_strategy(args):
         target_annual_return=0.05, max_drawdown=0.04,
         min_validation_days=args.validation_days,
         min_test_days=args.test_days,
-        fee_stress_rates=fee_rates, seed=args.seed)
+        fee_stress_rates=fee_rates, seed=args.seed,
+        evaluate_ablation_on_test=(exploratory and strategy_scope == "b6-ablation"))
 
     for fold in folds:
         style_quality = None
@@ -748,9 +762,13 @@ def cmd_optimize_strategy(args):
     os.makedirs("reports", exist_ok=True)
     blocked_count = sum(x["status"] == "DATA_BLOCKED" for x in all_results)
     overall_status = ("DATA_BLOCKED" if blocked_count == len(all_results) else
-                      "PARTIAL_DATA_BLOCKED" if blocked_count else "RESEARCH_ONLY")
+                      "PARTIAL_DATA_BLOCKED" if blocked_count else
+                      "EXPLORATORY_NOT_LONG_TERM_VALIDATED" if exploratory else "RESEARCH_ONLY")
     payload = {
-        "model_version": "joint-strategy-v1.0.1",
+        "model_version": "joint-strategy-v1.1-exploratory" if exploratory else "joint-strategy-v1.0.1",
+        "protocol": "EXP_252_126_126_OR_252_63_63" if exploratory else "FULL_YEAR_252_252_252",
+        "strategy_scope": strategy_scope,
+        "evidence_level": "PARTIAL_YEAR_OOS_NOT_LONG_TERM" if exploratory else "FULL_YEAR_PROTOCOL",
         "asof": asof.isoformat(),
         "objective": {"annualized_net_return_strictly_gt": 0.05,
                       "portfolio_mdd_lte": 0.04, "priority": "drawdown_first"},
@@ -847,6 +865,10 @@ def main():
 
     p_js = sub.add_parser("optimize-strategy", help="目标权重+止盈止损+再入场联合优化（RESEARCH_ONLY）")
     p_js.add_argument("--asof", default=None, help="数据公开截止时点")
+    p_js.add_argument("--strategy-scope", choices=["all", "b6-ablation"], default="all",
+                      help="B2 baseline and registered B6 parameter ablations")
+    p_js.add_argument("--exploratory", action="store_true",
+                      help="explicit short-history research only: train >=252, val/test >=63")
     p_js.add_argument("--train-days", type=int, default=504)
     p_js.add_argument("--validation-days", type=int, default=252)
     p_js.add_argument("--test-days", type=int, default=252)
