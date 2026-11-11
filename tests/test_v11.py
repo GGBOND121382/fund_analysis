@@ -229,6 +229,25 @@ class TestPolicyGlue(unittest.TestCase):
         self.assertEqual(policy(s)['subscribe'],{})
         policy.on_execution(s['date'],[])
 
+
+    def test_unknown_portfolio_risk_blocks_new_base_investment(self):
+        from fundkit.v11_policy import make_b6
+        policy=make_b6({'target_weights':{'F':.8,'cash':.2},
+                        'B5':{'mdd_budget':.04},
+                        'asset_categories':{'F':'bond'},
+                        'B6':{'cash_reserve_weight':0.,'base_fraction':1.0}})
+        day=pd.Timestamp('2026-01-08')
+        state={'date':day,'external_cash_inflow_today':100,
+               'cash':100,'value':1000,'value_quality':'COMPLETE',
+               'holdings':{'F':{'shares':100,'value_pub':900,
+                                'redeemable_shares':100}},
+               'fund_nav_history':{},'lot_states':{}}
+        orders=policy(state)
+        self.assertEqual(orders['subscribe'],{})
+        self.assertTrue(any(e.get('action')=='B6_BASE_BLOCKED_RISK'
+                            for e in orders['events']))
+        policy.on_execution(day,[])
+
 class TestReturnForecast(unittest.TestCase):
     def test_no_future_and_no_historical_data_fail_closed(self):
         from fundkit.v11_forecast import conservative_excess_return
@@ -295,22 +314,3 @@ class TestV11ResearchCalibration(unittest.TestCase):
         self.assertEqual(len(quarter), 2)
         self.assertLess(quarter[0]['test'][1], quarter[1]['test'][0])
         self.assertEqual(quarter[1]['n_test'], 63)
-
-
-    def test_unknown_portfolio_risk_blocks_new_base_investment(self):
-        from fundkit.v11_policy import make_b6
-        policy=make_b6({'target_weights':{'F':.8,'cash':.2},
-                        'B5':{'mdd_budget':.04},
-                        'asset_categories':{'F':'bond'},
-                        'B6':{'cash_reserve_weight':0.,'base_fraction':1.0}})
-        day=pd.Timestamp('2026-01-08')
-        state={'date':day,'external_cash_inflow_today':100,
-               'cash':100,'value':1000,'value_quality':'COMPLETE',
-               'holdings':{'F':{'shares':100,'value_pub':900,
-                                'redeemable_shares':100}},
-               'fund_nav_history':{},'lot_states':{}}
-        orders=policy(state)
-        self.assertEqual(orders['subscribe'],{})
-        self.assertTrue(any(e.get('action')=='B6_BASE_BLOCKED_RISK'
-                            for e in orders['events']))
-        policy.on_execution(day,[])
