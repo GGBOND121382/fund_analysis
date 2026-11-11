@@ -309,7 +309,10 @@ class TestV11ResearchCalibration(unittest.TestCase):
         from fundkit.joint_optimizer import build_rolling_folds
         d = pd.bdate_range('2024-08-16', periods=507)
         halfyear = build_rolling_folds(d, **PROTOCOLS['halfyear'])
-        self.assertEqual(halfyear[0]['n_test'], 126)
+        self.assertEqual(halfyear[0]['n_test'], 120)
+        self.assertEqual(halfyear[0]['embargo_trading_days'], 3)
+        self.assertEqual(halfyear[0]['n_train'], 252)
+        self.assertEqual(halfyear[0]['n_validation'], 120)
         quarter = build_rolling_folds(d, **PROTOCOLS['quarterly'])
         self.assertEqual(len(quarter), 2)
         self.assertLess(quarter[0]['test'][1], quarter[1]['test'][0])
