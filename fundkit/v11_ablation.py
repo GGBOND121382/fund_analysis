@@ -1,27 +1,47 @@
-"""Pre-registered small B6 ablation set, appended to legacy rule grid.
+"""Pre-registered B6 calibration grid for multi-month exploratory research.
 
-A0 is the original B0 research baseline in existing evaluation.py, not
-redefined or re-run within v1.1. Rules A1..A6 all use identical target funds,
-initial account and fee scenarios (injected by the original joint optimizer).
+Weights, fees, account, period are identical across variants. No setting is a
+validated investment recommendation. Cash reserve is zero in all ablations
+to match B2 baseline's research target and avoid cash-buffer confounding.
 """
 
 def build_ablation_rules():
-    common={'cash_reserve_weight':.05,'risk_paths':32,
-            'simulate_redeem':True,'deferred_horizon_days':10}
-    def add(id_,description,extra):
-        return {'family':'B6','rule_id':id_,
-                'params':{'B6':{**common,**extra}}, 'description':description}
-    return [
-        add('A1_fixed_weights','Fixed contributions, no TP or stop',
-            {'base_fraction':1,'release_fraction':0,'entry_timing_enabled':False,'exit_mode':'none'}),
-        add('A2_dynamic_cash','Deferred contributions without timing alpha',
-            {'base_fraction':.75,'release_fraction':0,'entry_timing_enabled':False,'exit_mode':'none'}),
-        add('A3_entry_timing','Deferred cash plus published signals and risk gate',
-            {'base_fraction':.75,'release_fraction':.5,'entry_timing_enabled':True,'exit_mode':'none'}),
-        add('A4_take_profit','Fixed contributions and per-lot armed TP only',
-            {'base_fraction':1,'release_fraction':0,'entry_timing_enabled':False,'exit_mode':'take_profit_only'}),
-        add('A5_stop_reentry','Fixed contributions and legacy B5 risk stop only',
-            {'base_fraction':1,'release_fraction':0,'entry_timing_enabled':False,'exit_mode':'stop_only'}),
-        add('A6_joint','Dynamic contributions plus tactical signals and both exits',
-            {'base_fraction':.75,'release_fraction':.5,'entry_timing_enabled':True,'exit_mode':'both'}),
-    ]
+    common = {
+        "cash_reserve_weight": 0.0, "risk_paths": 64,
+        "simulate_redeem": True, "deferred_horizon_days": 10,
+        "optimize_exit_fraction": True,
+    }
+    rules = []
+    def add(rule_id, description, **kw):
+        rules.append({
+            "family": "B6", "rule_id": rule_id,
+            "params": {"B6": {**common, **kw}}, "description": description,
+        })
+    add("A1_no_timing", "100% daily deposit; no exits (risk-gated)",
+        base_fraction=1.0, release_fraction=0.0,
+        entry_timing_enabled=False, exit_mode="none")
+    add("A2_base75", "75% baseline, expired cash released, no trend",
+        base_fraction=.75, release_fraction=0.0,
+        entry_timing_enabled=False, exit_mode="none")
+    add("A2_base50", "50% baseline, expired cash released, no trend",
+        base_fraction=.50, release_fraction=0.0,
+        entry_timing_enabled=False, exit_mode="none")
+    add("A3_timing75_release50", "75% baseline, 50% deferred tactical release",
+        base_fraction=.75, release_fraction=.50,
+        entry_timing_enabled=True, exit_mode="none")
+    add("A3_timing75_release100", "75% baseline, 100% deferred tactical release",
+        base_fraction=.75, release_fraction=1.0,
+        entry_timing_enabled=True, exit_mode="none")
+    add("A4_takeprofit", "100% baseline with lot-aware trailing take-profit",
+        base_fraction=1.0, release_fraction=0.0,
+        entry_timing_enabled=False, exit_mode="take_profit_only")
+    add("A5_stop", "100% baseline with drawdown stop and re-entry",
+        base_fraction=1.0, release_fraction=0.0,
+        entry_timing_enabled=False, exit_mode="stop_only")
+    add("A6_joint75", "75% baseline, tactical release, both exit modes",
+        base_fraction=.75, release_fraction=.50,
+        entry_timing_enabled=True, exit_mode="both")
+    add("A6_joint50", "50% baseline, tactical release, both exit modes",
+        base_fraction=.50, release_fraction=.50,
+        entry_timing_enabled=True, exit_mode="both")
+    return rules
