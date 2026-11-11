@@ -19,8 +19,8 @@ class JointOptimizerTests(unittest.TestCase):
     def test_rule_grid_contains_baseline_rebalance_style_and_drawdown_rules(self):
         rules = build_rule_grid({"710301": "bond", "004400": "bond", "000218": "gold"})
         families = {x["family"] for x in rules}
-        self.assertEqual(families, {"B2", "B3", "B4", "B5"})
-        self.assertEqual(len(rules), 27)
+        self.assertEqual(families, {"B2", "B3", "B4", "B5", "B6"})
+        self.assertEqual(len(rules), 33)  # 27 legacy + 6 B6 ablations
         self.assertTrue(all(x["rule_id"] for x in rules))
         b5_rules = [x for x in rules if x["family"] == "B5"]
         self.assertTrue(all("take_profit_activation_by_code" in x["params"]["B5"]

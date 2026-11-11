@@ -131,6 +131,8 @@ def build_rule_grid(asset_categories: Mapping[str, str] | None = None) -> list[d
                 f"et{equity_take:.3f}_rf{redeem_fraction:.2f}_cool{cooldown}"
             ),
         })
+    from fundkit.v11_ablation import build_ablation_rules
+    rules.extend(build_ablation_rules())
     return rules
 
 def build_rolling_folds(dates: Sequence, train_days: int = 504,

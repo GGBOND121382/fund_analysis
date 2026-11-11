@@ -306,7 +306,18 @@ class Simulator:
                                                   for h in holdings.values()) else "MISSING",
                 "unit_nav": visible_hist[-1] if visible_hist else None,
                 "unit_nav_history": visible_hist,
+                "external_cash_inflow_today": cfg.budget_per_day,
+                "lot_states": {code:[{
+                    "lot_id": f"{code}:{idx}", "shares":float(lot.shares),
+                    "order_date": str(lot.order_date) if lot.order_date is not None else None,
+                    "confirm_date":str(lot.confirm_date),
+                    "redeemable": bool(self._redeemable(code,lot,day)),
+                    "cost_basis_cny":lot.cost_basis_cny,
+                    "cost_basis_known":bool(lot.cost_basis_known)
+                    } for idx,lot in enumerate(lot_list) if lot.shares>1e-10]
+                    for code,lot_list in lots.items()},
             }
+            event_start = len(events)
             orders = policy(state) if policy else {}
 
             # 策略附带事件（PAUSE/DE_RISK 等）与赎回审议（不执行）
@@ -393,6 +404,10 @@ class Simulator:
                                    "net_proceeds_cny": round(proceeds, 6),
                                    "cost_basis_released_cny": (
                                        None if basis_released is None else round(basis_released, 6))})
+
+            # Reconcile actual fills, not suggested orders, into B6 subledger.
+            if callable(getattr(policy,"on_execution",None)):
+                policy.on_execution(day,events[event_start:])
 
             # 估值与单位净值
             value = self._value(lots, cash, pending_cash, day)
