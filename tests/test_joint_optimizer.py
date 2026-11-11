@@ -20,8 +20,12 @@ class JointOptimizerTests(unittest.TestCase):
         rules = build_rule_grid({"710301": "bond", "004400": "bond", "000218": "gold"})
         families = {x["family"] for x in rules}
         self.assertEqual(families, {"B2", "B3", "B4", "B5"})
-        self.assertEqual(len(rules), 21)
+        self.assertEqual(len(rules), 27)
         self.assertTrue(all(x["rule_id"] for x in rules))
+        b5_rules = [x for x in rules if x["family"] == "B5"]
+        self.assertTrue(all("take_profit_activation_by_code" in x["params"]["B5"]
+                            for x in b5_rules))
+        self.assertTrue(all(x["params"]["B5"]["allow_redeem"] for x in b5_rules))
         for rule in rules:
             if rule["family"] == "B5":
                 p = rule["params"]["B5"]
@@ -73,6 +77,23 @@ class JointOptimizerTests(unittest.TestCase):
         self.assertEqual(len(test_calls), 2)
         self.assertEqual({x[1] for x in test_calls}, {"B5"})
 
+    def test_validation_uses_sharpe_after_return_and_drawdown_constraints(self):
+        weights = [{"weights": {"A": .5, "cash": .5}}]
+        rules = [
+            {"family": "B2", "params": {}, "rule_id": "lower_sharpe"},
+            {"family": "B5", "params": {"B5": {}}, "rule_id": "higher_sharpe"},
+        ]
+        def evaluator(w, rule, window, fee):
+            return {"cagr": .06 - fee, "max_drawdown": .03,
+                    "sharpe": 1.5 if rule["rule_id"] == "lower_sharpe" else 2.0,
+                    "sortino": 1.8, "cdar95": .02, "xirr": .06 - fee,
+                    "days": 252, "redeem_events": 0, "buy_events": 0}
+        out = optimize_joint_fold(
+            weights, rules, evaluator,
+            ("2024-01-01", "2024-12-31"), ("2025-01-01", "2025-12-31"),
+            JointSearchConfig(fee_stress_rates=(0.0, .003)))
+        self.assertEqual(out["selected"]["rule_id"], "higher_sharpe")
+
     def test_no_validation_feasible_candidate_is_explicit(self):
         weights = [{"weights": {"A": 1.0, "cash": 0.0}}]
         rules = [{"family": "B2", "params": {}, "rule_id": "B2"}]
@@ -118,6 +139,12 @@ class JointOptimizerTests(unittest.TestCase):
             self.assertLess(f["train"][1], f["validation"][0])
             self.assertLess(f["validation"][1], f["test"][0])
         self.assertLess(folds[0]["test"][1], folds[1]["test"][0])
+
+    def test_overlapping_test_windows_are_rejected(self):
+        dates = pd.bdate_range("2018-01-01", periods=1500)
+        with self.assertRaisesRegex(ValueError, "OVERLAPPING_TEST_WINDOWS_BLOCKED"):
+            build_rolling_folds(dates, train_days=504, validation_days=252,
+                                test_days=252, step_days=126, folds=2)
 
     def test_weight_candidate_generation_respects_caps_and_freeze(self):
         dates = pd.bdate_range("2024-01-01", periods=340)

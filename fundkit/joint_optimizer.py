@@ -20,7 +20,7 @@ class JointSearchConfig:
     max_drawdown: float = 0.04
     min_validation_days: int = 252
     min_test_days: int = 252
-    fee_stress_rates: tuple[float, ...] = (0.0, 0.003)
+    fee_stress_rates: tuple[float, ...] = (0.003, 0.006)
     seed: int = 42
 
     def validate(self):
@@ -35,15 +35,13 @@ class JointSearchConfig:
 
 
 def build_rule_grid(asset_categories: Mapping[str, str] | None = None) -> list[dict]:
-    """预先声明的小型规则网格；基金级止损按资产类别分层。
-
-    债券与黄金不使用同一止损阈值：债券候选阈值较低，黄金候选阈值较宽。
-    这些数值只是待验证搜索点，不是行业标准或预先认定的最优阈值。
-    """
+    """预先声明的止盈/止损候选网格；各阈值是待检验搜索点，不是推荐参数。"""
     categories = dict(asset_categories or {})
     bond_codes = sorted(c for c, k in categories.items() if k == "bond")
     gold_codes = sorted(c for c, k in categories.items() if k == "gold")
-    other_codes = sorted(c for c, k in categories.items() if k not in ("bond", "gold", "equity_index"))
+    equity_codes = sorted(c for c, k in categories.items() if k == "equity_index")
+    other_codes = sorted(c for c, k in categories.items()
+                         if k not in ("bond", "gold", "equity_index"))
     rules = [{"family": "B2", "params": {}, "rule_id": "B2_cashflow_only"}]
     for trigger, dest in product((0.01, 0.02), (0.25, 0.50)):
         rules.append({
@@ -63,45 +61,77 @@ def build_rule_grid(asset_categories: Mapping[str, str] | None = None) -> list[d
             "rule_id": f"B4_cdar{pause:.3f}_cool{cooldown}",
         })
 
-    # 12个预先声明的配对设计点，覆盖组合回撤缓冲、债券/黄金基金止损、
-    # CDaR阈值、赎回比例、恢复阈值和冷却期；避免全因子笛卡尔爆炸。
-    for k in range(12):
+    for k in range(18):
         margin = (0.005, 0.010, 0.015)[k % 3]
-        bond_pause = (0.010, 0.015, 0.020)[(k // 1) % 3]
-        gold_pause = (0.020, 0.030, 0.040)[(k // 2) % 3]
-        cdar_threshold = (0.015, 0.025)[(k // 3) % 2]
-        redeem_fraction = (0.0, 0.25, 0.50)[(k // 2) % 3]
-        reenter_fraction = (0.50, 0.70)[(k // 4) % 2]
+        bond_stop = (0.010, 0.015, 0.020)[k % 3]
+        gold_stop = (0.030, 0.040, 0.050)[(k // 2) % 3]
+        equity_stop = (0.080, 0.100, 0.120)[(k // 3) % 3]
+        bond_take = (0.020, 0.025, 0.030)[(k // 4) % 3]
+        gold_take = (0.060, 0.080, 0.100)[(k // 5) % 3]
+        equity_take = (0.100, 0.120, 0.150)[(k // 6) % 3]
+        bond_trail = (0.005, 0.0075, 0.010)[(k // 3) % 3]
+        gold_trail = (0.020, 0.030, 0.040)[(k // 4) % 3]
+        equity_trail = (0.040, 0.050, 0.060)[(k // 5) % 3]
+        other_stop = (0.020, 0.025, 0.030)[k % 3]
+        other_take = (0.040, 0.050, 0.060)[(k // 4) % 3]
+        other_trail = (0.015, 0.020, 0.025)[(k // 5) % 3]
+        redeem_fraction = (0.25, 0.50)[k % 2]
         cooldown = (5, 10, 20)[(k // 3) % 3]
-        pause_by_code = {c: bond_pause for c in bond_codes}
-        pause_by_code.update({c: gold_pause for c in gold_codes})
-        pause_by_code.update({c: 0.020 for c in other_codes})
-        reenter_by_code = {c: v * 0.5 for c, v in pause_by_code.items()}
-        redeem_by_code = {c: redeem_fraction for c in pause_by_code}
+        stop_by_code = {}
+        stop_by_code.update({c: bond_stop for c in bond_codes})
+        stop_by_code.update({c: gold_stop for c in gold_codes})
+        stop_by_code.update({c: equity_stop for c in equity_codes})
+        stop_by_code.update({c: other_stop for c in other_codes})
+        reenter_by_code = {c: v * 0.5 for c, v in stop_by_code.items()}
+        stop_redeem_by_code = {c: redeem_fraction for c in stop_by_code}
+        take_by_code = {}
+        take_by_code.update({c: bond_take for c in bond_codes})
+        take_by_code.update({c: gold_take for c in gold_codes})
+        take_by_code.update({c: equity_take for c in equity_codes})
+        take_by_code.update({c: other_take for c in other_codes})
+        trail_by_code = {}
+        trail_by_code.update({c: bond_trail for c in bond_codes})
+        trail_by_code.update({c: gold_trail for c in gold_codes})
+        trail_by_code.update({c: equity_trail for c in equity_codes})
+        trail_by_code.update({c: other_trail for c in other_codes})
+        take_redeem_by_code = {c: redeem_fraction for c in take_by_code}
         rules.append({
             "family": "B5",
             "params": {"B5": {
                 "mdd_budget": 0.04,
                 "internal_drawdown_margin": margin,
-                "reenter_mdd_fraction": reenter_fraction,
-                "fund_pause_drawdown": 0.020,
-                "fund_reenter_drawdown": 0.010,
-                "fund_pause_drawdown_by_code": pause_by_code,
-                "fund_reenter_drawdown_by_code": reenter_by_code,
-                "fund_redeem_fraction_by_code": redeem_by_code,
+                "reenter_mdd_fraction": (0.50, 0.60, 0.70)[(k // 2) % 3],
                 "reenter_cooldown_days": cooldown,
                 "allow_redeem": True,
                 "portfolio_redeem_fraction": redeem_fraction,
-                "fund_redeem_fraction": redeem_fraction,
+                "portfolio_risk_coverage": 0.80,
+                "portfolio_exit_escalation_step": 0.005,
                 "cdar_lookback": 126,
-                "cdar_guard_threshold": cdar_threshold,
+                "cdar_guard_threshold": (0.020, 0.030)[(k // 3) % 2],
+                "fund_pause_drawdown": bond_stop,
+                "fund_reenter_drawdown": bond_stop * 0.5,
+                "fund_redeem_fraction": redeem_fraction,
+                "fund_pause_drawdown_by_code": stop_by_code,
+                "fund_reenter_drawdown_by_code": reenter_by_code,
+                "fund_redeem_fraction_by_code": stop_redeem_by_code,
+                "fund_stop_vol_multiplier_by_category": {
+                    "bond": 2.0, "gold": 2.5, "equity_index": 2.5, "other": 2.0,
+                },
+                "fund_stop_drawdown_cap": 0.12,
+                "fund_stop_escalation_step": 0.005,
+                "fund_peak_lookback_days": 252,
+                "take_profit_activation_by_code": take_by_code,
+                "take_profit_trailing_drawdown_by_code": trail_by_code,
+                "take_profit_redeem_fraction_by_code": take_redeem_by_code,
+                "take_profit_cooldown_days": cooldown,
             }},
-            "rule_id": (f"B5_m{margin:.3f}_bond{bond_pause:.3f}_gold{gold_pause:.3f}_"
-                        f"cdar{cdar_threshold:.3f}_redeem{redeem_fraction:.2f}_"
-                        f"reenter{reenter_fraction:.2f}_cool{cooldown}"),
+            "rule_id": (
+                f"B5_m{margin:.3f}_bs{bond_stop:.3f}_gs{gold_stop:.3f}_"
+                f"es{equity_stop:.3f}_bt{bond_take:.3f}_gt{gold_take:.3f}_"
+                f"et{equity_take:.3f}_rf{redeem_fraction:.2f}_cool{cooldown}"
+            ),
         })
     return rules
-
 
 def build_rolling_folds(dates: Sequence, train_days: int = 504,
                         validation_days: int = 252, test_days: int = 252,
@@ -112,6 +142,8 @@ def build_rolling_folds(dates: Sequence, train_days: int = 504,
     idx = pd.DatetimeIndex(dates).drop_duplicates().sort_values()
     if min(train_days, validation_days, test_days, step_days, folds) < 1:
         raise ValueError("滚动折长度和折数必须为正数")
+    if folds > 1 and step_days < test_days:
+        raise ValueError("OVERLAPPING_TEST_WINDOWS_BLOCKED: step_days 必须不小于 test_days")
     required = train_days + validation_days + test_days + (folds - 1) * step_days
     if len(idx) < required:
         raise ValueError(f"INSUFFICIENT_HISTORY: 需要至少 {required} 个共同交易日，实际 {len(idx)}")
@@ -154,6 +186,12 @@ def _aggregate_fee_metrics(rows: list[dict]) -> dict:
             out[key + "_conservative"] = min(vals) if key in ("sharpe", "sortino", "xirr") else max(vals)
     out["days_min"] = min(int(x.get("days", 0)) for x in rows)
     out["redeem_events_max"] = max(int(x.get("redeem_events", 0)) for x in rows)
+    out["buy_events_max"] = max(int(x.get("buy_events", 0)) for x in rows)
+    for key in ("turnover_ann", "fees_total"):
+        vals = [float(x[key]) for x in rows if x.get(key) is not None and
+                math.isfinite(float(x[key]))]
+        if vals:
+            out[key + "_max"] = max(vals)
     return out
 
 
@@ -210,15 +248,16 @@ def optimize_joint_fold(weight_candidates: list[dict], rule_candidates: list[dic
     feasible_rows = [x for x in trials if x["validation_feasible"]]
     if feasible_rows:
         selected = max(feasible_rows, key=lambda x: (
+            x["validation"].get("sharpe_conservative", -999),
             x["validation"]["cagr_worst_fee"],
             -x["validation"]["mdd_worst_fee"],
-            x["validation"].get("sharpe_conservative", -999),
             -x["weight_prescreen"].get("turnover_proxy", 0.0)))
         validation_status = "VALIDATION_FEASIBLE_CANDIDATE"
     else:
         # 无可行解时只选风险最小的诊断候选，明确标记失败，不伪装为推荐。
         selected = min(trials, key=lambda x: (
             x["validation"]["mdd_worst_fee"],
+            -x["validation"].get("sharpe_conservative", -999),
             -x["validation"]["cagr_worst_fee"]))
         validation_status = "NO_VALIDATION_FEASIBLE_CANDIDATE"
 
@@ -250,7 +289,7 @@ def optimize_joint_fold(weight_candidates: list[dict], rule_candidates: list[dic
         "research_only": True,
         "objective": {"annualized_net_return_strictly_gt": cfg.target_annual_return,
                       "portfolio_mdd_lte": cfg.max_drawdown,
-                      "priority": "drawdown_first_then_worst_fee_cagr"},
+                      "priority": "return_and_drawdown_constraints_then_worst_fee_sharpe"},
         "validation_window": validation_window,
         "test_window": test_window,
         "validation_status": validation_status,

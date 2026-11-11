@@ -100,7 +100,7 @@ class PolicyTests(unittest.TestCase):
                            navs={"004400": 1.0806}, unit_hist=hist)
         orders = policy(state)
         self.assertEqual(orders.get("subscribe"), {})  # 全部新增留现金
-        self.assertTrue(any(e.get("action") == "DE_RISK_CASH"
+        self.assertTrue(any(e.get("action") == "DE_RISK_PAUSE_BUYS"
                             for e in orders.get("events", [])))
         # 回撤未恢复：保持防守
         s2 = dict(state, date=D0 + pd.Timedelta(days=1))
@@ -187,6 +187,171 @@ class PolicyFundSpecificRiskTests(unittest.TestCase):
         policy(s1)
         out = policy(s2)
         self.assertFalse(any(e.get("action") == "PAUSE_NEW_BUY" for e in out.get("events", [])))
+
+
+    def test_b5_executes_real_stop_loss_redemption(self):
+        params = {
+            **PARAMS,
+            "asset_categories": {"004400": "bond"},
+            "B5": {**PARAMS["B5"], "mdd_budget": .04,
+                   "internal_drawdown_margin": .01,
+                   "fund_pause_drawdown": .03, "fund_reenter_drawdown": .01,
+                   "fund_redeem_fraction": .5, "allow_redeem": True,
+                   "fund_stop_vol_multiplier_by_category": {"bond": 0.0},
+                   "fund_stop_drawdown_cap": .12},
+        }
+        with mock.patch.object(policies, "_load_style_signals", return_value={}), \
+             mock.patch.object(policies, "_plans", return_value=[]):
+            policy = policies.make_b5(params)
+        s0 = make_state(1000, {"004400": 100}, {"004400": 1.0},
+                        unit_hist=[1.0] * 25)
+        s0["nav"]["004400"]["total_return_nav"] = 1.0
+        policy(s0)
+        state = make_state(1000, {"004400": 100}, {"004400": .96},
+                           unit_hist=[1.0] * 25)
+        state["nav"]["004400"]["total_return_nav"] = .96
+        out = policy(state)
+        self.assertAlmostEqual(out["redeem"]["004400"], 50.0)
+        self.assertTrue(any(e.get("action") == "FUND_STOP_LOSS_REDEEM"
+                            for e in out["events"]))
+
+    def test_b5_take_profit_requires_known_cost_basis_and_redeems_partial(self):
+        params = {
+            **PARAMS,
+            "asset_categories": {"004400": "bond"},
+            "B5": {**PARAMS["B5"], "mdd_budget": .04,
+                   "internal_drawdown_margin": .01,
+                   "fund_pause_drawdown": .20, "fund_reenter_drawdown": .10,
+                   "fund_stop_vol_multiplier_by_category": {"bond": 0.0},
+                   "fund_stop_drawdown_cap": .25,
+                   "allow_redeem": True,
+                   "take_profit_activation_by_code": {"004400": .04},
+                   "take_profit_trailing_drawdown_by_code": {"004400": .03},
+                   "take_profit_redeem_fraction_by_code": {"004400": .25}},
+        }
+        with mock.patch.object(policies, "_load_style_signals", return_value={}), \
+             mock.patch.object(policies, "_plans", return_value=[]):
+            policy = policies.make_b5(params)
+        state = make_state(1000, {"004400": 100}, {"004400": 1.05},
+                           unit_hist=[1.0] * 25)
+        state["nav"]["004400"]["total_return_nav"] = 1.05
+        state["holdings"]["004400"].update({
+            "redeemable_shares": 80,
+            "redeemable_position_return": .06,
+            "redeemable_cost_basis_known": True,
+        })
+        policy(state)
+        state2 = make_state(1000, {"004400": 100}, {"004400": 1.008},
+                            unit_hist=[1.0] * 25, day=D0 + pd.Timedelta(days=1))
+        state2["nav"]["004400"]["total_return_nav"] = 1.008
+        state2["holdings"]["004400"].update({
+            "redeemable_shares": 80,
+            "redeemable_position_return": .06,
+            "redeemable_cost_basis_known": True,
+        })
+        out = policy(state2)
+        self.assertAlmostEqual(out["redeem"]["004400"], 20.0)
+        self.assertTrue(any(e.get("action") == "TAKE_PROFIT_REDEEM"
+                            for e in out["events"]))
+        state3 = make_state(1000, {"004400": 100}, {"004400": 1.008},
+                            unit_hist=[1.0] * 25, day=D0 + pd.Timedelta(days=15))
+        state3["nav"]["004400"]["total_return_nav"] = 1.008
+        state3["holdings"]["004400"].update({
+            "redeemable_shares": 60,
+            "redeemable_position_return": .06,
+            "redeemable_cost_basis_known": True,
+        })
+        out3 = policy(state3)
+        self.assertNotIn("004400", out3.get("redeem", {}))
+
+    def test_b5_retries_stop_when_locked_lot_becomes_redeemable(self):
+        params = {
+            **PARAMS,
+            "asset_categories": {"004400": "bond"},
+            "B5": {**PARAMS["B5"], "mdd_budget": .04,
+                   "internal_drawdown_margin": .01,
+                   "fund_pause_drawdown": .03, "fund_reenter_drawdown": .01,
+                   "fund_redeem_fraction": .5, "allow_redeem": True,
+                   "fund_stop_vol_multiplier_by_category": {"bond": 0.0},
+                   "fund_stop_drawdown_cap": .12},
+        }
+        with mock.patch.object(policies, "_load_style_signals", return_value={}), \
+             mock.patch.object(policies, "_plans", return_value=[]):
+            policy = policies.make_b5(params)
+        s0 = make_state(1000, {"004400": 100}, {"004400": 1.0},
+                        unit_hist=[1.0] * 25)
+        s0["nav"]["004400"]["total_return_nav"] = 1.0
+        s0["holdings"]["004400"]["redeemable_shares"] = 0
+        policy(s0)
+        s1 = make_state(1000, {"004400": 100}, {"004400": .96},
+                        unit_hist=[1.0] * 25, day=D0 + pd.Timedelta(days=1))
+        s1["nav"]["004400"]["total_return_nav"] = .96
+        s1["holdings"]["004400"]["redeemable_shares"] = 0
+        policy(s1)
+        s2 = make_state(1000, {"004400": 100}, {"004400": .96},
+                        unit_hist=[1.0] * 25, day=D0 + pd.Timedelta(days=2))
+        s2["nav"]["004400"]["total_return_nav"] = .96
+        s2["holdings"]["004400"]["redeemable_shares"] = 100
+        out = policy(s2)
+        self.assertAlmostEqual(out["redeem"]["004400"], 50.0)
+
+    def test_b5_reconstructs_fund_peak_from_published_history(self):
+        params = {
+            **PARAMS,
+            "asset_categories": {"004400": "bond"},
+            "B5": {**PARAMS["B5"], "mdd_budget": .04,
+                   "internal_drawdown_margin": .01,
+                   "fund_pause_drawdown": .03, "fund_reenter_drawdown": .01,
+                   "fund_redeem_fraction": .5, "allow_redeem": True,
+                   "fund_stop_vol_multiplier_by_category": {"bond": 0.0},
+                   "fund_stop_drawdown_cap": .12,
+                   "fund_peak_lookback_days": 252},
+        }
+        with mock.patch.object(policies, "_load_style_signals", return_value={}), \
+             mock.patch.object(policies, "_plans", return_value=[]):
+            policy = policies.make_b5(params)
+        state = make_state(1000, {"004400": 100}, {"004400": .96},
+                           unit_hist=[1.0] * 25)
+        state["nav"]["004400"]["total_return_nav"] = .96
+        state["fund_nav_history"] = {"004400": [
+            {"date": "2026-01-01", "total_return_nav": 1.0},
+            {"date": "2026-02-01", "total_return_nav": 1.05},
+            {"date": "2026-03-01", "total_return_nav": .96},
+        ]}
+        out = policy(state)
+        self.assertAlmostEqual(out["redeem"]["004400"], 50.0)
+
+    def test_b5_blocks_new_buy_when_fund_history_is_insufficient(self):
+        params = {
+            **PARAMS,
+            "asset_categories": {"004400": "bond"},
+            "B5": {**PARAMS["B5"], "fund_pause_drawdown": .03,
+                   "fund_reenter_drawdown": .01, "allow_redeem": True},
+        }
+        with mock.patch.object(policies, "_load_style_signals", return_value={}), \
+             mock.patch.object(policies, "_plans", return_value=[
+                 {"code": "004400", "daily_plan_cny": 500}]):
+            policy = policies.make_b5(params)
+        state = make_state(1000, {"004400": 100}, {"004400": 1.0})
+        out = policy(state)
+        self.assertNotIn("004400", out.get("subscribe", {}))
+        self.assertTrue(any(e.get("action") == "FUND_RISK_DATA_BLOCKED"
+                            for e in out.get("events", [])))
+
+    def test_b2_can_allocate_to_index_fund_asset_class(self):
+        params = {
+            **PARAMS,
+            "target_weights": {"BOND": .5, "INDEX": .3, "cash": .2},
+            "equity_index_codes": ["INDEX"],
+            "daily_limits": {},
+        }
+        state = make_state(cash=1000, holdings={"BOND": 1000},
+                           navs={"BOND": 1.0})
+        with mock.patch.object(policies, "_plans", return_value=[]):
+            out = policies.make_b2(params)(state)
+        self.assertIn("INDEX", out["subscribe"])
+        self.assertGreater(out["subscribe"]["INDEX"], 0)
+
 
 
 if __name__ == "__main__":

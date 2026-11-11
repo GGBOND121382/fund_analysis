@@ -10,6 +10,7 @@
   真实账户现金流不可得，XIRR 只能对模拟批次计算，标注 UNVERIFIABLE；
 - 共同日期取 13 只基金交集（不做任何填充）。
 """
+import argparse
 import json
 import os
 import sys
@@ -68,10 +69,22 @@ def fmt_pct(x, digits=2):
 
 
 def main():
+    global AUDIT_DATE
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--asof", default=None, help="分析截止日 YYYY-MM-DD；默认全部持仓共同最新净值日")
+    args = parser.parse_args()
     os.makedirs(REPORTS, exist_ok=True)
     snap = load_account_snapshot()
     funds = snap["funds"]
     codes = [f["code"] for f in funds]
+    if args.asof:
+        AUDIT_DATE = pd.Timestamp(args.asof)
+    else:
+        latest = [storage.last_date(c) for c in codes]
+        if any(x is None for x in latest):
+            missing = [c for c, x in zip(codes, latest) if x is None]
+            raise SystemExit("DATA_BLOCKED: 缺少净值文件 " + ",".join(missing))
+        AUDIT_DATE = pd.Timestamp(min(latest)).normalize()
     total = sum(float(f["value_cny"]) for f in funds)
     weights = {f["code"]: float(f["value_cny"]) / total for f in funds}
     names = {f["code"]: f.get("name", "") for f in funds}
@@ -81,7 +94,11 @@ def main():
     series = {c: total_return_series(c, div_map, split_map) for c in codes}
 
     factors = pd.read_csv("data/factors/daily.csv", parse_dates=["date"])
-    rf_latest = float(factors["risk_free_annual"].dropna().iloc[-1])
+    rf_rows = factors.loc[(factors["date"] <= AUDIT_DATE) &
+                          factors["risk_free_annual"].notna()]
+    if rf_rows.empty:
+        raise SystemExit(f"DATA_BLOCKED: {AUDIT_DATE.date()} 之前缺少无风险利率因子")
+    rf_latest = float(rf_rows.iloc[-1]["risk_free_annual"])
 
     windows = {
         "近1年": (AUDIT_DATE - pd.Timedelta(days=365), AUDIT_DATE),

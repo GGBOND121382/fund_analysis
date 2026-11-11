@@ -115,9 +115,8 @@ def b1_no_new_equity_dca(state) -> dict:
 def make_b2(params: dict):
     target = {k: v for k, v in params["target_weights"].items()
               if k != "cash" and not k.startswith("_")}
-    equity = set(params.get("equity_index_codes", ()))
-    plans = {f["code"] for f in _plans() if f["daily_plan_cny"] > 0}
-    allowed = sorted(set(target) - equity)
+    forbidden = set(params.get("disabled_new_buy_codes", ()))
+    allowed = sorted(set(target) - forbidden)
     limits = params.get("daily_limits", {})  # 真实申购限额（fund_status 快照）
 
     def policy(state) -> dict:
@@ -237,90 +236,345 @@ def make_b4(params: dict, make_base=None):
 # -- B5 ---------------------------------------------------------------------
 
 def make_b5(params: dict):
+    """B5：组合回撤保护 + 基金级波动率止损 + 有成本基础的移动止盈。"""
+    from fundkit.risk_engine import risk_contributions
+
     base = make_b4(params)
     p5 = params["B5"]
-    guard = {"de_risk": False, "stable": 0, "exit_requested": False}
+    guard = {"de_risk": False, "stable": 0, "last_exit_mdd": None}
     fund_state: dict[str, dict] = {}
     peaks: dict[str, float] = {}
+    tp_peaks: dict[str, float] = {}
+
+    def history_returns(state):
+        frames = {}
+        for code, rows in (state.get("fund_nav_history") or {}).items():
+            if not rows:
+                continue
+            frame = pd.DataFrame(rows)
+            if not {"date", "total_return_nav"}.issubset(frame.columns):
+                continue
+            frame["date"] = pd.to_datetime(frame["date"])
+            frame["total_return_nav"] = pd.to_numeric(frame["total_return_nav"], errors="coerce")
+            frame = frame.dropna().drop_duplicates("date").sort_values("date")
+            if len(frame) < 2 or (frame["total_return_nav"] <= 0).any():
+                continue
+            frames[code] = frame.set_index("date")["total_return_nav"].pct_change(fill_method=None)
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, axis=1, join="inner").dropna().tail(756)
+
+    def portfolio_risk_order(state):
+        returns = history_returns(state)
+        if len(returns) < int(p5.get("portfolio_risk_min_observations", 20)):
+            return [], {}
+        total = float(state.get("value", 0.0))
+        if total <= 0:
+            return [], {}
+        weights = {
+            code: float(h.get("value_pub") or 0.0) / total
+            for code, h in state.get("holdings", {}).items()
+            if float(h.get("value_pub") or 0.0) > 0 and code in returns.columns
+        }
+        if not weights:
+            return [], {}
+        try:
+            result = risk_contributions(
+                returns, weights,
+                shrinkage=float(p5.get("risk_covariance_shrinkage", 0.25)),
+                min_observations=int(p5.get("portfolio_risk_min_observations", 20)),
+            )
+        except ValueError:
+            return [], {}
+        contributions = {
+            code: max(0.0, float(item["fraction"]))
+            for code, item in result["contributions"].items()
+        }
+        order = sorted(contributions, key=contributions.get, reverse=True)
+        return order, contributions
+
+    def add_redeem(orders, code, shares, review=False):
+        if shares <= 1e-8:
+            return False
+        key = "redeem_review" if review else "redeem"
+        orders.setdefault(key, {})
+        orders[key][code] = float(orders[key].get(code, 0.0)) + float(shares)
+        return True
 
     def policy(state) -> dict:
         orders = base(state) or {}
-        hist = state["unit_nav_history"]
-        mdd_now = 0.0
-        if len(hist) >= 2:
-            arr = np.asarray(hist)
-            mdd_now = float(1 - arr[-1] / np.max(arr))  # 当前水下回撤，可恢复；不是历史MDD
-        soft = p5["mdd_budget"] - p5["internal_drawdown_margin"]
-        hard_recover = soft * p5["reenter_mdd_fraction"]
-        win = hist[-int(p5.get("cdar_lookback", 126)):]
-        cdar_now = (empirical_cdar(drawdown_path(win), .95)
-                    if len(win) >= 10 else 0.0)
-        cdar_alert = cdar_now > p5.get("cdar_guard_threshold", float("inf"))
-        if not guard["de_risk"] and (mdd_now > soft or cdar_alert):
-            guard.update(de_risk=True, stable=0, exit_requested=False)
-        elif guard["de_risk"]:
-            guard["stable"] = guard["stable"] + 1 if mdd_now < hard_recover else 0
-            if guard["stable"] >= p5["reenter_cooldown_days"]:
-                guard.update(de_risk=False, exit_requested=False)
-        if guard["de_risk"]:
-            orders["subscribe"] = {}  # 暂停新增；并非已经实现存量风险降低
-            orders.setdefault("events", []).append(
-                {"code": "PORTFOLIO", "action": "DE_RISK_CASH",
-                 "reason": f"当前回撤 {mdd_now:.2%} / 滚动CDaR {cdar_now:.2%}；警戒 {soft:.2%}"})
-            if not guard["exit_requested"]:
-                # 可选的真实减仓执行，仅用于交易模拟/回测（不是自动交易）。
-                # 若为模拟锁定批次，redeemable_shares=0，绝不猜可赎日期。
-                frac = max(0.0, min(1.0, float(p5.get("portfolio_redeem_fraction", .5))))
-                for code, h in state["holdings"].items():
-                    shares = float(h.get("redeemable_shares") or 0) * frac
-                    if shares > 1e-8:
-                        kind = "redeem" if p5.get("allow_redeem", False) else "redeem_review"
-                        orders.setdefault(kind, {})[code] = shares
-                if p5.get("allow_redeem", False):
-                    guard["exit_requested"] = True
+        orders.setdefault("subscribe", {})
+        orders.setdefault("events", [])
+        if state.get("value_quality") == "MISSING":
+            orders["subscribe"] = {}
+            orders["events"].append({
+                "code": "PORTFOLIO", "action": "RISK_DATA_BLOCKED",
+                "reason": "存在非零持仓缺失可用估值；停止新增申购，禁止推断赎回量",
+            })
             return orders
 
-        # 逐基金回撤暂停/再入场（按已公开净值）
-        for c, pub in (state["nav"] or {}).items():
-            # 风险信号使用分红调整后的总回报指数；raw unit NAV 仅用于真实成交/估值。
+        hist = list(state.get("unit_nav_history") or [])
+        mdd_now = None
+        if len(hist) >= 2 and max(hist) > 0:
+            mdd_now = max(0.0, float(1.0 - hist[-1] / max(hist)))
+        lookback = int(p5.get("cdar_lookback", 126))
+        win = hist[-lookback:]
+        cdar_now = (empirical_cdar(drawdown_path(win), .95)
+                    if len(win) >= int(p5.get("portfolio_risk_min_observations", 20)) else None)
+
+        budget = float(p5.get("mdd_budget", 0.04))
+        margin = float(p5.get("internal_drawdown_margin", 0.01))
+        soft = budget - margin
+        if not (0 < soft < budget < 1):
+            raise ValueError("B5 组合风险缓冲配置非法")
+        cdar_threshold = p5.get("cdar_guard_threshold")
+        cdar_alert = (cdar_now is not None and cdar_threshold is not None
+                      and cdar_now >= float(cdar_threshold))
+        risk_trigger = (mdd_now is not None and mdd_now >= soft) or cdar_alert
+
+        if not guard["de_risk"] and risk_trigger:
+            guard.update(de_risk=True, stable=0, last_exit_mdd=None)
+        elif guard["de_risk"]:
+            mdd_recovered = mdd_now is not None and mdd_now < soft * float(
+                p5.get("reenter_mdd_fraction", 0.6))
+            cdar_recovered = (cdar_now is None or cdar_threshold is None or
+                              cdar_now < float(cdar_threshold) * float(
+                                  p5.get("reenter_cdar_fraction", 0.6)))
+            guard["stable"] = guard["stable"] + 1 if (mdd_recovered and cdar_recovered) else 0
+            if guard["stable"] >= int(p5.get("reenter_cooldown_days", 10)):
+                guard.update(de_risk=False, stable=0, last_exit_mdd=None)
+
+        if guard["de_risk"]:
+            orders["subscribe"] = {}
+            orders["events"].append({
+                "code": "PORTFOLIO", "action": "DE_RISK_PAUSE_BUYS",
+                "reason": (f"组合当前回撤={mdd_now if mdd_now is not None else float('nan'):.2%}; "
+                           f"CDaR95={cdar_now if cdar_now is not None else float('nan'):.2%}; "
+                           f"软预算={soft:.2%}"),
+            })
+            escalation = (guard["last_exit_mdd"] is None or mdd_now is None or
+                          mdd_now >= guard["last_exit_mdd"] +
+                          float(p5.get("portfolio_exit_escalation_step", 0.005)))
+            if p5.get("allow_redeem", False) and escalation:
+                order, contrib = portfolio_risk_order(state)
+                coverage = float(p5.get("portfolio_risk_coverage", 0.80))
+                selected, cumulative = [], 0.0
+                for code in order:
+                    if contrib.get(code, 0.0) <= 0:
+                        continue
+                    selected.append(code)
+                    cumulative += contrib[code]
+                    if cumulative >= coverage:
+                        break
+                placed = False
+                frac = max(0.0, min(1.0, float(p5.get("portfolio_redeem_fraction", 0.5))))
+                for code in selected:
+                    h = state["holdings"].get(code, {})
+                    shares = float(h.get("redeemable_shares") or 0.0) * frac
+                    placed = add_redeem(orders, code, shares) or placed
+                if placed:
+                    guard["last_exit_mdd"] = mdd_now
+                    orders["events"].append({
+                        "code": "PORTFOLIO", "action": "PORTFOLIO_RISK_REDUCE",
+                        "risk_contributions": contrib, "selected_codes": selected,
+                        "redeem_fraction": frac,
+                    })
+                elif not order:
+                    orders["events"].append({
+                        "code": "PORTFOLIO", "action": "PORTFOLIO_REDEEM_BLOCKED_RISK_HISTORY",
+                        "reason": "缺少足够共同日期收益，不能可靠排序组合风险贡献",
+                    })
+                else:
+                    orders["events"].append({
+                        "code": "PORTFOLIO", "action": "PORTFOLIO_REDEEM_BLOCKED_LOCKED",
+                        "reason": "风险贡献较高的基金当前没有可赎回份额",
+                    })
+            elif not p5.get("allow_redeem", False):
+                orders["events"].append({
+                    "code": "PORTFOLIO", "action": "PORTFOLIO_REDEEM_REVIEW",
+                    "reason": "当前配置仅暂停申购；真实赎回未获执行授权",
+                })
+            return orders
+
+        histories = state.get("fund_nav_history") or {}
+        categories = params.get("asset_categories", {})
+        stop_k_by_category = p5.get("fund_stop_vol_multiplier_by_category", {})
+        stop_cap = float(p5.get("fund_stop_drawdown_cap", 0.12))
+        escalation_step = float(p5.get("fund_stop_escalation_step", 0.005))
+        cooldown_days = int(p5.get("reenter_cooldown_days", 10))
+
+        for code, pub in (state.get("nav") or {}).items():
             nav = float(pub.get("total_return_nav") or pub["nav"])
-            peaks[c] = max(peaks.get(c, nav), nav)
-            dd = 1 - nav / peaks[c]
-            pause_map = p5.get("fund_pause_drawdown_by_code", {})
-            reenter_map = p5.get("fund_reenter_drawdown_by_code", {})
-            pause_threshold = float(pause_map.get(c, p5["fund_pause_drawdown"]))
-            reenter_threshold = float(reenter_map.get(c, p5["fund_reenter_drawdown"]))
-            if not (0 <= reenter_threshold < pause_threshold < 1):
-                raise ValueError(f"{c} 基金级止损/恢复阈值非法")
-            z = fund_state.setdefault(c, {"paused": False, "stable": 0})
-            if not z["paused"] and dd > pause_threshold:
-                z["paused"], z["stable"] = True, 0
+            if not np.isfinite(nav) or nav <= 0:
+                continue
+            rows = histories.get(code) or []
+            h = state.get("holdings", {}).get(code, {})
+            position_start = h.get("position_start_date")
+            relevant_rows = [r for r in rows
+                             if position_start is not None and
+                             pd.Timestamp(r["date"]) >= pd.Timestamp(position_start)]
+            risk_rows = relevant_rows if position_start is not None else rows
+            history_frame = pd.DataFrame(risk_rows)
+            history_count = (pd.to_numeric(history_frame["total_return_nav"], errors="coerce")
+                             .dropna().shape[0]
+                             if "total_return_nav" in history_frame else 0)
+            if history_count < 2 and code not in peaks:
+                # 初次启动且缺少该持仓阶段的历史时，不能把未知回撤当成0。
+                peaks[code] = nav  # 只从系统开始观察之日起建立临时高水位
+                orders["subscribe"].pop(code, None)
+                orders["events"].append({
+                    "code": code, "action": "FUND_RISK_DATA_BLOCKED",
+                    "reason": "该持仓阶段可用总回报净值少于2个观测；暂停新增申购，暂不推断止损赎回",
+                })
+                continue
+            peak_lookback = int(p5.get("fund_peak_lookback_days", 252))
+            if relevant_rows:
+                hist_values = pd.to_numeric(
+                    pd.DataFrame(relevant_rows)["total_return_nav"], errors="coerce"
+                ).dropna().to_numpy(dtype=float)
+                peak = max(float(np.max(hist_values)) if len(hist_values) else nav, nav)
+            elif rows and position_start is None:
+                hist_values = pd.to_numeric(
+                    pd.DataFrame(rows)["total_return_nav"], errors="coerce"
+                ).dropna().to_numpy(dtype=float)
+                hist_values = hist_values[-peak_lookback:] if len(hist_values) else hist_values
+                peak = max(float(np.max(hist_values)) if len(hist_values) else nav, nav)
+            else:
+                # 单元测试、无历史数据的离线状态或历史披露缺口：
+                # 延续本策略已观察到的高水位，不能每天把当前净值重置成峰值。
+                peak = max(peaks.get(code, nav), nav)
+            peaks[code] = peak
+            dd = max(0.0, 1.0 - nav / peak)
+            z = fund_state.setdefault(code, {
+                "paused": False, "stable": 0, "last_exit_dd": None,
+                "last_exit_redeemable_after": 0.0,
+                "take_profit_cooldown_until": None,
+                "take_profit_peak_reset_date": None,
+            })
+
+            vol20 = None
+            if len(rows) >= 21:
+                values = pd.to_numeric(
+                    pd.DataFrame(rows)["total_return_nav"], errors="coerce"
+                ).dropna().to_numpy(dtype=float)
+                if len(values) >= 21 and np.all(values > 0):
+                    rets = np.diff(values[-61:]) / values[-61:-1]
+                    if len(rets) >= 20:
+                        vol20 = float(np.std(rets[-20:], ddof=1) * np.sqrt(20.0))
+            category = categories.get(code, "other")
+            base_stop = float(p5.get("fund_pause_drawdown_by_code", {}).get(
+                code, p5.get("fund_pause_drawdown", 0.02)))
+            k_vol = float(stop_k_by_category.get(category, p5.get("fund_stop_vol_multiplier", 2.0)))
+            stop_threshold = min(stop_cap, max(base_stop, k_vol * vol20 if vol20 is not None else base_stop))
+            reenter_threshold = float(p5.get("fund_reenter_drawdown_by_code", {}).get(
+                code, p5.get("fund_reenter_drawdown", base_stop * 0.5)))
+            if not (0 <= reenter_threshold < stop_threshold < 1):
+                raise ValueError(f"{code} 基金级止损/恢复阈值非法")
+
+            if not z["paused"] and dd >= stop_threshold:
+                z.update(paused=True, stable=0, last_exit_dd=None,
+                         last_exit_redeemable_after=0.0)
             elif z["paused"]:
                 z["stable"] = z["stable"] + 1 if dd < reenter_threshold else 0
-                if z["stable"] >= p5["reenter_cooldown_days"]:
-                    z["paused"] = False
+                if z["stable"] >= cooldown_days:
+                    z.update(paused=False, stable=0, last_exit_dd=None,
+                             last_exit_redeemable_after=0.0)
+                    peaks[code] = nav
+
             if z["paused"]:
-                (orders.get("subscribe") or {}).pop(c, None)
-                orders.setdefault("events", []).append(
-                    {"code": c, "action": "PAUSE_NEW_BUY",
-                     "reason": f"基金回撤 {dd:.2%}（B5）"})
-                if not z.get("exit_requested", False):
-                    h = state["holdings"].get(c, {})
-                    redeem_map = p5.get("fund_redeem_fraction_by_code", {})
-                    redeem_fraction = float(redeem_map.get(c, p5.get("fund_redeem_fraction", .5)))
-                    shares = float(h.get("redeemable_shares") or 0) * max(
-                        0.0, min(1.0, redeem_fraction))
-                    if shares > 1e-8:
-                        kind = "redeem" if p5.get("allow_redeem", False) else "redeem_review"
-                        orders.setdefault(kind, {})[c] = shares
-                        if p5.get("allow_redeem", False):
-                            z["exit_requested"] = True
+                orders["subscribe"].pop(code, None)
+                orders["events"].append({
+                    "code": code, "action": "PAUSE_NEW_BUY",
+                    "reason": f"总回报净值回撤={dd:.2%}，动态止损阈值={stop_threshold:.2%}",
+                })
+                shares = float(h.get("redeemable_shares") or 0.0)
+                frac = float(p5.get("fund_redeem_fraction_by_code", {}).get(
+                    code, p5.get("fund_redeem_fraction", 0.5)))
+                frac = max(0.0, min(1.0, frac))
+                escalation = (z["last_exit_dd"] is None or
+                              dd >= z["last_exit_dd"] + escalation_step or
+                              shares > z["last_exit_redeemable_after"] + 1e-8)
+                if p5.get("allow_redeem", False) and shares > 1e-8 and escalation:
+                    amount = shares * frac
+                    if add_redeem(orders, code, amount):
+                        z["last_exit_dd"] = dd
+                        z["last_exit_redeemable_after"] = max(0.0, shares - amount)
+                        orders["events"].append({
+                            "code": code, "action": "FUND_STOP_LOSS_REDEEM",
+                            "drawdown": dd, "threshold": stop_threshold,
+                            "shares": amount,
+                        })
+                elif p5.get("allow_redeem", False) and shares <= 1e-8:
+                    orders["events"].append({
+                        "code": code, "action": "STOP_LOSS_BLOCKED_LOCKED",
+                        "reason": "触发止损但当前没有可赎回批次；保留暂停状态并继续监测",
+                    })
+                elif not p5.get("allow_redeem", False) and shares > 1e-8:
+                    add_redeem(orders, code, shares * frac, review=True)
+                continue
+
+            tp_cooldown = z.get("take_profit_cooldown_until")
+            if tp_cooldown is not None and pd.Timestamp(state["date"]) < tp_cooldown:
+                orders["subscribe"].pop(code, None)
+                continue
+            position_return = h.get("redeemable_position_return")
+            redeemable_start = h.get("redeemable_start_date")
+            tp_reset = z.get("take_profit_peak_reset_date")
+            tp_start = (max(pd.Timestamp(redeemable_start), pd.Timestamp(tp_reset))
+                        if redeemable_start is not None and tp_reset is not None
+                        else pd.Timestamp(redeemable_start) if redeemable_start is not None
+                        else pd.Timestamp(tp_reset) if tp_reset is not None else None)
+            tp_rows = [r for r in rows if tp_start is not None and
+                       pd.Timestamp(r["date"]) >= tp_start]
+            if tp_reset is not None and not tp_rows:
+                tp_peak = tp_peaks.get(code, nav)
+            elif tp_rows:
+                tp_values = pd.to_numeric(
+                    pd.DataFrame(tp_rows)["total_return_nav"], errors="coerce"
+                ).dropna().to_numpy(dtype=float)
+                tp_peak = max(float(np.max(tp_values)) if len(tp_values) else nav, nav)
             else:
-                z["exit_requested"] = False
+                tp_peak = max(peaks.get(code, nav), nav)
+            tp_peaks[code] = max(tp_peaks.get(code, tp_peak), tp_peak, nav)
+            tp_dd = max(0.0, 1.0 - nav / tp_peaks[code])
+            activation = float(p5.get("take_profit_activation_by_code", {}).get(
+                code, p5.get("take_profit_activation_by_category", {}).get(category, 0.0)))
+            trailing = float(p5.get("take_profit_trailing_drawdown_by_code", {}).get(
+                code, p5.get("take_profit_trailing_drawdown_by_category", {}).get(category, 0.0)))
+            tp_fraction = float(p5.get("take_profit_redeem_fraction_by_code", {}).get(
+                code, p5.get("take_profit_redeem_fraction", 0.25)))
+            if (activation > 0 and trailing > 0 and position_return is not None
+                    and float(position_return) >= activation and tp_dd >= trailing):
+                shares = float(h.get("redeemable_shares") or 0.0)
+                amount = shares * max(0.0, min(1.0, tp_fraction))
+                if amount > 1e-8:
+                    if p5.get("allow_redeem", False):
+                        add_redeem(orders, code, amount)
+                        action = "TAKE_PROFIT_REDEEM"
+                    else:
+                        add_redeem(orders, code, amount, review=True)
+                        action = "TAKE_PROFIT_REVIEW"
+                    orders["subscribe"].pop(code, None)
+                    z["take_profit_cooldown_until"] = (
+                        pd.Timestamp(state["date"]) +
+                        pd.Timedelta(days=int(p5.get("take_profit_cooldown_days", 10)))
+                    )
+                    tp_peaks[code] = nav
+                    z["take_profit_peak_reset_date"] = pd.Timestamp(state["date"]).date().isoformat()
+                    orders["events"].append({
+                        "code": code, "action": action,
+                        "position_return": float(position_return),
+                        "trailing_drawdown": tp_dd, "shares": amount,
+                        "fraction": max(0.0, min(1.0, tp_fraction)),
+                    })
+                else:
+                    orders["events"].append({
+                        "code": code, "action": "TAKE_PROFIT_BLOCKED_LOCKED",
+                        "reason": "盈利达到触发条件，但没有可赎回份额",
+                    })
         return orders
 
     return policy
-
 
 def build_policy(name: str, params: dict | None = None):
     params = params or load_params()

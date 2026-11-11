@@ -149,5 +149,62 @@ class SimulatorTests(unittest.TestCase):
         self.assertAlmostEqual(r["metrics"]["max_drawdown"], 0.25, places=6)
 
 
+    def test_cost_basis_and_partial_redemption_are_exposed_to_policy(self):
+        sim = make_sim({"004400": [1.0] * 40}, SimConfig())
+        seen = []
+        def policy(state):
+            seen.append(state)
+            if len(seen) == 1:
+                return {"subscribe": {"004400": 100.0}}
+            if len(seen) == 2:
+                return {"redeem": {"004400": 50.0}}
+            return {}
+        result = sim._execute(initial_cash=1000.0, policy=policy)
+        self.assertTrue(seen[1]["holdings"]["004400"]["cost_basis_known"])
+        self.assertAlmostEqual(seen[1]["holdings"]["004400"]["cost_basis_cny"], 100.0)
+        self.assertAlmostEqual(seen[2]["holdings"]["004400"]["cost_basis_cny"], 50.0)
+        self.assertTrue(seen[2]["holdings"]["004400"]["redeemable_cost_basis_known"])
+        redeem = result["events"][result["events"]["event"] == "REDEEM"].iloc[0]
+        self.assertAlmostEqual(redeem["cost_basis_released_cny"], 50.0)
+        self.assertAlmostEqual(redeem["fee_cny"], 0.0)
+
+    def test_initial_counterfactual_purchase_fee_hits_unit_nav_and_sharpe(self):
+        params = {
+            **__import__("fundkit.simulator", fromlist=["SIM_DEFAULTS"]).SIM_DEFAULTS,
+            "initial_investment_fee_cny": 1.0,
+            "initial_investment_fee_by_code": {"004400": 1.0},
+            "initial_buy_amount_by_code": {"004400": 100.0},
+        }
+        sim = make_sim({"004400": [1.0] * 40}, SimConfig(params=params))
+        lot = Lot("004400", 99.0, DAYS[0], cost_basis_cny=100.0,
+                  cost_basis_known=True, basis_source="counterfactual_start")
+        result = sim._execute(initial_lots={"004400": [lot]})
+        self.assertAlmostEqual(result["daily"]["unit_nav"].iloc[0], .99)
+        self.assertAlmostEqual(result["metrics"]["total_return_twr"], -.01)
+        self.assertAlmostEqual(result["metrics"]["max_drawdown"], .01)
+        initial_buy = result["events"][result["events"]["initial"] == True].iloc[0]
+        self.assertAlmostEqual(initial_buy["amount"], 100.0)
+        self.assertAlmostEqual(initial_buy["fee_cny"], 1.0)
+        self.assertLess(result["metrics"]["sharpe"], 0)
+
+    def test_published_fund_nav_history_is_asof_visible_only(self):
+        sim = make_sim({"004400": [1.0, 1.01, 1.02]})
+        cutoff = DAYS[1].tz_localize(CST) + pd.Timedelta(hours=14, minutes=55)
+        history = sim._published_histories(cutoff)
+        self.assertIn("004400", history)
+        self.assertEqual(len(history["004400"]), 2)
+        self.assertLessEqual(pd.Timestamp(history["004400"][-1]["date"]), DAYS[1])
+
+    def test_equity_index_fund_buy_allowed_when_enabled(self):
+        sim = make_sim({"110020": [1.0] * 40},
+                       SimConfig(budget_per_day=1000, allow_new_equity_index=True,
+                                 equity_index_codes=frozenset({"110020"})))
+        result = sim._execute(policy=buy({"110020": 100.0}))
+        events = result["events"]
+        self.assertIn("BUY", set(events["event"]))
+        self.assertFalse((events["event"] == "BUY_REJECTED_FORBIDDEN").any())
+
+
+
 if __name__ == "__main__":
     unittest.main()

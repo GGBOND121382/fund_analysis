@@ -25,6 +25,8 @@ COPY_ASIS = [
     "oos_summary.json",
     "validate.log",
     "weight_optimization_research.json",
+    "joint_strategy_optimization.json",
+    "v10_research_run.json",
 ]
 
 
