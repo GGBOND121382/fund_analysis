@@ -460,7 +460,9 @@ def cmd_optimize_strategy(args):
     def write_blocked(reason):
         os.makedirs("reports", exist_ok=True)
         payload = {
-            "model_version": "joint-strategy-v1.0.1",
+            "model_version": ("joint-strategy-v1.1-exploratory"
+                              if getattr(args, "exploratory", False) else
+                              "joint-strategy-v1.0.1"),
             "asof": getattr(args, "asof", None),
             "objective": {"annualized_net_return_strictly_gt": 0.05,
                           "portfolio_mdd_lte": 0.04, "priority": "drawdown_first"},
@@ -481,6 +483,9 @@ def cmd_optimize_strategy(args):
             return
         if args.train_days < 252 or args.validation_days < 63 or args.test_days < 63:
             write_blocked("EXPLORATORY_MINIMUM: train >=252, validation/test >=63 sessions")
+            return
+        if getattr(args, "embargo_days", 0) < 3:
+            write_blocked("EXPLORATORY_EMBARGO_REQUIRED: T+2 inferred publication requires 3 trading-day gaps")
             return
     elif min(args.train_days, args.validation_days, args.test_days) < 252:
         write_blocked("INSUFFICIENT_OOS_HORIZON: full validation requires >=252 in all three splits")
@@ -522,7 +527,8 @@ def cmd_optimize_strategy(args):
         folds = joint_optimizer.build_rolling_folds(
             returns_all.index, train_days=args.train_days,
             validation_days=args.validation_days, test_days=args.test_days,
-            step_days=args.step_days, folds=args.folds)
+            step_days=args.step_days, folds=args.folds,
+            embargo_days=getattr(args, "embargo_days", 0))
     except ValueError as exc:
         write_blocked(str(exc))
         return
@@ -766,7 +772,7 @@ def cmd_optimize_strategy(args):
                       "EXPLORATORY_NOT_LONG_TERM_VALIDATED" if exploratory else "RESEARCH_ONLY")
     payload = {
         "model_version": "joint-strategy-v1.1-exploratory" if exploratory else "joint-strategy-v1.0.1",
-        "protocol": "EXP_252_126_126_OR_252_63_63" if exploratory else "FULL_YEAR_252_252_252",
+        "protocol": "EXP_252_120_120_EMBARGO3_OR_252_63_63_EMBARGO3" if exploratory else "FULL_YEAR_252_252_252",
         "strategy_scope": strategy_scope,
         "evidence_level": "PARTIAL_YEAR_OOS_NOT_LONG_TERM" if exploratory else "FULL_YEAR_PROTOCOL",
         "asof": asof.isoformat(),
@@ -874,6 +880,8 @@ def main():
     p_js.add_argument("--test-days", type=int, default=252)
     p_js.add_argument("--step-days", type=int, default=252)
     p_js.add_argument("--folds", type=int, default=1)
+    p_js.add_argument("--embargo-days", type=int, default=0,
+                      help="信息隔离天数，探索性研究应>=3交易日以保护T+2可见性")
     p_js.add_argument("--weight-pool", type=int, default=600)
     p_js.add_argument("--weight-candidates", type=int, default=5)
     p_js.add_argument("--weight-paths", type=int, default=64)
