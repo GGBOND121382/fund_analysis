@@ -138,16 +138,20 @@ def build_rule_grid(asset_categories: Mapping[str, str] | None = None) -> list[d
 
 def build_rolling_folds(dates: Sequence, train_days: int = 504,
                         validation_days: int = 252, test_days: int = 252,
-                        step_days: int = 126, folds: int = 1) -> list[dict]:
+                        step_days: int = 126, folds: int = 1,
+                        embargo_days: int = 0) -> list[dict]:
     """从共同交易日期构建严格前向滚动折；不允许 train/val/test 重叠。"""
     import pandas as pd
 
     idx = pd.DatetimeIndex(dates).drop_duplicates().sort_values()
-    if min(train_days, validation_days, test_days, step_days, folds) < 1:
-        raise ValueError("滚动折长度和折数必须为正数")
+    if min(train_days, validation_days, test_days, step_days, folds) < 1 or embargo_days < 0:
+        raise ValueError("滚动折长度和折数必须为正数；信息隔离天数不得为负数")
     if folds > 1 and step_days < test_days:
         raise ValueError("OVERLAPPING_TEST_WINDOWS_BLOCKED: step_days 必须不小于 test_days")
-    required = train_days + validation_days + test_days + (folds - 1) * step_days
+    # Require published-data embargo between training/validation AND
+    # validation/test to prevent as-of NAV leakage (T+2 inferred publication).
+    required = (train_days + validation_days + test_days +
+                2 * embargo_days + (folds - 1) * step_days)
     if len(idx) < required:
         raise ValueError(f"INSUFFICIENT_HISTORY: 需要至少 {required} 个共同交易日，实际 {len(idx)}")
     first = len(idx) - required
@@ -155,8 +159,10 @@ def build_rolling_folds(dates: Sequence, train_days: int = 504,
     for k in range(folds):
         s = first + k * step_days
         tr = idx[s:s + train_days]
-        va = idx[s + train_days:s + train_days + validation_days]
-        te = idx[s + train_days + validation_days:s + train_days + validation_days + test_days]
+        val_start = s + train_days + embargo_days
+        test_start = val_start + validation_days + embargo_days
+        va = idx[val_start:val_start + validation_days]
+        te = idx[test_start:test_start + test_days]
         if not (tr[-1] < va[0] and va[-1] < te[0]):
             raise AssertionError("内部错误：滚动折时间区间重叠")
         out.append({
@@ -165,6 +171,7 @@ def build_rolling_folds(dates: Sequence, train_days: int = 504,
             "validation": (str(va[0].date()), str(va[-1].date())),
             "test": (str(te[0].date()), str(te[-1].date())),
             "n_train": len(tr), "n_validation": len(va), "n_test": len(te),
+            "embargo_trading_days": embargo_days,
         })
     return out
 
