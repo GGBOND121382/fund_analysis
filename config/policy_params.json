@@ -1,20 +1,20 @@
 {
   "_comment": "Public safe-default configuration. Replace with parameters selected by your own out-of-sample validation; these are not optimized recommendations.",
   "target_weights": {
+    "110020": 0.002425,
+    "539001": 0.005423,
     "710301": 0.382395,
     "004400": 0.249338,
     "021559": 0.20916,
     "014846": 0.00518,
     "000218": 0.051853,
-    "110020": 0.002425,
     "096001": 0.005701,
     "017641": 0.018328,
-    "016452": 1e-06,
+    "016452": 0.000001,
     "019736": 0.017114,
     "019172": 0.005085,
-    "539001": 0.005423,
     "019441": 0.047983,
-    "cash": 1.3e-05
+    "cash": 0.000013
   },
   "max_fund_weight": 0.4,
   "B3": {
@@ -46,12 +46,12 @@
     "portfolio_exit_escalation_step": 0.005,
     "risk_covariance_shrinkage": 0.25,
     "fund_redeem_fraction": 0.25,
-    "fund_stop_vol_multiplier": 2.0,
+    "fund_stop_vol_multiplier": 2,
     "fund_stop_vol_multiplier_by_category": {
-      "bond": 2.0,
+      "bond": 2,
       "gold": 2.5,
       "equity_index": 2.5,
-      "other": 2.0
+      "other": 2
     },
     "fund_stop_drawdown_cap": 0.12,
     "fund_stop_escalation_step": 0.005,
@@ -74,12 +74,12 @@
     "note": "Historical/simulated limits are not guarantees of future outcomes."
   },
   "B6": {
-    "base_fraction": 1.0,
+    "base_fraction": 0.75,
     "release_fraction": 0.5,
     "deferred_horizon_days": 10,
-    "cash_reserve_weight": 0.05,
+    "cash_reserve_weight": 0,
     "risk_seed": 42,
-    "risk_paths": 32,
+    "risk_paths": 64,
     "simulate_redeem": true,
     "exit_mode": "both",
     "entry_timing_enabled": true,
@@ -98,5 +98,6 @@
     "min_profit_after_fee": 0.002,
     "redeem_fee_proxy": 0.003
   },
-  "_target_weights_note": "2026-11-11 weight_optimization_research.json 研究候选(RETURN_TARGET_UNMET，未经独立OOS验证)；decision 端 verified=False 不会引用"
+  "_target_weights_note": "2026-11-11 weight_optimization_research.json 研究候选(RETURN_TARGET_UNMET，未经独立OOS验证)；decision 端 verified=False 不会引用",
+  "_B6_calibration_note": "EXPLORATORY candidates only; not optimized live targets. See docs/V11_CALIBRATION.md. B2 and B6 cash reserve must match for fair ablations."
 }
