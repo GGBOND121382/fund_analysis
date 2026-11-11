@@ -38,6 +38,22 @@ def main():
                      BASE/"scripts/install_v11_overlay.py")
         shutil.copy2(stage/"tests/test_v11.py",BASE/"tests/test_v11.py")
         shutil.copy2(stage/"README.md",BASE/"docs/V11_B6_OVERLAY.md")
+        # The baseline test expected exactly B2-B5 (27 rules). B6 adds six
+        # intentionally registered ablation rules. Preserve every legacy check,
+        # and explicitly test the incremental registrations rather than hide them.
+        test_path=BASE/"tests/test_joint_optimizer.py"
+        src=test_path.read_text(encoding="utf-8")
+        old_families='self.assertEqual(families, {"B2", "B3", "B4", "B5"})'
+        old_count='self.assertEqual(len(rules), 27)'
+        new_families='self.assertEqual(families, {"B2", "B3", "B4", "B5", "B6"})'
+        new_count='self.assertEqual(len(rules), 33)  # 27 legacy + 6 B6 ablations'
+        if old_families in src and old_count in src:
+            test_path.write_text(
+                src.replace(old_families,new_families,1).replace(old_count,new_count,1),
+                encoding="utf-8")
+        elif new_families not in src or new_count not in src:
+            raise RuntimeError("BASE_VERSION_MISMATCH: legacy rule-grid assertions changed")
+
     print("B6 source integrated; run full tests before merge.")
 
 if __name__=="__main__":

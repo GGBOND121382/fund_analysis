@@ -30,7 +30,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add fundkit config/policy_params.json scripts/install_v11_overlay.py tests/test_v11.py docs/V11_B6_OVERLAY.md
+          git add fundkit config/policy_params.json scripts/install_v11_overlay.py tests/test_v11.py tests/test_joint_optimizer.py docs/V11_B6_OVERLAY.md
           if ! git diff --cached --quiet; then
             git commit -m "feat: integrate verified B6 source from pinned v1.1 bundle"
             git push origin HEAD:codex/fund-analysis-v1.1-dynamic-b6-20261111
