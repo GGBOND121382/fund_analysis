@@ -238,3 +238,53 @@ class TestReturnForecast(unittest.TestCase):
         x=conservative_excess_return(rows,ds[-1],annual_cash_return=.01,paths=6)
         self.assertEqual(x['status'],'ESTIMATED_RESEARCH_ONLY')
         self.assertLess(x['excess_q05'],0)
+
+
+class TestV11ResearchCalibration(unittest.TestCase):
+    def test_grid_small_registered_and_cash_comparable(self):
+        from fundkit.v11_ablation import build_ablation_rules
+        rows = build_ablation_rules()
+        self.assertEqual(len(rows), 9)
+        self.assertEqual(len(set(r['rule_id'] for r in rows)), len(rows))
+        self.assertTrue(all(
+            r['params']['B6']['cash_reserve_weight'] == 0.0 for r in rows))
+        self.assertEqual({r['params']['B6']['base_fraction'] for r in rows},
+                         {0.5, 0.75, 1.0})
+
+    def test_expired_cash_release_requires_asof_risk_pass(self):
+        cash = DeferredCashLedger()
+        cfg = TimingConfig(base_fraction=.5, release_fraction=0.0,
+                           deferred_horizon_days=2, cash_reserve_weight=0)
+        cash.begin('2026-01-05', 100.)
+        cash.plan(cfg, available_cash=100., total_value=1000.,
+                  risk_pass=False, eligible_signal=False)
+        cash.ack_execution('2026-01-05', [])
+        cash.begin('2026-01-06', 0.)
+        cash.plan(cfg, available_cash=100., total_value=1000.,
+                  risk_pass=False, eligible_signal=False)
+        cash.ack_execution('2026-01-06', [])
+        cash.begin('2026-01-07', 0.)
+        blocked = cash.plan(cfg, available_cash=100., total_value=1000.,
+                            risk_pass=False, eligible_signal=False)
+        self.assertTrue(blocked['expired_review_required'])
+        self.assertEqual(blocked['approved_buy_cny'], 0.)
+        cash.ack_execution('2026-01-07', [])
+        cash.begin('2026-01-08', 0.)
+        approved = cash.plan(cfg, available_cash=100., total_value=1000.,
+                             risk_pass=True, eligible_signal=False)
+        self.assertEqual(approved['approved_buy_cny'], 100.)
+        self.assertEqual(approved['expired_release_approved_cny'], 100.)
+        cash.ack_execution('2026-01-08',
+                           [{'date':'2026-01-08','event':'BUY','amount':100.}])
+        self.assertAlmostEqual(cash.total, 0.)
+
+    def test_protocols_are_multi_month_and_non_overlapping(self):
+        from scripts.run_v11_exploratory import PROTOCOLS
+        from fundkit.joint_optimizer import build_rolling_folds
+        d = pd.bdate_range('2024-08-16', periods=507)
+        halfyear = build_rolling_folds(d, **PROTOCOLS['halfyear'])
+        self.assertEqual(halfyear[0]['n_test'], 126)
+        quarter = build_rolling_folds(d, **PROTOCOLS['quarterly'])
+        self.assertEqual(len(quarter), 2)
+        self.assertLess(quarter[0]['test'][1], quarter[1]['test'][0])
+        self.assertEqual(quarter[1]['n_test'], 63)
