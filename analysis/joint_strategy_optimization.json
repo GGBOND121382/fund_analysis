@@ -1,0 +1,16 @@
+{
+  "model_version": "joint-strategy-v1.0.1",
+  "asof": "2026-11-11",
+  "objective": {
+    "annualized_net_return_strictly_gt": 0.05,
+    "portfolio_mdd_lte": 0.04,
+    "priority": "drawdown_first"
+  },
+  "status": "DATA_BLOCKED",
+  "reason": "INSUFFICIENT_HISTORY: 需要至少 1008 个共同交易日，实际 507",
+  "trade_ready": false,
+  "research_only": true,
+  "limits": [
+    "未运行有效回测；不得复用旧版报告作为本次结果"
+  ]
+}

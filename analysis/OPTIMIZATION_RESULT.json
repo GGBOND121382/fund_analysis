@@ -1,27 +1,34 @@
 {
-  "asof": "2026-11-10T23:26:13.832418+08:00",
+  "asof": "2026-11-11T04:53:22.218829+08:00",
   "objective": {
     "annualized_net_return_strictly_gt": 0.05,
     "portfolio_mdd_lte": 0.04,
-    "priority": "drawdown_first"
+    "priority": "drawdown_and_return_constraints_then_sharpe"
   },
-  "code_version": "bec32bd",
+  "code_version": "3563f76",
   "joint_strategy_optimization": {
+    "model_version": "joint-strategy-v1.0.1",
+    "asof": "2026-11-11",
+    "objective": {
+      "annualized_net_return_strictly_gt": 0.05,
+      "portfolio_mdd_lte": 0.04,
+      "priority": "drawdown_first"
+    },
     "status": "DATA_BLOCKED",
     "reason": "INSUFFICIENT_HISTORY: 需要至少 1008 个共同交易日，实际 507",
-    "available_common_days": 507,
-    "required_common_days": 1008,
-    "binding_constraint": "021559 成立日 2024-08-13（全部13只持仓共同历史起点）",
-    "unblock_estimate": "约 2028-09（021559 满 1008 个共同交易日）",
-    "note": "CLI 安全阈值 train/val/test 各 ≥252 交易日，不放宽"
-  },
-  "weight_research_candidate": {
-    "status": "SCENARIO_CRITERIA_MET_UNVALIDATED",
     "trade_ready": false,
     "research_only": true,
-    "data_start": "2025-08-29",
+    "limits": [
+      "未运行有效回测；不得复用旧版报告作为本次结果"
+    ]
+  },
+  "weight_research_candidate": {
+    "status": "RETURN_TARGET_UNMET",
+    "trade_ready": false,
+    "research_only": true,
+    "data_start": "2024-08-16",
     "data_end": "2026-11-05",
-    "n_joint_observations": 277,
+    "n_joint_observations": 507,
     "codes": [
       "710301",
       "004400",
@@ -38,40 +45,188 @@
       "019441"
     ],
     "weights": {
-      "710301": 0.0023519768,
-      "004400": 0.362724305,
-      "021559": 0.5779765639,
-      "014846": 0.0333664438,
-      "000218": 0.004100556,
-      "110020": 0.004675396,
-      "096001": 0.0023432842,
-      "017641": 0.0010231977,
-      "016452": 0.0009941905,
-      "019736": 0.0004554549,
-      "019172": 0.0004555574,
-      "539001": 0.0004555574,
-      "019441": 0.0002278043,
-      "cash": 0.0088497119
+      "710301": 0.3823948005,
+      "004400": 0.2493375143,
+      "021559": 0.2091602507,
+      "014846": 0.0051804987,
+      "000218": 0.0518531101,
+      "110020": 0.0024249443,
+      "096001": 0.005701417,
+      "017641": 0.018328246,
+      "016452": 9.175e-07,
+      "019736": 0.0171142336,
+      "019172": 0.0050845075,
+      "539001": 0.0054234029,
+      "019441": 0.0479826876,
+      "cash": 1.34693e-05
     },
     "candidate_count_evaluated": 2416,
-    "risk_feasible_candidate_count": 960,
-    "historical_mdd": 0.007509691458350787,
-    "scenario_mdd_p95": 0.008229145049330465,
-    "scenario_return_q25": 0.061246134349338066,
-    "independent_scenario_mdd_p95": 0.008467901177380865,
-    "independent_scenario_return_q25": 0.060558786685642685,
-    "turnover_proxy": 0.6119736720605227,
-    "risk_budget": 0.04,
-    "frozen_current_weights": {
-      "110020": 0.004675395972132121,
-      "096001": 0.002343284189435228,
-      "017641": 0.0010231977088571251,
-      "016452": 0.0009941904509952102,
-      "019736": 0.00045545494808982073,
-      "019172": 0.00045555744723420913,
-      "539001": 0.00045555744723420913,
-      "019441": 0.00022780434840320168
+    "risk_feasible_candidate_count": 18,
+    "historical_mdd": 0.017337021126997754,
+    "scenario_mdd_p95": 0.022752779662059863,
+    "scenario_return_q25": 0.05728639462271162,
+    "robust_return_lcb": 0.03452711456658707,
+    "robust_return_score": 0.03452711456658707,
+    "historical_sharpe": 1.795528989068239,
+    "scenario_sharpe_q25": 1.3945381125706784,
+    "scenario_sharpe_median": 1.9397276936779937,
+    "independent_scenario_sharpe_q25": 1.3792772182863833,
+    "independent_scenario_sharpe_median": 1.9813207774882589,
+    "annual_risk_free_rate_assumption": 0.02,
+    "robust_return_estimates": {
+      "710301": {
+        "n": 507,
+        "sample_mean_annual": 0.059506559031525776,
+        "prior_mean_annual": 0.05542556467367153,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.03317729565552051,
+        "annual_mean_se": 0.023390379799284964,
+        "shrunk_mean_annual": 0.05747211674036995,
+        "robust_lcb_annual": 0.03408173694108499,
+        "category": "bond"
+      },
+      "004400": {
+        "n": 507,
+        "sample_mean_annual": 0.04115040926552447,
+        "prior_mean_annual": 0.05542556467367153,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.008785505924653582,
+        "annual_mean_se": 0.006193883987416621,
+        "shrunk_mean_annual": 0.048266807213799556,
+        "robust_lcb_annual": 0.04207292322638294,
+        "category": "bond"
+      },
+      "021559": {
+        "n": 507,
+        "sample_mean_annual": 0.05134457031581729,
+        "prior_mean_annual": 0.05542556467367153,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.02217047316986572,
+        "annual_mean_se": 0.015630441768291876,
+        "shrunk_mean_annual": 0.053379012606973114,
+        "robust_lcb_annual": 0.03774857083868124,
+        "category": "bond"
+      },
+      "014846": {
+        "n": 507,
+        "sample_mean_annual": 0.07198817809942915,
+        "prior_mean_annual": 0.05542556467367153,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.038870030590963715,
+        "annual_mean_se": 0.027403824222821588,
+        "shrunk_mean_annual": 0.0637314449969743,
+        "robust_lcb_annual": 0.03632762077415272,
+        "category": "bond"
+      },
+      "000218": {
+        "n": 507,
+        "sample_mean_annual": 0.22930520361284715,
+        "prior_mean_annual": 0.15664809356066356,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.2371902005001793,
+        "annual_mean_se": 0.16722185352212682,
+        "shrunk_mean_annual": 0.19308444845330164,
+        "robust_lcb_annual": 0.02586259493117482,
+        "category": "gold"
+      },
+      "110020": {
+        "n": 507,
+        "sample_mean_annual": 0.15931794335058128,
+        "prior_mean_annual": 0.15945548901283052,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.18791567225208924,
+        "annual_mean_se": 0.13248273728672488,
+        "shrunk_mean_annual": 0.15938651210802304,
+        "robust_lcb_annual": 0.02690377482129816,
+        "category": "equity_index"
+      },
+      "096001": {
+        "n": 507,
+        "sample_mean_annual": 0.07340772357791871,
+        "prior_mean_annual": 0.15945548901283052,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.1424594947192832,
+        "annual_mean_se": 0.10043560277173494,
+        "shrunk_mean_annual": 0.11630393898760769,
+        "robust_lcb_annual": 0.015868336215872747,
+        "category": "equity_index"
+      },
+      "017641": {
+        "n": 507,
+        "sample_mean_annual": 0.13471212205993774,
+        "prior_mean_annual": 0.15945548901283052,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.15521479556875076,
+        "annual_mean_se": 0.10942823841090718,
+        "shrunk_mean_annual": 0.14704709430945107,
+        "robust_lcb_annual": 0.037618855898543885,
+        "category": "equity_index"
+      },
+      "016452": {
+        "n": 507,
+        "sample_mean_annual": 0.15959303467507974,
+        "prior_mean_annual": 0.15945548901283052,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.21765387969412384,
+        "annual_mean_se": 0.15344851984602068,
+        "shrunk_mean_annual": 0.159524465917638,
+        "robust_lcb_annual": 0.006075946071617322,
+        "category": "equity_index"
+      },
+      "019736": {
+        "n": 507,
+        "sample_mean_annual": 0.1648402559531787,
+        "prior_mean_annual": 0.15945548901283052,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.21645999059388688,
+        "annual_mean_se": 0.15260681412706398,
+        "shrunk_mean_annual": 0.1621558617514621,
+        "robust_lcb_annual": 0.009549047624398121,
+        "category": "equity_index"
+      },
+      "019172": {
+        "n": 507,
+        "sample_mean_annual": 0.1666978573828163,
+        "prior_mean_annual": 0.15945548901283052,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.21436797199707525,
+        "annual_mean_se": 0.1511319166539648,
+        "shrunk_mean_annual": 0.1630874185514881,
+        "robust_lcb_annual": 0.011955501897523285,
+        "category": "equity_index"
+      },
+      "539001": {
+        "n": 507,
+        "sample_mean_annual": 0.15664809356066356,
+        "prior_mean_annual": 0.15945548901283052,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.21368870283998967,
+        "annual_mean_se": 0.1506530239878735,
+        "shrunk_mean_annual": 0.15804762601159544,
+        "robust_lcb_annual": 0.007394602023721941,
+        "category": "equity_index"
+      },
+      "019441": {
+        "n": 507,
+        "sample_mean_annual": 0.16176381436622383,
+        "prior_mean_annual": 0.15945548901283052,
+        "shrinkage_weight": 0.5014836795252225,
+        "annual_volatility": 0.2139283268988713,
+        "annual_mean_se": 0.15082196173989776,
+        "shrunk_mean_annual": 0.16061307650459156,
+        "robust_lcb_annual": 0.009791114764693798,
+        "category": "equity_index"
+      }
     },
+    "concentration_guardrail": {
+      "max_single_fund_weight": 0.4,
+      "status": "GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED"
+    },
+    "independent_scenario_mdd_p95": 0.022228108913779705,
+    "independent_scenario_return_q25": 0.0571217171096447,
+    "turnover_proxy": 0.34686841174863536,
+    "risk_budget": 0.04,
+    "frozen_current_weights": {},
     "return_target": 0.05,
     "method": "fixed-weight joint historical + moving-block bootstrap, risk-first reproducible search",
     "limits": [
@@ -95,28 +250,31 @@
       "candidate_count": 2400,
       "batch_size": 80,
       "min_observations": 252,
-      "max_single_fund_weight": 0.6,
+      "max_single_fund_weight": 0.4,
       "min_cash_weight": 0.0,
       "annual_cash_return": 0.0,
-      "turnover_cost_rate": 0.0,
-      "seed": 7
+      "annual_risk_free_rate": 0.02,
+      "turnover_cost_rate": 0.003,
+      "return_prior_shrinkage_days": 504,
+      "return_uncertainty_z": 1.0,
+      "seed": 42
     },
-    "asof": "2026-11-10T20:27:01.195496+08:00",
-    "regime_start": "2025-08-29",
+    "asof": "2026-11-11T15:00:00+08:00",
+    "regime_start": null,
     "data_quality": "PUBLISHED_AT_RULE_INFERRED; DIVIDEND_SOURCE_REQUIRES_AUDIT",
     "account_history": "SIMULATED_LOTS_NO_REAL_ACCOUNT_MDD",
     "portfolio_scope": "ALL_CURRENT_HOLDINGS_REQUIRED; EXISTING_INDEX_EXPOSURE_FROZEN",
-    "style_regime_verification": "USER_PROVIDED_CUTOFF_NOT_AUTOMATICALLY_VERIFIED"
+    "style_regime_verification": "MISSING"
   },
   "optimization_variables_audit": {
-    "全部基金目标权重": "已纳入（weight_optimizer 候选池，含现金，权重守恒校验）",
-    "每日定投金额": "未纳入：固定为账户预算 1005 元/日（账户属性，非自由变量）",
-    "再平衡触发阈值": "已纳入（B3 weight_trigger ∈ {1%,2%}）",
-    "止盈规则": "已纳入（B3 destination_fraction ∈ {25%,50%} 部分止盈）",
-    "止损规则": "已纳入（B5 债券/黄金分层 pause 阈值）",
-    "暂停定投条件": "已纳入（B4 pause_cdar95、B5 fund_pause）",
-    "重新入场条件": "已纳入（B4 reenter_cdar95_low+cooldown、B5 reenter_fraction）",
-    "费率情景": "已纳入联合搜索 fee_stress（0/30bp 统一费率假设；真实费率 MISSING）"
+    "全部基金目标权重": "已纳入（债券、黄金、沪深300、标普500、纳斯达克指数基金均作为基金资产类别；不含直接个股）",
+    "每日定投金额": "固定为账户预算（账户属性，不作为自由优化变量）",
+    "再平衡规则": "已纳入（B3 权重偏离阈值与部分赎回比例）",
+    "止盈规则": "已纳入（B3 部分再平衡 + B5 基金成本基础上的移动止盈）",
+    "止损规则": "已纳入（B5 基金级动态暂停/分批赎回 + 组合回撤保护）",
+    "Sharpe": "已纳入（收益/MDD约束达标候选按费后情景Sharpe Q25排序；无风险利率默认2%假设）",
+    "暂停/重新入场": "已纳入（B4 风格CDaR迟滞 + B5 回撤恢复和冷却期）",
+    "申赎费用": "首次反事实建仓、后续申购和赎回均计入统一费率压力情景；实际费率表仍缺失"
   },
-  "verdict": "JOINT_OPTIMIZATION_BLOCKED：联合优化因共同历史不足未运行；权重候选为 SCENARIO_CRITERIA_MET_UNVALIDATED（情景内达标但未经独立样本外验证），不得转为实盘。最终可行性判定以 OOS_BACKTEST_REPORT 的 NO_FEASIBLE_STRATEGY/帕累托前沿为准。"
+  "verdict": "JOINT_OPTIMIZATION_BLOCKED：联合优化数据不足或运行被阻断；不得转为实盘。"
 }

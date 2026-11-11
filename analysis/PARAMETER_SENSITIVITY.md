@@ -1,96 +1,98 @@
 # PARAMETER_SENSITIVITY — 参数敏感性
 
-生成: 2026-11-10T23:26:13.832418+08:00｜代码版本: bec32bd
+生成: 2026-11-11T04:53:22.218829+08:00｜代码版本: 3563f76
 
 ## 1. 权重优化对约束/种子/回看窗的敏感性
 
-| 变体 | 状态 | 场景MDD P95 | 场景一年收益Q25 | 前三大权重 |
-|---|---|---|---|---|
-| base | SCENARIO_CRITERIA_MET_UNVALIDATED | 1.07% | 6.09% | 021559 60%, 004400 26%, 014846 8% |
-| lb504 | SCENARIO_CRITERIA_MET_UNVALIDATED | 1.07% | 6.09% | 021559 60%, 004400 26%, 014846 8% |
-| mw0.4 | SCENARIO_CRITERIA_MET_UNVALIDATED | 0.77% | 5.26% | 004400 40%, 021559 40%, 014846 11% |
-| mw0.8 | SCENARIO_CRITERIA_MET_UNVALIDATED | 1.51% | 6.70% | 021559 80%, 004400 9%, cash 6% |
-| seed1 | SCENARIO_CRITERIA_MET_UNVALIDATED | 1.17% | 5.98% | 021559 60%, 004400 27%, 014846 5% |
-| seed7 | SCENARIO_CRITERIA_MET_UNVALIDATED | 0.82% | 6.12% | 021559 58%, 004400 36%, 014846 3% |
+| 变体 | 状态 | 场景MDD P95 | 场景收益Q25 | Sharpe Q25 | 前三大权重 |
+|---|---|---|---|---|---|
 
-**结论：权重对种子与回看窗稳健，但稳定地顶格集中**——021559 始终顶到单基金上限（0.4/0.6/0.8 随约束同步放大）。这说明结果由 021559 近一年 9.8% 的区间收益驱动，是约束边界解而非内点最优：上限约束在起作用，情景达标的可信度取决于该基金的近期表现能否持续，而这正是样本外验证（被 DATA_BLOCKED）要回答的问题。
+本次权重候选（仅情景筛选，不是实盘目标）：710301 38.2%、004400 24.9%、021559 20.9%；现金 0.0%。 Sharpe Q25=1.39。
 
 ## 2. 策略规则网格敏感性（validate 全部试验，val 阶段）
 
 | 策略族 | 参数 | fold | val CAGR | val MDD | val Sharpe |
 |---|---|---|---|---|---|
-| B0 | {} | 0 | 6.10% | 0.39% | 3.46 |
-| B0 | {} | 1 | 5.28% | 0.64% | 2.85 |
-| B0 | {} | 2 | 6.10% | 0.39% | 3.46 |
-| B0 | {} | 3 | 1.96% | 1.27% | 0.01 |
-| B1 | {} | 0 | 5.00% | 0.34% | 3.21 |
-| B1 | {} | 1 | 4.24% | 0.44% | 2.56 |
-| B1 | {} | 2 | 5.00% | 0.34% | 3.21 |
-| B1 | {} | 3 | 0.70% | 1.11% | -0.43 |
-| B2 | {"cash": 0.05} | 0 | 3.90% | 0.28% | 3.24 |
-| B2 | {"cash": 0.0} | 0 | 4.07% | 0.30% | 3.37 |
-| B2 | {"cash": 0.1} | 0 | 3.77% | 0.27% | 3.16 |
-| B2 | {"cash": 0.05} | 1 | 4.50% | 0.07% | 6.99 |
-| B2 | {"cash": 0.0} | 1 | 4.73% | 0.08% | 7.28 |
-| B2 | {"cash": 0.1} | 1 | 4.32% | 0.08% | 6.67 |
-| B2 | {"cash": 0.05} | 2 | 3.90% | 0.28% | 3.24 |
-| B2 | {"cash": 0.0} | 2 | 4.07% | 0.30% | 3.37 |
-| B2 | {"cash": 0.1} | 2 | 3.77% | 0.27% | 3.16 |
-| B2 | {"cash": 0.05} | 3 | 0.51% | 1.42% | -0.38 |
-| B2 | {"cash": 0.0} | 3 | 0.52% | 1.50% | -0.36 |
-| B2 | {"cash": 0.1} | 3 | 0.48% | 1.37% | -0.41 |
-| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.02} | 0 | 4.07% | 0.30% | 3.37 |
-| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.05} | 0 | 4.07% | 0.30% | 3.37 |
-| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.02} | 0 | 4.07% | 0.30% | 3.37 |
-| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.05} | 0 | 4.07% | 0.30% | 3.37 |
-| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.02} | 1 | 4.73% | 0.08% | 7.28 |
-| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.05} | 1 | 4.73% | 0.08% | 7.28 |
-| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.02} | 1 | 4.73% | 0.08% | 7.28 |
-| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.05} | 1 | 4.73% | 0.08% | 7.28 |
-| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.02} | 2 | 4.07% | 0.30% | 3.37 |
-| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.05} | 2 | 4.07% | 0.30% | 3.37 |
-| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.02} | 2 | 4.07% | 0.30% | 3.37 |
-| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.05} | 2 | 4.07% | 0.30% | 3.37 |
-| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.02} | 3 | 0.52% | 1.50% | -0.36 |
-| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.05} | 3 | 0.52% | 1.50% | -0.36 |
-| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.02} | 3 | 0.52% | 1.50% | -0.36 |
-| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.05} | 3 | 0.52% | 1.50% | -0.36 |
-| B4 | {"pause_cdar95": 0.01} | 0 | 4.07% | 0.30% | 3.37 |
-| B4 | {"pause_cdar95": 0.02} | 0 | 4.07% | 0.30% | 3.37 |
-| B4 | {"pause_cdar95": 0.03} | 0 | 4.07% | 0.30% | 3.37 |
-| B4 | {"pause_cdar95": 0.01} | 1 | 4.73% | 0.08% | 7.28 |
-| B4 | {"pause_cdar95": 0.02} | 1 | 4.73% | 0.08% | 7.28 |
-| B4 | {"pause_cdar95": 0.03} | 1 | 4.73% | 0.08% | 7.28 |
-| B4 | {"pause_cdar95": 0.01} | 2 | 4.07% | 0.30% | 3.37 |
-| B4 | {"pause_cdar95": 0.02} | 2 | 4.07% | 0.30% | 3.37 |
-| B4 | {"pause_cdar95": 0.03} | 2 | 4.07% | 0.30% | 3.37 |
-| B4 | {"pause_cdar95": 0.01} | 3 | 0.52% | 1.50% | -0.36 |
-| B4 | {"pause_cdar95": 0.02} | 3 | 0.52% | 1.50% | -0.36 |
-| B4 | {"pause_cdar95": 0.03} | 3 | 0.52% | 1.50% | -0.36 |
-| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.01} | 0 | 4.05% | 0.30% | 3.34 |
-| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.02} | 0 | 4.05% | 0.30% | 3.34 |
-| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.01} | 0 | 4.06% | 0.30% | 3.34 |
-| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.02} | 0 | 4.06% | 0.30% | 3.34 |
-| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.01} | 1 | 4.74% | 0.08% | 7.49 |
-| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.02} | 1 | 4.74% | 0.08% | 7.49 |
-| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.01} | 1 | 4.74% | 0.08% | 7.49 |
-| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.02} | 1 | 4.74% | 0.08% | 7.49 |
-| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.01} | 2 | 4.05% | 0.30% | 3.34 |
-| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.02} | 2 | 4.05% | 0.30% | 3.34 |
-| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.01} | 2 | 4.06% | 0.30% | 3.34 |
-| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.02} | 2 | 4.06% | 0.30% | 3.34 |
-| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.01} | 3 | 0.16% | 1.49% | -0.49 |
-| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.02} | 3 | 0.16% | 1.49% | -0.49 |
-| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.01} | 3 | 0.52% | 1.50% | -0.36 |
-| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.02} | 3 | 0.52% | 1.50% | -0.36 |
+| B0 | {} | 0 | 5.15% | 0.39% | 2.46 |
+| B0 | {} | 1 | 4.19% | 0.66% | 1.77 |
+| B0 | {} | 2 | 5.15% | 0.39% | 2.46 |
+| B0 | {} | 3 | 0.96% | 1.41% | -0.28 |
+| B1 | {} | 0 | 4.12% | 0.35% | 2.03 |
+| B1 | {} | 1 | 3.22% | 0.46% | 1.26 |
+| B1 | {} | 2 | 4.12% | 0.35% | 2.03 |
+| B1 | {} | 3 | -0.23% | 1.24% | -0.75 |
+| B2 | {"cash": 0.05} | 0 | 3.04% | 0.30% | 1.39 |
+| B2 | {"cash": 0.0} | 0 | 3.18% | 0.32% | 1.53 |
+| B2 | {"cash": 0.1} | 0 | 2.94% | 0.30% | 1.29 |
+| B2 | {"cash": 0.05} | 1 | 3.53% | 0.30% | 2.59 |
+| B2 | {"cash": 0.0} | 1 | 3.72% | 0.31% | 2.81 |
+| B2 | {"cash": 0.1} | 1 | 3.39% | 0.30% | 2.39 |
+| B2 | {"cash": 0.05} | 2 | 3.04% | 0.30% | 1.39 |
+| B2 | {"cash": 0.0} | 2 | 3.18% | 0.32% | 1.53 |
+| B2 | {"cash": 0.1} | 2 | 2.94% | 0.30% | 1.29 |
+| B2 | {"cash": 0.05} | 3 | -0.41% | 1.58% | -0.62 |
+| B2 | {"cash": 0.0} | 3 | -0.43% | 1.66% | -0.60 |
+| B2 | {"cash": 0.1} | 3 | -0.40% | 1.50% | -0.66 |
+| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.02} | 0 | 3.18% | 0.32% | 1.53 |
+| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.05} | 0 | 3.18% | 0.32% | 1.53 |
+| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.02} | 0 | 3.18% | 0.32% | 1.53 |
+| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.05} | 0 | 3.18% | 0.32% | 1.53 |
+| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.02} | 1 | 3.72% | 0.31% | 2.81 |
+| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.05} | 1 | 3.72% | 0.31% | 2.81 |
+| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.02} | 1 | 3.72% | 0.31% | 2.81 |
+| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.05} | 1 | 3.72% | 0.31% | 2.81 |
+| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.02} | 2 | 3.18% | 0.32% | 1.53 |
+| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.05} | 2 | 3.18% | 0.32% | 1.53 |
+| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.02} | 2 | 3.18% | 0.32% | 1.53 |
+| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.05} | 2 | 3.18% | 0.32% | 1.53 |
+| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.02} | 3 | -0.43% | 1.66% | -0.60 |
+| B3 | {"destination_fraction": 0.25, "weight_trigger": 0.05} | 3 | -0.43% | 1.66% | -0.60 |
+| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.02} | 3 | -0.43% | 1.66% | -0.60 |
+| B3 | {"destination_fraction": 0.5, "weight_trigger": 0.05} | 3 | -0.43% | 1.66% | -0.60 |
+| B4 | {"pause_cdar95": 0.01} | 0 | 3.18% | 0.32% | 1.53 |
+| B4 | {"pause_cdar95": 0.02} | 0 | 3.18% | 0.32% | 1.53 |
+| B4 | {"pause_cdar95": 0.03} | 0 | 3.18% | 0.32% | 1.53 |
+| B4 | {"pause_cdar95": 0.01} | 1 | 3.72% | 0.31% | 2.81 |
+| B4 | {"pause_cdar95": 0.02} | 1 | 3.72% | 0.31% | 2.81 |
+| B4 | {"pause_cdar95": 0.03} | 1 | 3.72% | 0.31% | 2.81 |
+| B4 | {"pause_cdar95": 0.01} | 2 | 3.18% | 0.32% | 1.53 |
+| B4 | {"pause_cdar95": 0.02} | 2 | 3.18% | 0.32% | 1.53 |
+| B4 | {"pause_cdar95": 0.03} | 2 | 3.18% | 0.32% | 1.53 |
+| B4 | {"pause_cdar95": 0.01} | 3 | -0.43% | 1.66% | -0.60 |
+| B4 | {"pause_cdar95": 0.02} | 3 | -0.43% | 1.66% | -0.60 |
+| B4 | {"pause_cdar95": 0.03} | 3 | -0.43% | 1.66% | -0.60 |
+| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.01} | 0 | 3.18% | 0.32% | 1.53 |
+| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.02} | 0 | 3.18% | 0.32% | 1.53 |
+| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.01} | 0 | 3.18% | 0.32% | 1.53 |
+| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.02} | 0 | 3.18% | 0.32% | 1.53 |
+| B5 | {"take_profit_activation_by_category": {"bond": 0.02, "equity_index": 0.1, "gold": 0.06}, "take_profit_redeem_fraction": 0.25, "take_profit_trailing_drawdown_by_category": {"bond": 0.0075, "equity_index": 0.05, "gold": 0.03}} | 0 | 3.16% | 0.32% | 1.50 |
+| B5 | {"take_profit_activation_by_category": {"bond": 0.03, "equity_index": 0.12, "gold": 0.08}, "take_profit_redeem_fraction": 0.25, "take_profit_trailing_drawdown_by_category": {"bond": 0.0075, "equity_index": 0.05, "gold": 0.03}} | 0 | 3.16% | 0.32% | 1.50 |
+| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.01} | 1 | 3.75% | 0.31% | 2.95 |
+| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.02} | 1 | 3.75% | 0.31% | 2.95 |
+| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.01} | 1 | 3.75% | 0.31% | 2.95 |
+| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.02} | 1 | 3.75% | 0.31% | 2.95 |
+| B5 | {"take_profit_activation_by_category": {"bond": 0.02, "equity_index": 0.1, "gold": 0.06}, "take_profit_redeem_fraction": 0.25, "take_profit_trailing_drawdown_by_category": {"bond": 0.0075, "equity_index": 0.05, "gold": 0.03}} | 1 | 3.74% | 0.31% | 2.99 |
+| B5 | {"take_profit_activation_by_category": {"bond": 0.03, "equity_index": 0.12, "gold": 0.08}, "take_profit_redeem_fraction": 0.25, "take_profit_trailing_drawdown_by_category": {"bond": 0.0075, "equity_index": 0.05, "gold": 0.03}} | 1 | 3.75% | 0.31% | 2.99 |
+| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.01} | 2 | 3.18% | 0.32% | 1.53 |
+| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.02} | 2 | 3.18% | 0.32% | 1.53 |
+| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.01} | 2 | 3.18% | 0.32% | 1.53 |
+| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.02} | 2 | 3.18% | 0.32% | 1.53 |
+| B5 | {"take_profit_activation_by_category": {"bond": 0.02, "equity_index": 0.1, "gold": 0.06}, "take_profit_redeem_fraction": 0.25, "take_profit_trailing_drawdown_by_category": {"bond": 0.0075, "equity_index": 0.05, "gold": 0.03}} | 2 | 3.16% | 0.32% | 1.50 |
+| B5 | {"take_profit_activation_by_category": {"bond": 0.03, "equity_index": 0.12, "gold": 0.08}, "take_profit_redeem_fraction": 0.25, "take_profit_trailing_drawdown_by_category": {"bond": 0.0075, "equity_index": 0.05, "gold": 0.03}} | 2 | 3.16% | 0.32% | 1.50 |
+| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.01} | 3 | -3.01% | 1.69% | -2.32 |
+| B5 | {"fund_pause_drawdown": 0.02, "internal_drawdown_margin": 0.02} | 3 | -3.01% | 1.69% | -2.32 |
+| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.01} | 3 | -1.93% | 1.76% | -1.28 |
+| B5 | {"fund_pause_drawdown": 0.03, "internal_drawdown_margin": 0.02} | 3 | -1.93% | 1.76% | -1.28 |
+| B5 | {"take_profit_activation_by_category": {"bond": 0.02, "equity_index": 0.1, "gold": 0.06}, "take_profit_redeem_fraction": 0.25, "take_profit_trailing_drawdown_by_category": {"bond": 0.0075, "equity_index": 0.05, "gold": 0.03}} | 3 | -3.01% | 1.69% | -2.32 |
+| B5 | {"take_profit_activation_by_category": {"bond": 0.03, "equity_index": 0.12, "gold": 0.08}, "take_profit_redeem_fraction": 0.25, "take_profit_trailing_drawdown_by_category": {"bond": 0.0075, "equity_index": 0.05, "gold": 0.03}} | 3 | -3.01% | 1.69% | -2.32 |
 
-选参规则：val 阶段风险优先（先 MDD≤4%，再 CAGR 最大），选中参数冻结后仅在 test 复跑（见 OOS_BACKTEST_REPORT 第3节）。
+选参规则：验证期先检查年化收益>5%且MDD≤4%；同时达标时按Sharpe优先，再比较CAGR/MDD。若收益目标未达标但MDD可行，则优先提高CAGR；若MDD也不达标，优先选择MDD较小的诊断候选。选中参数冻结后仅在test复跑。
 
 ## 3. 费用敏感性
 
-- 真实申赎费率 MISSING；validate 默认费率 0（毛口径）；
-- 联合优化设计为 0/30bp 统一费率双情景取最差（fee_stress），因联合优化 DATA_BLOCKED 未实际运行；
-- 以组合近一年换手≈0（买入持有+小额定投）估算，30bp 单边对年化拖累 <0.1%，不改变 NO_FEASIBLE 的方向性结论（缺口在收益端，约 1.7 个百分点）。
+- 真实逐基金申购/赎回费率仍缺失，30/60bp仅为统一单边压力假设；
+- v1.0.1 将首次反事实建仓费、后续申购费和赎回费统一计入模拟净值、Sharpe、XIRR和换手；
+- 不得把统一费率压力情景等同于真实账户净收益。
 
 ---
 状态: RESEARCH_ONLY
