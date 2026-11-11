@@ -22,6 +22,7 @@ class JointSearchConfig:
     min_test_days: int = 252
     fee_stress_rates: tuple[float, ...] = (0.003, 0.006)
     seed: int = 42
+    evaluate_ablation_on_test: bool = False
 
     def validate(self):
         if not (-1 < self.target_annual_return < 2):
@@ -285,8 +286,24 @@ def optimize_joint_fold(weight_candidates: list[dict], rule_candidates: list[dic
         status = "TEST_WINDOW_CRITERIA_MET_NOT_GENERALIZED"
     else:
         status = "OOS_TARGET_UNMET"
+    # Diagnostic ablation only, with EXACT SAME validation-selected weights.
+    # Do not select the winner using this test set.
+    ablation_test = []
+    if cfg.evaluate_ablation_on_test:
+        for rule in rule_candidates:
+            fee_rows = []
+            for fee in cfg.fee_stress_rates:
+                metrics = evaluator(selected["weights"], rule, test_window, float(fee))
+                fee_rows.append({"uniform_fee_rate_assumption": float(fee), **metrics})
+            ablation_test.append({
+                "rule_id": rule["rule_id"], "family": rule["family"],
+                "params": rule.get("params", {}),
+                "test": _aggregate_fee_metrics(fee_rows),
+            })
     return {
         "status": status,
+        "ablation_test": ablation_test,
+        "ablation_test_not_for_model_selection": True,
         "trade_ready": False,
         "research_only": True,
         "objective": {"annualized_net_return_strictly_gt": cfg.target_annual_return,
