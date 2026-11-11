@@ -1,7 +1,20 @@
 {
   "_comment": "Public safe-default configuration. Replace with parameters selected by your own out-of-sample validation; these are not optimized recommendations.",
   "target_weights": {
-    "cash": 1.0
+    "710301": 0.382395,
+    "004400": 0.249338,
+    "021559": 0.20916,
+    "014846": 0.00518,
+    "000218": 0.051853,
+    "110020": 0.002425,
+    "096001": 0.005701,
+    "017641": 0.018328,
+    "016452": 1e-06,
+    "019736": 0.017114,
+    "019172": 0.005085,
+    "539001": 0.005423,
+    "019441": 0.047983,
+    "cash": 1.3e-05
   },
   "max_fund_weight": 0.4,
   "B3": {
@@ -84,5 +97,6 @@
     "take_profit_redeem_fraction": 0.25,
     "min_profit_after_fee": 0.002,
     "redeem_fee_proxy": 0.003
-  }
+  },
+  "_target_weights_note": "2026-11-11 weight_optimization_research.json 研究候选(RETURN_TARGET_UNMET，未经独立OOS验证)；decision 端 verified=False 不会引用"
 }
