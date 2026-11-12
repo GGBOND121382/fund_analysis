@@ -393,170 +393,133 @@ def generate_weight_candidates(returns: pd.DataFrame,
                                top_k: int = 8,
                                min_l1_distance: float = 0.04,
                                categories: Mapping[str, str] | None = None) -> dict:
-    """生成供外层止盈/止损联合搜索使用的多组目标权重候选。
+    """Solve a deterministic continuous weight frontier; NEVER sample weights.
 
-    与 optimize_target_weights 不同，本函数不只返回单一最优权重，而是保留
-    风险—收益权衡不同的候选，以免外层退出规则只能围绕一个静态组合搜索。
-    候选仅由传入训练窗口生成；不得传入验证/测试日期。
+    Each solution is the global optimum of a finite-scenario LP subject to
+    historical buy-and-hold MDD <=4% and empirical scenario signed-gap CVaR<=0.
+    Exposure floors index a research frontier; they are NOT fitted investment
+    parameters. Cash-only is returned as a separate diagnostic benchmark.
     """
+    from fundkit.convex_portfolio import PortfolioLPConfig, solve_continuous_weights
+
     cfg = cfg or WeightSearchConfig()
     cfg.validate()
     if top_k < 1 or min_l1_distance < 0:
-        raise ValueError("top_k/min_l1_distance 参数非法")
-    Rdf = _validate_returns(returns, cfg)
-    codes = list(Rdf.columns)
-    R = Rdf.to_numpy(float)
+        raise ValueError("top_k/min_l1_distance invalid")
+    df = _validate_returns(returns, cfg)
+    codes = list(df.columns)
+    R = df.to_numpy(float)
     n = len(codes)
-    robust_estimates = estimate_robust_returns(
-        Rdf, categories=categories,
+    estimates = estimate_robust_returns(
+        df, categories=categories,
         prior_shrinkage_days=cfg.return_prior_shrinkage_days,
-        uncertainty_z=cfg.return_uncertainty_z,
-    )
+        uncertainty_z=cfg.return_uncertainty_z)
     unknown = (set(caps or {}) | set(fixed_weights or {})).difference(codes)
     if unknown:
         raise ValueError(f"仓位上限/冻结仓位存在未知基金：{sorted(unknown)}")
-    base = np.array([float((fixed_weights or {}).get(c, 0.0)) for c in codes])
-    upper = np.array([float((caps or {}).get(c, cfg.max_single_fund_weight)) for c in codes])
-    for i, code in enumerate(codes):
-        if code in (fixed_weights or {}):
-            upper[i] = base[i]
-    if (not np.isfinite(base).all() or not np.isfinite(upper).all() or
-            (base < 0).any() or (upper < base).any() or (upper > 1).any() or
-            base.sum() + cfg.min_cash_weight > 1 + 1e-10):
-        raise ValueError("仓位上限/冻结仓位不合法")
-    free_budget = max(0.0, 1.0 - cfg.min_cash_weight - base.sum())
-    cur = np.array([float((current_weights or {}).get(c, 0.0)) for c in codes] +
-                   [float((current_weights or {}).get("cash", 0.0))])
-    if (not np.isfinite(cur).all() or (cur < 0).any() or cur.sum() > 1.000001):
-        raise ValueError("当前权重非法")
-    if cur.sum() < .999999:
-        cur[-1] += 1.0 - cur.sum()
-
-    rng = np.random.default_rng(cfg.seed)
-    rows = [np.r_[base, 1.0 - base.sum()]]
-    active = np.flatnonzero(upper > base + 1e-12)
-    for i in active:
-        x = base.copy()
-        x[i] += min(upper[i] - base[i], free_budget)
-        rows.append(np.r_[x, 1.0 - x.sum()])
-    # 当前配置投影：只保留允许新增的部分，冻结仓位原样保留。
-    add = np.minimum(np.maximum(cur[:n] - base, 0.0), upper - base)
-    if add.sum() > free_budget and add.sum() > 0:
-        add *= free_budget / add.sum()
-    x = base + add
-    rows.append(np.r_[x, 1.0 - x.sum()])
-    # 等比例可交易资产候选。
-    if len(active):
-        x = base.copy()
-        room = upper[active] - base[active]
-        remaining = free_budget
-        free = set(active.tolist())
-        while free and remaining > 1e-10:
-            share = remaining / len(free)
-            saturated = []
-            for i in free:
-                inc = min(share, room[np.where(active == i)[0][0]])
-                x[i] += inc
-                remaining -= inc
-                room[np.where(active == i)[0][0]] -= inc
-                if room[np.where(active == i)[0][0]] <= 1e-10:
-                    saturated.append(i)
-            for i in saturated:
-                free.remove(i)
-            if not saturated:
-                break
-        rows.append(np.r_[x, 1.0 - x.sum()])
-    if cfg.candidate_count and len(active):
-        per_alpha = max(1, cfg.candidate_count // 3)
-        for alpha in (.35, 1.0, 2.5):
-            z = rng.dirichlet(np.full(len(active) + 1, alpha), size=per_alpha)
-            xmat = np.tile(base, (len(z), 1))
-            room = upper[active] - base[active]
-            alloc = np.minimum(free_budget * z[:, :-1], room[None, :])
-            xmat[:, active] += alloc
-            rows.extend(np.column_stack([xmat, 1.0 - xmat.sum(axis=1)]))
-    arr = np.asarray(rows, dtype=float)
-    valid = ((arr[:, -1] >= cfg.min_cash_weight - 1e-9) &
-             (arr[:, :n] >= base[None, :] - 1e-9).all(axis=1) &
-             (arr[:, :n] <= upper[None, :] + 1e-9).all(axis=1) &
-             (np.abs(arr.sum(axis=1) - 1.0) <= 1e-7))
-    arr = arr[valid]
-    if not len(arr):
-        raise ValueError("候选权重集合为空")
-    # 去重，避免大量重复的饱和Dirichlet候选浪费外层回测预算。
-    unique = []
-    seen = set()
-    for x in arr:
-        key = tuple(np.round(x, 8))
-        if key not in seen:
-            seen.add(key)
-            unique.append(x)
-    arr = np.asarray(unique)
-    scenarios = _scenarios(R, cfg)
-    (hdd, qdd, qret, turnover, hist_sharpe,
-     scenario_sharpe_q25, scenario_sharpe_median) = _risk_metrics(R, arr, cur, cfg, scenarios)
-    risk = np.maximum(hdd, qdd)
-    records = []
-    for i, x in enumerate(arr):
-        records.append({
-            "weights": {**{c: float(x[j]) for j, c in enumerate(codes)},
-                        "cash": float(x[-1])},
-            "historical_mdd": float(hdd[i]),
-            "scenario_mdd_p95": float(qdd[i]),
-            "scenario_return_q25": float(qret[i]),
-            "historical_sharpe": float(hist_sharpe[i]),
-            "scenario_sharpe_q25": float(scenario_sharpe_q25[i]),
-            "scenario_sharpe_median": float(scenario_sharpe_median[i]),
-            "robust_return_lcb": float(portfolio_return_lcb(
-                {**{c: float(x[j]) for j, c in enumerate(codes)}, "cash": float(x[-1])},
-                robust_estimates, cash_return=cfg.annual_cash_return)),
-            "turnover_proxy": float(turnover[i]),
-            "static_risk_feasible": bool(risk[i] <= cfg.max_drawdown + 1e-12),
-        })
-    feasible = [r for r in records if r["static_risk_feasible"]]
-    # 不因静态权重超限而剔除候选：B3/B5 的退出规则可能改变后续路径风险。
-    # 先保留全体候选中的最低风险、最高收益，再优先补入静态可行候选。
-    pool = records
-    for item in records:
-        item["robust_return_score"] = min(item["scenario_return_q25"], item["robust_return_lcb"])
-    ordered = sorted(pool, key=lambda r: (
-        max(r["historical_mdd"], r["scenario_mdd_p95"]),
-        -r["scenario_sharpe_q25"], -r["robust_return_score"], r["turnover_proxy"]))
-    feasible_ordered = sorted(feasible, key=lambda r: (
-        -r["scenario_sharpe_q25"], -r["robust_return_score"],
-        max(r["historical_mdd"], r["scenario_mdd_p95"]),
-        r["turnover_proxy"]))
-    selected = []
-    def add_diverse(item):
-        vec = np.array([item["weights"][c] for c in codes + ["cash"]])
-        for old in selected:
-            old_vec = np.array([old["weights"][c] for c in codes + ["cash"]])
-            if np.abs(vec - old_vec).sum() < min_l1_distance:
-                return
-        selected.append(item)
-    # 先加入全体候选中最低风险和最高收益的两端点。
-    add_diverse(min(pool, key=lambda r: max(r["historical_mdd"], r["scenario_mdd_p95"])))
-    add_diverse(max(pool, key=lambda r: r["scenario_return_q25"]))
-    # 再加入静态可行集中的高收益点，供外层与退出规则联合评价。
-    for item in feasible_ordered:
-        if len(selected) >= top_k:
-            break
-        add_diverse(item)
-    # 最后按风险优先排序填满候选集。
-    for item in ordered:
-        if len(selected) >= top_k:
-            break
-        add_diverse(item)
+    lower = np.array([float((fixed_weights or {}).get(c,0.)) for c in codes])
+    upper = np.array([float((caps or {}).get(c,cfg.max_single_fund_weight))
+                      for c in codes])
+    for i, c in enumerate(codes):
+        if c in (fixed_weights or {}):
+            upper[i] = lower[i]
+    if (not np.isfinite(lower).all() or not np.isfinite(upper).all() or
+        (lower<0).any() or (upper<lower).any() or (upper>1).any() or
+        lower.sum()+cfg.min_cash_weight>1+1e-10):
+        raise ValueError("DATA_BLOCKED: invalid frozen positions or asset caps")
+    current = np.array([float((current_weights or {}).get(c,0.)) for c in
+                        codes+["cash"]])
+    if not np.isfinite(current).all() or (current<-1e-9).any() or current.sum()>1+1e-8:
+        raise ValueError("DATA_BLOCKED: invalid current portfolio")
+    if current.sum()<1-1e-8:
+        current[-1]+=1-current.sum()
+    lower_returns=np.array([float(estimates[c]["robust_lcb_annual"]) for c in codes])
+    scenarios=_scenarios(R,cfg)
+    # Require distinct, non-cash investment portfolios for strategy ablation.
+    # Do not silently replace failures with a riskless 100% cash allocation.
+    floors=[0., .10, .20, .30, .40, .50, .60, .75, .90, .98]
+    floors=[x for x in floors if x<=1-cfg.min_cash_weight+1e-10]
+    if lower.sum() > 0:
+        floors=[max(x,float(lower.sum())) for x in floors]
+    floors=list(dict.fromkeys(floors))
+    generated=[]; rejected=[]
+    for floor in floors:
+        lp=solve_continuous_weights(
+            R,scenarios,lower_returns,current_weights=current,
+            fund_lower=lower,fund_upper=upper,
+            config=PortfolioLPConfig(
+                drawdown_budget=cfg.max_drawdown,cvar_alpha=.95,
+                turnover_cost=cfg.turnover_cost_rate,
+                cash_annual_return=cfg.annual_cash_return,
+                min_risky_weight=floor,min_cash_weight=cfg.min_cash_weight))
+        if lp["status"]!="OPTIMAL":
+            rejected.append({"min_risky_weight":floor,"status":lp["status"],
+                             "reason":lp.get("reason")})
+            continue
+        w=np.asarray(lp["weights"],float)
+        if w[:-1].sum() < 1e-6:
+            continue
+        # Independently review the daily constant-weight approximation used
+        # by the legacy portfolio risk estimator; do not hide discrepancies.
+        hdd,qdd,qret,turn,hsh,sq25,smed=_risk_metrics(
+            R,w[None,:],current,cfg,scenarios)
+        risk_bound=max(float(hdd[0]),float(qdd[0]),
+                       float(lp["historical_mdd"]),
+                       float(lp["scenario_mdd_quantile"]))
+        entry={
+            "weights":{**{c:float(w[i]) for i,c in enumerate(codes)},
+                       "cash":float(w[-1])},
+            "historical_mdd":float(hdd[0]),
+            "scenario_mdd_p95":float(qdd[0]),
+            "scenario_return_q25":float(qret[0]),
+            "historical_sharpe":float(hsh[0]),
+            "scenario_sharpe_q25":float(sq25[0]),
+            "scenario_sharpe_median":float(smed[0]),
+            "robust_return_lcb":float(lower_returns @ w[:-1]+
+                                       cfg.annual_cash_return*w[-1]),
+            "turnover_proxy":float(turn[0]),
+            "static_risk_feasible":bool(risk_bound<=cfg.max_drawdown+1e-7),
+            "lp_buy_hold_historical_mdd":float(lp["historical_mdd"]),
+            "lp_buy_hold_scenario_mdd_p95":float(lp["scenario_mdd_quantile"]),
+            "lp_scenario_signed_gap_cvar":float(lp["scenario_cvar_violation"]),
+            "lp_optimality":lp["status"],
+            "lp_iterations":lp["iteration_count"],
+            "lp_cuts":lp["cut_count"],
+            "frontier_min_risky_weight":floor,
+        }
+        if not entry["static_risk_feasible"]:
+            rejected.append({"min_risky_weight":floor,
+                             "status":"REBALANCED_RISK_REVIEW_FAILED",
+                             "worst_mdd":risk_bound})
+            continue
+        if any(np.abs(w-np.array([r["weights"][c] for c in codes+["cash"]])).sum()
+               < min_l1_distance for r in generated):
+            continue
+        generated.append(entry)
+    # Keep genuinely different risk/return positions, with the best robust
+    # lower return as the primary candidate. No cash endpoint consumes a slot.
+    generated.sort(key=lambda r:(-r["robust_return_lcb"],
+                                 r["scenario_mdd_p95"],
+                                 -r["scenario_sharpe_q25"]))
+    selected=generated[:top_k]
     return {
-        "status": "STATIC_RISK_CANDIDATES_AVAILABLE" if feasible else "NO_STATIC_RISK_FEASIBLE_CANDIDATE",
-        "candidate_count_generated": int(len(records)),
-        "candidate_count_returned": int(len(selected)),
-        "training_data_start": str(Rdf.index[0].date()),
-        "training_data_end": str(Rdf.index[-1].date()),
-        "static_risk_feasible_count": int(len(feasible)),
-        "robust_return_estimates": robust_estimates,
-        "concentration_guardrail": {"max_single_fund_weight": cfg.max_single_fund_weight,
-                                    "status": "GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED"},
-        "candidates": selected,
-        "research_only": True,
+        "status":"CONVEX_RISK_FEASIBLE_FRONTIER" if selected else
+                 "NO_NONCASH_RISK_FEASIBLE_CANDIDATE",
+        "candidate_count_generated":len(floors),
+        "candidate_count_returned":len(selected),
+        "frontier_risk_feasible_count":len(generated),
+        "static_risk_feasible_count":len(generated),
+        "candidate_count_requested":top_k,
+        "training_data_start":str(df.index[0].date()),
+        "training_data_end":str(df.index[-1].date()),
+        "robust_return_estimates":estimates,
+        "solver":"HiGHS LP / exact affine drawdown cut separation",
+        "model":"BUY_AND_HOLD_FINITE_SCENARIO_CVAR; REBALANCING_REVIEW",
+        "rejected":rejected,
+        "cash_benchmark":{"weights":{**{c:0. for c in codes},"cash":1.},
+                          "research_only":True},
+        "concentration_guardrail":{"max_single_fund_weight":cfg.max_single_fund_weight,
+                                   "status":"GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED"},
+        "candidates":selected,
+        "research_only":True,
     }
