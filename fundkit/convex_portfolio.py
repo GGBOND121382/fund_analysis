@@ -21,6 +21,7 @@ class PortfolioLPConfig:
     turnover_cost: float = 0.003
     cash_annual_return: float = 0.
     min_risky_weight: float = 0.
+    min_cash_weight: float = 0.
     max_cuts: int = 100
     tolerance: float = 1e-8
 
@@ -29,8 +30,10 @@ class PortfolioLPConfig:
             raise ValueError('invalid drawdown budget')
         if not 0 < self.cvar_alpha < 1:
             raise ValueError('invalid CVaR level')
-        if not 0 <= self.min_risky_weight <= 1:
-            raise ValueError('invalid minimum risky exposure')
+        if not 0 <= self.min_risky_weight <= 1 or not 0 <= self.min_cash_weight <= 1:
+            raise ValueError('invalid cash/risky bounds')
+        if self.min_risky_weight+self.min_cash_weight>1+1e-10:
+            raise ValueError('incompatible cash/risky exposure minimums')
         if not 0 <= self.turnover_cost < 1:
             raise ValueError('invalid turnover cost')
         if self.max_cuts < 1 or not 0 < self.tolerance <= 1e-3:
@@ -72,8 +75,7 @@ def realized_mdd(g, w):
 def empirical_cvar(values, alpha):
     """Exact finite-sample upper CVaR, not interpolated quantile."""
     x=np.sort(np.asarray(values,float))
-    return float(np.min(x + np.maximum(x[:,None]-x[None,:], 0.).sum(axis=0)*0)) if False else float(
-        np.min(x + np.maximum(x[None,:]-x[:,None],0.).mean(axis=1)/(1-alpha)))
+    return float(np.min(x + np.maximum(x[None,:]-x[:,None],0.).mean(axis=1)/(1-alpha)))
 
 
 def solve_continuous_weights(
@@ -107,7 +109,8 @@ def solve_continuous_weights(
         not np.isfinite(current).all() or (lo<0).any() or (hi<lo).any() or
         (hi>1).any() or (current<0).any() or abs(current.sum()-1)>1e-6):
         raise ValueError('DATA_BLOCKED: invalid portfolio bounds/current weights')
-    if lo.sum()>1+cfg.tolerance or hi.sum()<cfg.min_risky_weight-cfg.tolerance:
+    if (lo.sum()+cfg.min_cash_weight>1+cfg.tolerance or
+        hi.sum()<cfg.min_risky_weight-cfg.tolerance):
         return {'status':'INFEASIBLE','reason':'ASSET_BOUNDS_INFEASIBLE','weights':None}
 
     # Variables: w_funds,w_cash, |delta w_funds|, z_scenario, eta, u_scenario
@@ -116,7 +119,7 @@ def solve_continuous_weights(
     objective=np.zeros(nvar)
     objective[:n]=-mu; objective[n]=-cfg.cash_annual_return
     objective[d_start:z_start]=cfg.turnover_cost
-    bounds=[(float(a),float(b)) for a,b in zip(lo,hi)]+[(0.,1.)]
+    bounds=[(float(a),float(b)) for a,b in zip(lo,hi)]+[(cfg.min_cash_weight,1.)]
     bounds += [(0.,None)]*n + [(None,None)]*m + [(None,None)]+[(0.,None)]*m
     aeq=np.zeros((1,nvar)); aeq[0,:w_end]=1.
 
