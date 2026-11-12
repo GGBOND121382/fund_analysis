@@ -665,9 +665,13 @@ def cmd_optimize_strategy(args):
         avg_value = float(daily["value"].mean()) if len(daily) else 0.0
         years = max((pd.Timestamp(end) - pd.Timestamp(start)).days / 365.25, 1e-9)
         buys = sells = fees_total = 0.0
+        # B6 策略事件只有 action 列：event 列缺失时用对齐的空串序列兜底，
+        # 避免未对齐布尔索引抛 Unalignable boolean Series。
+        ev_col = (events["event"] if "event" in events.columns
+                  else pd.Series("", index=events.index, dtype=str))
         if not events.empty:
-            buy_rows = events[events.get("event", pd.Series(dtype=str)) == "BUY"]
-            sell_rows = events[events.get("event", pd.Series(dtype=str)) == "REDEEM"]
+            buy_rows = events[ev_col == "BUY"]
+            sell_rows = events[ev_col == "REDEEM"]
             buys = float(pd.to_numeric(buy_rows.get("amount", pd.Series(dtype=float)),
                                        errors="coerce").fillna(0).sum())
             sells = float((pd.to_numeric(sell_rows.get("shares", pd.Series(dtype=float)),
@@ -684,8 +688,8 @@ def cmd_optimize_strategy(args):
             "cdar95": float(m["cdar95"]),
             "xirr": None if m["xirr"] is None else float(m["xirr"]),
             "days": int(m["days"]),
-            "redeem_events": int((events.get("event", pd.Series(dtype=str)) == "REDEEM").sum()),
-            "buy_events": int((events.get("event", pd.Series(dtype=str)) == "BUY").sum()),
+            "redeem_events": int((ev_col == "REDEEM").sum()) if not events.empty else 0,
+            "buy_events": int((ev_col == "BUY").sum()) if not events.empty else 0,
             "turnover_ann": ((buys + sells) / avg_value / years if avg_value > 0 else 0.0),
             "fees_total": fees_total,
             "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
@@ -725,12 +729,16 @@ def cmd_optimize_strategy(args):
         rules_for_fold = rules if b4_usable else [r for r in rules if r["family"] != "B4"]
         # 训练净值必须在验证起点之前已公开；T+2推断披露时滞留出3天缓冲。
         train_cutoff = pd.Timestamp(va_start).tz_localize(CST) + pd.Timedelta(hours=15)
+        # 探索模式：embargo(3)+披露滞后(≈2)消耗数日，情景长度与最小观测相应放宽；
+        # 正式验证维持 252 不变。
+        train_relax = args.embargo_days + 3 if exploratory else 0
         train_cfg = WeightSearchConfig(
             target_annual_return=0.05, max_drawdown=0.04,
-            lookback_days=args.train_days, horizon=min(252, args.train_days),
+            lookback_days=args.train_days,
+            horizon=min(252, args.train_days) - train_relax,
             bootstrap_paths=args.weight_paths, block_lengths=(20, 60),
             historical_windows=12, candidate_count=args.weight_pool,
-            min_observations=min(252, args.train_days),
+            min_observations=min(252, args.train_days) - train_relax,
             max_single_fund_weight=args.max_fund_weight,
             min_cash_weight=args.min_cash, annual_risk_free_rate=args.risk_free_rate,
             seed=args.seed + fold["fold"])
@@ -740,8 +748,14 @@ def cmd_optimize_strategy(args):
                                            (train_asof.index <= pd.Timestamp(tr_end))]
             if args.regime_start:
                 train_returns = train_returns[train_returns.index >= pd.Timestamp(args.regime_start)]
-            if len(train_returns) < max(252, min( train_cfg.horizon, args.train_days)):
-                raise ValueError(f"DATA_BLOCKED: 训练期可用共同收益只有 {len(train_returns)} 日")
+            # 探索模式：embargo 明确消耗训练窗末尾 N 个交易日，训练样本下限相应放宽
+            # （另留 3 日余量，252-3-3=246，仍约等于一个完整年度）；正式验证维持 252 不变。
+            min_train_sessions = (min(train_cfg.horizon, args.train_days) - args.embargo_days - 3
+                                  if exploratory else
+                                  max(252, min(train_cfg.horizon, args.train_days)))
+            if len(train_returns) < min_train_sessions:
+                raise ValueError(f"DATA_BLOCKED: 训练期可用共同收益只有 {len(train_returns)} 日"
+                                 f"（要求 {min_train_sessions}）")
             candidate_pack = generate_weight_candidates(
                 train_returns, current_weights=current_for_search,
                 caps=caps, fixed_weights={}, cfg=train_cfg,
