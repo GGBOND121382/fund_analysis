@@ -178,7 +178,9 @@ def run(argv=None):
     md_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("Report:", md_file)
     print("Raw:", path)
-    if process.returncode != 0 or output["status"] in ("DATA_BLOCKED", "PARTIAL_DATA_BLOCKED"):
+    if process.returncode != 0 or output["status"] in (
+        "DATA_BLOCKED", "PARTIAL_DATA_BLOCKED",
+        "NO_NONCASH_RISK_FEASIBLE_CANDIDATE"):
         print("NOT_VALIDATED:", output["status"])
         return 2
     print("EXPLORATORY_ONLY: no full-year OOS acceptance")
