@@ -346,9 +346,10 @@ def generate_weight_candidates(returns: pd.DataFrame,
     cfg.validate()
     if top_k<1 or min_l1_distance<0:
         raise ValueError("invalid top_k/min_l1_distance")
-    df=_validate_returns(returns,cfg).tail(252)
+    risk_df=_validate_returns(returns,cfg)
+    df=risk_df.tail(252)  # prediction: latest year only
     codes=list(df.columns)
-    n=len(codes); R=df.to_numpy(float)
+    n=len(codes); R=risk_df.to_numpy(float)  # historical stress can be older
     model=fit_one_year_model(df,categories=categories,lookback=252,
                              seed=cfg.seed)
     unknown=(set(caps or {})|set(fixed_weights or {}))-set(codes)
@@ -496,6 +497,7 @@ def generate_weight_candidates(returns: pd.DataFrame,
         "static_risk_feasible_count":len(generated),
         "frontier_risk_feasible_count":len(generated),
         "training_data_start":str(df.index[0].date()),
+        "risk_stress_data_start":str(risk_df.index[0].date()),
         "training_data_end":str(df.index[-1].date()),
         "robust_return_estimates":estimates,
         "predictive_model":{
