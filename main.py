@@ -698,7 +698,8 @@ def cmd_optimize_strategy(args):
 
     all_results = []
     asset_categories = {str(f["code"]): str(f.get("category", "unknown")) for f in all_funds}
-    rules = joint_optimizer.build_rule_grid(asset_categories)
+    rules = joint_optimizer.build_rule_grid(
+        asset_categories,include_v13=(strategy_scope=="b6-ablation"))
     if strategy_scope == "b6-ablation":
         rules = [r for r in rules if r["family"] == "B6" or
                  (r["family"] == "B2" and r["rule_id"] == "B2_cashflow_only")]
@@ -888,7 +889,7 @@ def main():
     p_wo.add_argument("--codes", default="", help="基金代码，默认全部当前持仓；遗漏任何非零持仓则阻断")
     p_wo.add_argument("--asof", default=None, help="数据公开截止日 YYYY-MM-DD")
     p_wo.add_argument("--regime-start", default=None, help="当前持仓风格阶段起点；必须有披露证据")
-    p_wo.add_argument("--lookback", type=int, default=756)
+    p_wo.add_argument("--lookback", type=int, default=252)
     p_wo.add_argument("--candidates", type=int, default=2400)
     p_wo.add_argument("--paths", type=int, default=192)
     p_wo.add_argument("--min-cash", type=float, default=0.0)
