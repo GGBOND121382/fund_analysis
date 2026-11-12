@@ -75,9 +75,15 @@ class DeferredCashLedger:
         floor = cfg.cash_reserve_weight * value
         spendable = max(0., cash - floor)
         base = cfg.base_fraction * self._inflow_this_day
-        # Old funds can be accelerated only by AS-OF signals and a verified risk gate.
-        tactical = (cfg.release_fraction * self._previous_amount
-                    if (risk_pass and eligible_signal) else 0.0)
+        # Matured deferred lots may be released WITHOUT a trend signal when
+        # risk is verified PASS. Risk UNKNOWN/FAIL keeps them in cash and alerts.
+        expired = sum(lot['amount'] for lot in self._lots
+                      if self._session - lot['session'] >= cfg.deferred_horizon_days)
+        tactical_signal = (cfg.release_fraction * self._previous_amount
+                           if risk_pass and eligible_signal else 0.0)
+        maturity_release = expired if risk_pass else 0.0
+        # Do not count the same deferred cash twice when both rules fire.
+        tactical = min(self._previous_amount, max(tactical_signal, maturity_release))
         amount = min(spendable, self.total, base + tactical)
         if amount < 0 or not math.isfinite(amount):
             raise AssertionError('negative or nonfinite investment budget')
@@ -88,7 +94,11 @@ class DeferredCashLedger:
             'tactical_release_cny': min(tactical, max(0.0, amount - min(base, amount))),
             'deferred_cash_before_cny': self.total,
             'oldest_deferred_trading_days': self.oldest_age(),
-            'expired_review_required': self.oldest_age() >= cfg.deferred_horizon_days,
+            'expired_deferred_cny': expired,
+            'expired_release_approved_cny': (
+                min(expired, max(0.0, amount - min(base, amount)))
+                if risk_pass else 0.0),
+            'expired_review_required': expired > 1e-8 and not risk_pass,
             'tactical_blocked': not (risk_pass and eligible_signal),
             'cash_reserve_floor_cny': floor,
         }

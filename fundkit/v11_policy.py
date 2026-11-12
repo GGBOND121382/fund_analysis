@@ -146,9 +146,12 @@ def make_b6(params):
             return orders
         base_allowed=sorted(allowed-excludes)
         base_budget=cash_plan['base_budget_cny']
-        if risk_pre['status']=='FAIL':
+        if risk_pre['status']!='PASS':
+            # Fail closed for additional risk when as-of scenario evidence is unknown.
+            # Keep B2 as the explicit unguarded reference comparator.
             base_budget=0.
-            orders['events'].append({'code':'PORTFOLIO','action':'B6_BASE_BLOCKED_RISK'})
+            orders['events'].append({'code':'PORTFOLIO','action':'B6_BASE_BLOCKED_RISK',
+                                     'status':risk_pre['status']})
         buys=policies._water_filling(base_budget,weights,total,target,limits,base_allowed)
         # Use the *remaining* deficit and daily buy-limit, not an independent
         # budget that could double-subscribe the same target.
@@ -165,7 +168,7 @@ def make_b6(params):
                 buys[code]=buys.get(code,0)+amount
         # Post-order risk gate: reject tactical if it increases estimated MDD
         # beyond 4%. When risk is unknown, base is research baseline only.
-        if buys and checker(buys=buys)['status']=='FAIL':
+        if buys and checker(buys=buys)['status']!='PASS':
             buys={}
             orders['events'].append({'code':'PORTFOLIO','action':'B6_BUY_BLOCKED_POST_RISK'})
         # B5 may have paused individual funds. Do not revive those buys.

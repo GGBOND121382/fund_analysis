@@ -22,6 +22,7 @@ class JointSearchConfig:
     min_test_days: int = 252
     fee_stress_rates: tuple[float, ...] = (0.003, 0.006)
     seed: int = 42
+    evaluate_ablation_on_test: bool = False
 
     def validate(self):
         if not (-1 < self.target_annual_return < 2):
@@ -137,16 +138,20 @@ def build_rule_grid(asset_categories: Mapping[str, str] | None = None) -> list[d
 
 def build_rolling_folds(dates: Sequence, train_days: int = 504,
                         validation_days: int = 252, test_days: int = 252,
-                        step_days: int = 126, folds: int = 1) -> list[dict]:
+                        step_days: int = 126, folds: int = 1,
+                        embargo_days: int = 0) -> list[dict]:
     """从共同交易日期构建严格前向滚动折；不允许 train/val/test 重叠。"""
     import pandas as pd
 
     idx = pd.DatetimeIndex(dates).drop_duplicates().sort_values()
-    if min(train_days, validation_days, test_days, step_days, folds) < 1:
-        raise ValueError("滚动折长度和折数必须为正数")
+    if min(train_days, validation_days, test_days, step_days, folds) < 1 or embargo_days < 0:
+        raise ValueError("滚动折长度和折数必须为正数；信息隔离天数不得为负数")
     if folds > 1 and step_days < test_days:
         raise ValueError("OVERLAPPING_TEST_WINDOWS_BLOCKED: step_days 必须不小于 test_days")
-    required = train_days + validation_days + test_days + (folds - 1) * step_days
+    # Require published-data embargo between training/validation AND
+    # validation/test to prevent as-of NAV leakage (T+2 inferred publication).
+    required = (train_days + validation_days + test_days +
+                2 * embargo_days + (folds - 1) * step_days)
     if len(idx) < required:
         raise ValueError(f"INSUFFICIENT_HISTORY: 需要至少 {required} 个共同交易日，实际 {len(idx)}")
     first = len(idx) - required
@@ -154,8 +159,10 @@ def build_rolling_folds(dates: Sequence, train_days: int = 504,
     for k in range(folds):
         s = first + k * step_days
         tr = idx[s:s + train_days]
-        va = idx[s + train_days:s + train_days + validation_days]
-        te = idx[s + train_days + validation_days:s + train_days + validation_days + test_days]
+        val_start = s + train_days + embargo_days
+        test_start = val_start + validation_days + embargo_days
+        va = idx[val_start:val_start + validation_days]
+        te = idx[test_start:test_start + test_days]
         if not (tr[-1] < va[0] and va[-1] < te[0]):
             raise AssertionError("内部错误：滚动折时间区间重叠")
         out.append({
@@ -164,6 +171,7 @@ def build_rolling_folds(dates: Sequence, train_days: int = 504,
             "validation": (str(va[0].date()), str(va[-1].date())),
             "test": (str(te[0].date()), str(te[-1].date())),
             "n_train": len(tr), "n_validation": len(va), "n_test": len(te),
+            "embargo_trading_days": embargo_days,
         })
     return out
 
@@ -285,8 +293,24 @@ def optimize_joint_fold(weight_candidates: list[dict], rule_candidates: list[dic
         status = "TEST_WINDOW_CRITERIA_MET_NOT_GENERALIZED"
     else:
         status = "OOS_TARGET_UNMET"
+    # Diagnostic ablation only, with EXACT SAME validation-selected weights.
+    # Do not select the winner using this test set.
+    ablation_test = []
+    if cfg.evaluate_ablation_on_test:
+        for rule in rule_candidates:
+            fee_rows = []
+            for fee in cfg.fee_stress_rates:
+                metrics = evaluator(selected["weights"], rule, test_window, float(fee))
+                fee_rows.append({"uniform_fee_rate_assumption": float(fee), **metrics})
+            ablation_test.append({
+                "rule_id": rule["rule_id"], "family": rule["family"],
+                "params": rule.get("params", {}),
+                "test": _aggregate_fee_metrics(fee_rows),
+            })
     return {
         "status": status,
+        "ablation_test": ablation_test,
+        "ablation_test_not_for_model_selection": True,
         "trade_ready": False,
         "research_only": True,
         "objective": {"annualized_net_return_strictly_gt": cfg.target_annual_return,
