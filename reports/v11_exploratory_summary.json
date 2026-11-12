@@ -1,0 +1,1080 @@
+{
+  "status": "EXPLORATORY_NOT_LONG_TERM_VALIDATED",
+  "model_version": "joint-strategy-v1.1-exploratory",
+  "protocol": {
+    "train_days": 252,
+    "validation_days": 63,
+    "test_days": 63,
+    "step_days": 63,
+    "folds": 2,
+    "embargo_days": 3
+  },
+  "asof": "2026-11-11",
+  "strategy_scope": "b6-ablation",
+  "candidate_params_pre_registered": true,
+  "test_used_to_choose_parameters": false,
+  "has_independent_full_year_oos": false,
+  "target_net_cagr_strict_gt": 0.05,
+  "max_drawdown_budget": 0.04,
+  "trade_ready": false,
+  "folds": [
+    {
+      "fold": 1,
+      "train": [
+        "2024-12-11",
+        "2026-01-08"
+      ],
+      "validation": [
+        "2026-01-14",
+        "2026-04-23"
+      ],
+      "test": [
+        "2026-04-29",
+        "2026-08-03"
+      ],
+      "status": "NO_VALIDATION_FEASIBLE_CANDIDATE",
+      "selected_rule": "B2_cashflow_only",
+      "ablation": [
+        {
+          "rule_id": "B2_cashflow_only",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A1_no_timing",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A2_base75",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A2_base50",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A3_timing75_release50",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A3_timing75_release100",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A4_takeprofit",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A5_stop",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A6_joint75",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A6_joint50",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 65,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 65,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "fold": 2,
+      "train": [
+        "2025-03-24",
+        "2026-04-20"
+      ],
+      "validation": [
+        "2026-04-24",
+        "2026-07-29"
+      ],
+      "test": [
+        "2026-08-04",
+        "2026-11-09"
+      ],
+      "status": "NO_VALIDATION_FEASIBLE_CANDIDATE",
+      "selected_rule": "B2_cashflow_only",
+      "ablation": [
+        {
+          "rule_id": "B2_cashflow_only",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A1_no_timing",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A2_base75",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A2_base50",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A3_timing75_release50",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A3_timing75_release100",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A4_takeprofit",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A5_stop",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A6_joint75",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        },
+        {
+          "rule_id": "A6_joint50",
+          "test": {
+            "cagr_worst_fee": 0.0,
+            "mdd_worst_fee": 0.0,
+            "cagr_best_fee": 0.0,
+            "mdd_best_fee": 0.0,
+            "fee_scenarios": [
+              {
+                "uniform_fee_rate_assumption": 0.003,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              },
+              {
+                "uniform_fee_rate_assumption": 0.006,
+                "cagr": 0.0,
+                "max_drawdown": 0.0,
+                "sharpe": null,
+                "sortino": -15.87450786638754,
+                "cdar95": 0.0,
+                "xirr": -1.6653345369377348e-16,
+                "days": 64,
+                "redeem_events": 0,
+                "buy_events": 0,
+                "turnover_ann": 0.0,
+                "fees_total": 0.0,
+                "fee_assumption": "UNIFORM_STRESS_PROXY_NOT_ACTUAL_FUND_FEE_TABLE",
+                "start_portfolio": "COUNTERFACTUAL_TARGET_WEIGHT_START"
+              }
+            ],
+            "sortino_conservative": -15.87450786638754,
+            "cdar95_conservative": 0.0,
+            "xirr_conservative": -1.6653345369377348e-16,
+            "days_min": 64,
+            "redeem_events_max": 0,
+            "buy_events_max": 0,
+            "turnover_ann_max": 0.0,
+            "fees_total_max": 0.0
+          }
+        }
+      ]
+    }
+  ]
+}

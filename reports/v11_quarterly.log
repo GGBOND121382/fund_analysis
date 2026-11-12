@@ -1,0 +1,10 @@
+[RESEARCH_ONLY] Running /usr/bin/python3 main.py optimize-strategy --asof 2026-11-11 --exploratory --strategy-scope b6-ablation --train-days 252 --validation-days 63 --test-days 63 --step-days 63 --folds 2 --embargo-days 3 --weight-pool 180 --weight-candidates 1 --weight-paths 48 --fee-stress-bps 30,60 --seed 42 --max-fund-weight 0.4
+联合优化研究结果: reports/joint_strategy_optimization.json
+  fold1: NO_VALIDATION_FEASIBLE_CANDIDATE
+    B2 / B2_cashflow_only | 验证 CAGR=0.00% MDD=0.00% | 测试 CAGR=0.00% MDD=0.00%
+  fold2: NO_VALIDATION_FEASIBLE_CANDIDATE
+    B2 / B2_cashflow_only | 验证 CAGR=0.00% MDD=0.00% | 测试 CAGR=0.00% MDD=0.00%
+状态: RESEARCH_ONLY；不自动交易，不把反事实回测称为真实账户历史
+Report: /root/fund_analysis/reports/V11_EXPLORATORY_REPORT.md
+Raw: /root/fund_analysis/reports/joint_strategy_optimization.json
+EXPLORATORY_ONLY: no full-year OOS acceptance
