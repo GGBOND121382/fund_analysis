@@ -185,10 +185,22 @@ def optimize_target_weights(returns: pd.DataFrame,
                   for c in codes+["cash"]])
     if cur.sum()<1-1e-8:
         cur[-1]+=1-cur.sum()
-    if candidates["candidates"]:
-        chosen=max(candidates["candidates"],key=lambda x:(
-            x["robust_return_lcb"],x["scenario_return_q25"],
-            -x["scenario_mdd_p95"]))
+    # An exposure floor is used to produce *diagnostic* non-cash portfolios.
+    # It must NEVER force the actual unconstrained optimum away from cash.
+    winner=(max(candidates["candidates"],key=lambda x:(
+        x["robust_return_lcb"],x["scenario_return_q25"],
+        -x["scenario_mdd_p95"])) if candidates["candidates"] else None)
+    current_cash_net=(cfg.annual_cash_return -
+        cfg.turnover_cost_rate * sum(float((current_weights or {}).get(c,0.))
+                                    for c in codes))
+    winner_net=(float(winner["robust_return_lcb"])-
+        cfg.turnover_cost_rate*sum(abs(
+            float(winner["weights"][c])-float((current_weights or {}).get(c,0.)))
+            for c in codes)) if winner else float("-inf")
+    if winner is not None and (
+        winner_net > current_cash_net + 1e-12 or
+        any(float(v)>0 for v in (fixed_weights or {}).values())):
+        chosen=winner
         weight=dict(chosen["weights"])
     else:
         # Research-only cash diagnostic. This is NOT an investment-strategy
