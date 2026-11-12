@@ -168,171 +168,99 @@ def optimize_target_weights(returns: pd.DataFrame,
                             fixed_weights: Mapping[str, float] | None = None,
                             cfg: WeightSearchConfig | None = None,
                             categories: Mapping[str, str] | None = None) -> dict:
-    """固定随机种子、多情景风险优先的权重搜索；结果始终是研究候选。
+    """Maximize robust lower return over a deterministic convex risk frontier.
 
-    returns: 已按披露时点切割、已严格对齐交易日期、已处理分红的日收益。
-    外层负责识别当前风格/选择同一 regime 窗口，禁止跨风格盲目拼接。
-    caps 允许根据季报风格及申购资格设为 0，默认每只基金40%为治理约束。
-    收益/MDD达标后按情景Sharpe Q25排序；Sharpe仍是历史估计，不是保证。
+    Training-scenario optimality is conditional on the finite LP model and
+    its fixed buy-and-hold execution assumptions; never a live recommendation.
     """
-    cfg = cfg or WeightSearchConfig()
+    cfg=cfg or WeightSearchConfig()
     cfg.validate()
-    Rdf = _validate_returns(returns, cfg)
-    codes = list(Rdf.columns)
-    R = Rdf.to_numpy(float)
-    n = len(codes)
-    robust_estimates = estimate_robust_returns(
-        Rdf, categories=categories,
-        prior_shrinkage_days=cfg.return_prior_shrinkage_days,
-        uncertainty_z=cfg.return_uncertainty_z,
-    )
-    if caps or fixed_weights:
-        unknown = (set(caps or {}) | set(fixed_weights or {})).difference(codes)
-        if unknown:
-            raise ValueError(f"仓位上限/冻结仓位存在未知基金：{sorted(unknown)}")
-    base = np.array([float((fixed_weights or {}).get(c, 0)) for c in codes])
-    upper = np.array([float((caps or {}).get(c, cfg.max_single_fund_weight)) for c in codes])
-    for i, code in enumerate(codes):
-        if code in (fixed_weights or {}):
-            upper[i] = base[i]  # 存量冻结，无新增无擅自赎回
-    if (not np.isfinite(upper).all() or not np.isfinite(base).all() or
-            (base < 0).any() or (upper < base).any() or (upper > 1).any() or
-            base.sum() + cfg.min_cash_weight > 1 + 1e-10):
-        raise ValueError("基金仓位上限/冻结权重不合法")
-    free_budget = 1 - cfg.min_cash_weight - base.sum()
-    cur = np.array([float((current_weights or {}).get(c, 0)) for c in codes] +
-                   [float((current_weights or {}).get('cash', 0))])
-    if (cur < 0).any() or not np.isfinite(cur).all() or cur.sum() > 1.000001:
-        raise ValueError("账户持仓权重非法")
-    if cur.sum() < .999999:
-        cur[-1] += 1 - cur.sum()  # 非优化资产计入现金仅用于初始换仓成本估计，不用于持仓风险保证
-
-    # 核心是风险优先的可行域搜索，而非手填 45/35/5。风险可行性使用严格复利路径重新检查。
-    rng = np.random.default_rng(cfg.seed)
-    candidates = [np.r_[base, 1.0 - base.sum()]]  # 真实存量冻结后的现金基准
-    for i in range(n):
-        row = base.copy()
-        row[i] += min(upper[i] - base[i], free_budget)
-        candidates.append(np.r_[row, 1 - row.sum()])
-    extra = np.minimum(np.maximum(cur[:n] - base, 0), upper - base)
-    extra *= min(1, free_budget / max(1e-12, extra.sum()))
-    row = base + extra
-    candidates.append(np.r_[row, 1.0 - row.sum()])
-    active = np.flatnonzero(upper > base + 1e-12)
-    row = base.copy()
-    if len(active):
-        row[active] += np.minimum(upper[active] - base[active], free_budget / len(active))
-    candidates.append(np.r_[row, 1 - row.sum()])
-    if cfg.candidate_count and len(active):
-        # 冻结的存量权重保持不变；随机候选只分配可交易部分。
-        for alpha in (.35, 1.0, 2.5):
-            z = rng.dirichlet(np.full(len(active) + 1, alpha),
-                              size=max(1, cfg.candidate_count // 3))
-            x = np.tile(base, (len(z), 1))
-            add = np.minimum(free_budget * z[:, :-1], (upper - base)[active][None, :])
-            x[:, active] += add
-            candidates.extend(np.column_stack([x, 1 - x.sum(axis=1)]))
-    candidate_array = np.asarray(candidates, dtype=float)
-    valid = ((candidate_array[:, -1] >= cfg.min_cash_weight - 1e-9) &
-             (candidate_array[:, :n] <= upper + 1e-9).all(axis=1) &
-             (candidate_array[:, :n] >= base - 1e-9).all(axis=1))
-    candidate_array = candidate_array[valid]
-    if not len(candidate_array):
-        raise ValueError("候选集为空")
-    paths = _scenarios(R, cfg)
-    best_feasible, best_target_feasible, best_risk = None, None, None
-    feasible_count = 0
-    checked = 0
-    # 风险约束优先；同时满足收益目标时最大化保守Sharpe，再比较收益、回撤和换手。
-    for start in range(0, len(candidate_array), cfg.batch_size):
-        batch = candidate_array[start:start + cfg.batch_size]
-        (hdd, qdd, qret, turn, hist_sharpe,
-         scenario_sharpe_q25, scenario_sharpe_median) = _risk_metrics(R, batch, cur, cfg, paths)
-        for j, w in enumerate(batch):
-            checked += 1
-            weight_map = {**{c: float(w[i]) for i, c in enumerate(codes)},
-                          "cash": float(w[-1])}
-            robust_lcb = portfolio_return_lcb(
-                weight_map, robust_estimates, cash_return=cfg.annual_cash_return)
-            score = min(float(qret[j]), robust_lcb)
-            item = {'weights': w, 'historical_mdd': float(hdd[j]),
-                    'scenario_mdd_p95': float(qdd[j]), 'scenario_return_q25': float(qret[j]),
-                    'robust_return_lcb': float(robust_lcb), 'robust_return_score': float(score),
-                    'historical_sharpe': float(hist_sharpe[j]),
-                    'scenario_sharpe_q25': float(scenario_sharpe_q25[j]),
-                    'scenario_sharpe_median': float(scenario_sharpe_median[j]),
-                    'turnover_proxy': float(turn[j])}
-            loss = max(item['historical_mdd'], item['scenario_mdd_p95'])
-            risk_key = (loss, -item['scenario_sharpe_q25'],
-                        -item['robust_return_score'], item['turnover_proxy'])
-            if best_risk is None or risk_key < best_risk[0]:
-                best_risk = (risk_key, item)
-            if loss > cfg.max_drawdown + 1e-12:
-                continue
-            feasible_count += 1
-            if item['robust_return_score'] > cfg.target_annual_return:
-                target_key = (-item['scenario_sharpe_q25'],
-                              -item['robust_return_score'], loss,
-                              item['turnover_proxy'])
-                if best_target_feasible is None or target_key < best_target_feasible[0]:
-                    best_target_feasible = (target_key, item)
-            else:
-                feasible_key = (-item['robust_return_score'],
-                                -item['scenario_sharpe_q25'], loss,
-                                item['turnover_proxy'])
-                if best_feasible is None or feasible_key < best_feasible[0]:
-                    best_feasible = (feasible_key, item)
-    chosen = (best_target_feasible or best_feasible or best_risk)[1]
-    # 第二次独立随机种子情景重检；仍共享同一历史经验分布，不等于时间样本外。
-    holdout = _scenarios(R, replace(cfg, seed=cfg.seed + 1000003))
-    (_, independent_mdd, independent_q25, _, independent_hist_sharpe,
-     independent_sharpe_q25, independent_sharpe_median) = _risk_metrics(
-        R, chosen['weights'][None, :], cur, cfg, holdout)
-    independent_risk = float(independent_mdd[0])
-    independent_return = float(independent_q25[0])
-    status = ('RISK_CONSTRAINT_UNMET' if feasible_count == 0 else
-              'INDEPENDENT_SCENARIO_REJECTED' if independent_risk > cfg.max_drawdown + 1e-12 else
-              'RETURN_TARGET_UNMET' if min(chosen['scenario_return_q25'], independent_return,
-                  chosen['robust_return_lcb']) <= cfg.target_annual_return
-              else 'SCENARIO_CRITERIA_MET_UNVALIDATED')
+    df=_validate_returns(returns,cfg)
+    codes=list(df.columns)
+    candidates=generate_weight_candidates(
+        df,current_weights=current_weights,caps=caps,fixed_weights=fixed_weights,
+        cfg=cfg,top_k=8,min_l1_distance=.04,categories=categories)
+    R=df.to_numpy(float)
+    cur=np.array([float((current_weights or {}).get(c,0.))
+                  for c in codes+["cash"]])
+    if cur.sum()<1-1e-8:
+        cur[-1]+=1-cur.sum()
+    if candidates["candidates"]:
+        chosen=max(candidates["candidates"],key=lambda x:(
+            x["robust_return_lcb"],x["scenario_return_q25"],
+            -x["scenario_mdd_p95"]))
+        weight=dict(chosen["weights"])
+    else:
+        # Research-only cash diagnostic. This is NOT an investment-strategy
+        # selection or an input for ablation experiments.
+        weight=dict(candidates["cash_benchmark"]["weights"])
+        if (fixed_weights or {}) and sum(float(v) for v in fixed_weights.values())>0:
+            return {
+                "status":"NO_RISK_FEASIBLE_FROZEN_POSITION",
+                "trade_ready":False,"research_only":True,
+                "weights":None,"reason":"risk constraints infeasible with frozen positions",
+                "solver":candidates["solver"],
+            }
+        w=np.array([weight[c] for c in codes+["cash"]])
+        sc=_scenarios(R,cfg)
+        hd,qd,qr,turn,hs,sq,sm=_risk_metrics(R,w[None,:],cur,cfg,sc)
+        chosen={
+            "weights":weight,"historical_mdd":float(hd[0]),
+            "scenario_mdd_p95":float(qd[0]),
+            "scenario_return_q25":float(qr[0]),
+            "historical_sharpe":float(hs[0]),
+            "scenario_sharpe_q25":float(sq[0]),
+            "scenario_sharpe_median":float(sm[0]),
+            "robust_return_lcb":float(cfg.annual_cash_return),
+            "turnover_proxy":float(turn[0]),
+        }
+    w=np.array([weight[c] for c in codes+["cash"]])
+    independent=_scenarios(R,replace(cfg,seed=cfg.seed+1000003))
+    _,independent_mdd,independent_return,_,_,independent_sharpe,_=_risk_metrics(
+        R,w[None,:],cur,cfg,independent)
+    risk_ok=bool(max(chosen["historical_mdd"],chosen["scenario_mdd_p95"])<=
+                 cfg.max_drawdown+1e-8)
+    independent_risk=float(independent_mdd[0])
+    robust_return=min(float(chosen["robust_return_lcb"]),
+                      float(chosen["scenario_return_q25"]),
+                      float(independent_return[0]))
+    status=("RISK_CONSTRAINT_UNMET" if not risk_ok else
+            "INDEPENDENT_SCENARIO_REJECTED" if independent_risk>cfg.max_drawdown+1e-8 else
+            "RETURN_TARGET_UNMET" if robust_return<=cfg.target_annual_return else
+            "SCENARIO_CRITERIA_MET_UNVALIDATED")
     return {
-        'status': status, 'trade_ready': False,
-        'research_only': True,
-        'data_start': str(Rdf.index[0].date()), 'data_end': str(Rdf.index[-1].date()),
-        'n_joint_observations': len(Rdf), 'codes': codes,
-        'weights': {**{c: round(float(v), 10) for c, v in zip(codes, chosen['weights'][:-1])},
-                    'cash': round(float(chosen['weights'][-1]), 10)},
-        'candidate_count_evaluated': checked,
-        'risk_feasible_candidate_count': feasible_count,
-        'historical_mdd': chosen['historical_mdd'],
-        'scenario_mdd_p95': chosen['scenario_mdd_p95'],
-        'scenario_return_q25': chosen['scenario_return_q25'],
-        'robust_return_lcb': chosen['robust_return_lcb'],
-        'robust_return_score': chosen['robust_return_score'],
-        'historical_sharpe': chosen['historical_sharpe'],
-        'scenario_sharpe_q25': chosen['scenario_sharpe_q25'],
-        'scenario_sharpe_median': chosen['scenario_sharpe_median'],
-        'independent_scenario_sharpe_q25': float(independent_sharpe_q25[0]),
-        'independent_scenario_sharpe_median': float(independent_sharpe_median[0]),
-        'annual_risk_free_rate_assumption': cfg.annual_risk_free_rate,
-        'robust_return_estimates': robust_estimates,
-        'concentration_guardrail': {
-            'max_single_fund_weight': cfg.max_single_fund_weight,
-            'status': 'GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED',
-        },
-        'independent_scenario_mdd_p95': independent_risk,
-        'independent_scenario_return_q25': independent_return,
-        'turnover_proxy': chosen['turnover_proxy'],
-        'risk_budget': cfg.max_drawdown,
-        'frozen_current_weights': {c: float(v) for c, v in zip(codes, base) if v > 0},
-        'return_target': cfg.target_annual_return,
-        'method': 'fixed-weight joint historical + moving-block bootstrap, risk-first reproducible search',
-        'limits': [
-            '不是全局最优保证；候选网格与样本模拟均有有限采样误差',
-            '情景检验不是未来4%硬回撤保证，也不是95%收益置信下界',
-            '不同随机种子仅验证模拟稳定性，不是时间样本外；需独立滚动样本外回测',
-            '实际交易须另行模拟逐笔申购、赎回、锁定期、分红与真实费用',
-            '只识别当前风格后选取历史窗口，旧风格风险需通过现时因子敞口压力测试',
+        "status":status,"trade_ready":False,"research_only":True,
+        "data_start":str(df.index[0].date()),"data_end":str(df.index[-1].date()),
+        "n_joint_observations":len(df),"codes":codes,
+        "weights":{c:round(float(weight[c]),10) for c in codes+["cash"]},
+        "candidate_count_evaluated":candidates["candidate_count_generated"],
+        "risk_feasible_candidate_count":candidates["static_risk_feasible_count"],
+        "historical_mdd":chosen["historical_mdd"],
+        "scenario_mdd_p95":chosen["scenario_mdd_p95"],
+        "scenario_return_q25":chosen["scenario_return_q25"],
+        "robust_return_lcb":chosen["robust_return_lcb"],
+        "robust_return_score":robust_return,
+        "historical_sharpe":chosen["historical_sharpe"],
+        "scenario_sharpe_q25":chosen["scenario_sharpe_q25"],
+        "scenario_sharpe_median":chosen["scenario_sharpe_median"],
+        "independent_scenario_sharpe_q25":float(independent_sharpe[0]),
+        "annual_risk_free_rate_assumption":cfg.annual_risk_free_rate,
+        "robust_return_estimates":candidates["robust_return_estimates"],
+        "concentration_guardrail":candidates["concentration_guardrail"],
+        "independent_scenario_mdd_p95":independent_risk,
+        "independent_scenario_return_q25":float(independent_return[0]),
+        "turnover_proxy":chosen["turnover_proxy"],
+        "risk_budget":cfg.max_drawdown,"return_target":cfg.target_annual_return,
+        "solver":candidates["solver"],
+        "method":"continuous buy-and-hold LP with historical drawdown cuts "
+                 "and empirical scenario signed-gap CVaR; frozen OOS required",
+        "limits":[
+            "LP optimality is conditional on the finite scenario/buy-and-hold model",
+            "A 4% scenario MDD constraint cannot guarantee future realized MDD",
+            "Independent scenario seed still uses the SAME historical sample",
+            "Real subscriptions, redemption locks, delay, cost and cashflows "
+            "require independent simulator validation",
+            "Cash benchmark is not used to validate dynamic-investment ablations",
         ],
     }
 
