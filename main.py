@@ -761,7 +761,21 @@ def cmd_optimize_strategy(args):
                 caps=caps, fixed_weights={}, cfg=train_cfg,
                 top_k=args.weight_candidates, categories=asset_categories)
             if not candidate_pack["candidates"]:
-                raise ValueError("DATA_BLOCKED: 没有生成目标权重候选")
+                # A genuine finite-scenario infeasibility is not a missing-data
+                # error. Never replace research portfolios with all cash.
+                all_results.append({
+                    "fold": fold,
+                    "status": "NO_NONCASH_RISK_FEASIBLE_CANDIDATE",
+                    "validation_status": "NO_NONCASH_RISK_FEASIBLE_CANDIDATE",
+                    "reason": "LP frontiers could not provide a distinct noncash "
+                              "portfolio satisfying 4% historical/scenario risk",
+                    "weight_candidate_generation": {
+                        k:v for k,v in candidate_pack.items()
+                        if k not in ("candidates","cash_benchmark")},
+                    "weight_candidates": [],
+                    "trade_ready": False,"research_only":True,
+                })
+                continue
             result = joint_optimizer.optimize_joint_fold(
                 candidate_pack["candidates"], rules_for_fold, evaluator,
                 (va_start, va_end), (te_start, te_end), joint_cfg)
@@ -781,7 +795,11 @@ def cmd_optimize_strategy(args):
 
     os.makedirs("reports", exist_ok=True)
     blocked_count = sum(x["status"] == "DATA_BLOCKED" for x in all_results)
+    no_portfolio_count = sum(x["status"] == "NO_NONCASH_RISK_FEASIBLE_CANDIDATE"
+                             for x in all_results)
     overall_status = ("DATA_BLOCKED" if blocked_count == len(all_results) else
+                      "NO_NONCASH_RISK_FEASIBLE_CANDIDATE"
+                      if no_portfolio_count == len(all_results) else
                       "PARTIAL_DATA_BLOCKED" if blocked_count else
                       "EXPLORATORY_NOT_LONG_TERM_VALIDATED" if exploratory else "RESEARCH_ONLY")
     payload = {
