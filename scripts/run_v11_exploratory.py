@@ -37,8 +37,8 @@ def run(argv=None):
     p.add_argument("--asof", default=date.today().isoformat())
     p.add_argument("--mode", choices=PROTOCOLS, default="halfyear")
     p.add_argument("--weight-pool", type=int, default=180)
-    p.add_argument("--weight-candidates", type=int, default=1,
-                   help="one validation-selected weight to keep ablations comparable")
+    p.add_argument("--weight-candidates", type=int, default=5,
+                   help="up to five DISTINCT risk-feasible continuous LP portfolios; cash baseline stays separate")
     p.add_argument("--weight-paths", type=int, default=48)
     p.add_argument("--fee-stress-bps", default="30,60")
     p.add_argument("--seed", type=int, default=42)
