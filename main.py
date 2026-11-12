@@ -713,6 +713,40 @@ def cmd_optimize_strategy(args):
         fee_stress_rates=fee_rates, seed=args.seed,
         evaluate_ablation_on_test=(exploratory and strategy_scope == "b6-ablation"))
 
+    def evaluate_fixed_bond_benchmarks(validation_window, test_window):
+        """No test-set model selection; predetermined simple bond references."""
+        base_rule={"family":"B2","rule_id":"B2_cashflow_only","params":{}}
+        definitions=[]
+        if "021559" in all_codes:
+            definitions.append(("GRINN_100_REFERENCE_ONLY",{"021559":1.0},
+                                "violates single-fund 40% cap; research only"))
+        if bond_codes:
+            definitions.append(("BOND_EQUAL_WEIGHT",
+                                {c:1/len(bond_codes) for c in bond_codes},
+                                "no equity/gold; cashflow top-ups"))
+        other_bonds=[c for c in bond_codes if c!="021559"]
+        if "021559" in bond_codes and other_bonds:
+            reference={"021559":.4}
+            reference.update({c:.6/len(other_bonds) for c in other_bonds})
+            definitions.append(("GRINN40_BOND60",reference,
+                                "40% Grinn + equal weight other bond funds"))
+        out=[]
+        for name,nonzero,note in definitions:
+            weights={c:float(nonzero.get(c,0.)) for c in all_codes}
+            weights["cash"]=max(0.,1.-sum(weights.values()))
+            row={"name":name,"weights":weights,"note":note,
+                 "role":"FIXED_BENCHMARK_NOT_ELIGIBLE_FOR_TEST_SELECTION"}
+            for label,window in (("validation",validation_window),("test",test_window)):
+                try:
+                    fee_rows=[{"uniform_fee_rate_assumption":float(fee),
+                               **evaluator(weights,base_rule,window,float(fee))}
+                              for fee in fee_rates]
+                    row[label]=joint_optimizer._aggregate_fee_metrics(fee_rows)
+                except Exception as exc:
+                    row[label]={"status":"BENCHMARK_BLOCKED","reason":str(exc)}
+            out.append(row)
+        return out
+
     for fold in folds:
         style_quality = None
         tr_start, tr_end = fold["train"]
@@ -775,12 +809,16 @@ def cmd_optimize_strategy(args):
                         if k not in ("candidates","cash_benchmark")},
                     "weight_candidates": [],
                     "trade_ready": False,"research_only":True,
+                    "fixed_benchmarks":evaluate_fixed_bond_benchmarks(
+                        (va_start,va_end),(te_start,te_end)),
                 })
                 continue
             result = joint_optimizer.optimize_joint_fold(
                 candidate_pack["candidates"], rules_for_fold, evaluator,
                 (va_start, va_end), (te_start, te_end), joint_cfg)
             result["fold"] = fold
+            result["fixed_benchmarks"] = evaluate_fixed_bond_benchmarks(
+                (va_start,va_end),(te_start,te_end))
             result["style_signal_quality"] = style_quality
             result["rules_included"] = [r["rule_id"] for r in rules_for_fold]
             result["weight_candidate_generation"] = {
