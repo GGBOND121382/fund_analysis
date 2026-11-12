@@ -398,7 +398,20 @@ def generate_weight_candidates(returns: pd.DataFrame,
             rejected.append({"budget":dd,"uncertainty":rho,"variance":lam,
                              "status":ans["status"],"reason":ans.get("reason")})
             continue
-        w=np.asarray(ans["weights"],float)
+        w=np.asarray(ans["weights"],float).copy()
+        # Conic solvers use floating tolerances: exact locked/zero holdings
+        # must be restored before public reports and the trading simulator.
+        for i in range(n):
+            if upper[i]-lower[i] <= 1e-12:
+                w[i]=lower[i]
+            elif abs(w[i]) < 1e-10:
+                w[i]=0.
+        w[-1]=1.-w[:n].sum()
+        if w[-1] < -1e-7:
+            rejected.append({"budget":dd,"uncertainty":rho,"variance":lam,
+                             "status":"NUMERICAL_REJECTED_NEGATIVE_CASH"})
+            continue
+        w[-1]=max(0.,w[-1])
         solutions.append((dd,rho,lam,w))
         if w[:-1].sum()<1e-6:
             continue
