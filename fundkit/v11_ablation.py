@@ -5,7 +5,7 @@ validated investment recommendation. Cash reserve is zero in all ablations
 to match B2 baseline's research target and avoid cash-buffer confounding.
 """
 
-def build_ablation_rules():
+def build_ablation_rules(include_v13=False):
     common = {
         "cash_reserve_weight": 0.0, "risk_paths": 64,
         "simulate_redeem": True, "deferred_horizon_days": 10,
@@ -44,4 +44,12 @@ def build_ablation_rules():
     add("A6_joint50", "50% baseline, tactical release, both exit modes",
         base_fraction=.50, release_fraction=.50,
         entry_timing_enabled=True, exit_mode="both")
+    if include_v13:
+        # v1.3 amount-decision candidate; old A1-A6 are intentionally frozen.
+        add("A7_risk_budgeted_amount",
+            "Current deposit and matured cash; risk-gated discrete amount grid",
+            base_fraction=1.0, release_fraction=0.0,
+            deferred_horizon_days=1, entry_timing_enabled=False,
+            amount_mode="risk_budgeted", amount_grid_steps=8,
+            subscription_fee_proxy=.003, exit_mode="both")
     return rules
