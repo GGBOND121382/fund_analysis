@@ -258,16 +258,20 @@ def optimize_target_weights(returns: pd.DataFrame,
         "independent_scenario_sharpe_q25":float(independent_sharpe[0]),
         "annual_risk_free_rate_assumption":cfg.annual_risk_free_rate,
         "robust_return_estimates":candidates["robust_return_estimates"],
+        "predictive_model":candidates.get("predictive_model"),
+        "frontier_grid":candidates.get("frontier_grid"),
+        "frontier_distinct_non_cash_count":candidates.get("frontier_distinct_non_cash_count"),
+        "grinn_021559_sensitivity":candidates.get("grinn_021559_sensitivity"),
         "concentration_guardrail":candidates["concentration_guardrail"],
         "independent_scenario_mdd_p95":independent_risk,
         "independent_scenario_return_q25":float(independent_return[0]),
         "turnover_proxy":chosen["turnover_proxy"],
         "risk_budget":cfg.max_drawdown,"return_target":cfg.target_annual_return,
         "solver":candidates["solver"],
-        "method":"continuous buy-and-hold LP with historical drawdown cuts "
-                 "and empirical scenario signed-gap CVaR; frozen OOS required",
+        "method":"one-year robust conic optimization with historical drawdown cuts "
+                 "and empirical signed-gap CVaR; frozen OOS required",
         "limits":[
-            "LP optimality is conditional on the finite scenario/buy-and-hold model",
+            "Conic optimality is conditional on the finite scenario/buy-and-hold model",
             "A 4% scenario MDD constraint cannot guarantee future realized MDD",
             "Independent scenario seed still uses the SAME historical sample",
             "Real subscriptions, redemption locks, delay, cost and cashflows "
