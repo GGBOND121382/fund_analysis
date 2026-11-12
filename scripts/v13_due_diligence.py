@@ -74,6 +74,18 @@ def classify(row: pd.Series, disc: dict | None) -> tuple[str, str]:
     return "resilient_explainable", ";".join(notes_list + ["敞口以前五大债券下限为准"])
 
 
+def unexplained_spike_days(code: str, threshold: float = 0.03) -> list[str]:
+    """债基单日 |收益|>3% 且当日无分红除息 → 疑似巨额赎回/净值异常。"""
+    from fundkit import metrics
+    hist = storage.load_nav(code)
+    divs = storage.load_dividends().get(code, ())
+    ex_dates = {str(d) for d, _ in divs}
+    hist = hist.sort_values("date")
+    ret = hist["nav"].pct_change()
+    hits = hist.loc[ret.abs() > threshold, "date"].astype(str)
+    return [d for d in hits if d not in ex_dates]
+
+
 def main() -> None:
     short = pd.read_csv(SHORTLIST, dtype={"code": str})
     rows = []
@@ -90,10 +102,19 @@ def main() -> None:
             "has_disclosure": disc is not None,
         })
     out = pd.DataFrame(rows)
+    # 净值异常（巨额赎回/错误单日跳变）一律降为 opaque，不进入可投资池
+    spikes = {c: unexplained_spike_days(c) for c in out["code"]}
+    for i, r in out.iterrows():
+        sp = spikes.get(r["code"]) or []
+        if sp and r["dd_class"] == "resilient_explainable":
+            out.loc[i, "dd_class"] = "resilient_opaque"
+            out.loc[i, "evidence"] = f"{r['evidence']};单日异常收益{sp[:3]}(疑似巨额赎回)"
+    out["unexplained_spike_days"] = out["code"].map(lambda c: ";".join(spikes.get(c) or []))
     out.to_csv(OUT_CSV, index=False, encoding="utf-8-sig")
 
     # 研究候选池 = 13 持仓 + 尽调通过的 explainable 候选
     snap = json.load(open("config/account_snapshot.json"))
+    held = {f["code"] for f in snap["funds"]}
     fl = storage.load_fund_list()
     name_of = dict(zip(fl["code"].astype(str), fl["name"]))
     pool = {"asof": str(ASOF.date()), "purpose": "v1.3 pool-B research only; not a trade list",
@@ -101,7 +122,8 @@ def main() -> None:
                           "category": f.get("category"), "role": "existing_holding"}
                          for f in snap["funds"]],
             "candidates": []}
-    for _, r in out[out["dd_class"] == "resilient_explainable"].iterrows():
+    for _, r in out[(out["dd_class"] == "resilient_explainable") &
+                    (~out["code"].isin(held))].iterrows():
         pool["candidates"].append({
             "code": r["code"], "name": r["name"], "category": "bond",
             "group": r["group"], "role": "new_candidate",

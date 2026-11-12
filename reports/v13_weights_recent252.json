@@ -1,0 +1,365 @@
+{
+  "status": "SCENARIO_CRITERIA_MET_UNVALIDATED",
+  "trade_ready": false,
+  "research_only": true,
+  "data_start": "2025-10-16",
+  "data_end": "2026-11-09",
+  "n_joint_observations": 252,
+  "codes": [
+    "710301",
+    "004400",
+    "021559",
+    "014846",
+    "000218",
+    "110020",
+    "096001",
+    "017641",
+    "016452",
+    "019736",
+    "019172",
+    "539001",
+    "019441"
+  ],
+  "weights": {
+    "710301": 0.1718315757,
+    "004400": 0.4,
+    "021559": 0.4,
+    "014846": 0.0,
+    "000218": 0.0,
+    "110020": 0.0,
+    "096001": 0.0281684242,
+    "017641": 0.0,
+    "016452": 0.0,
+    "019736": 0.0,
+    "019172": 0.0,
+    "539001": 0.0,
+    "019441": 0.0,
+    "cash": 1e-10
+  },
+  "candidate_count_evaluated": 7,
+  "risk_feasible_candidate_count": 3,
+  "historical_mdd": 0.004848438917838815,
+  "scenario_mdd_p95": 0.005495201666302951,
+  "scenario_return_q25": 0.056303803398498165,
+  "robust_return_lcb": 0.05192349841571944,
+  "robust_return_score": 0.05192349841571944,
+  "historical_sharpe": 3.2920985576481088,
+  "scenario_sharpe_q25": 2.9459795248483522,
+  "scenario_sharpe_median": 3.2854475872222118,
+  "independent_scenario_sharpe_q25": 2.874269846148937,
+  "annual_risk_free_rate_assumption": 0.02,
+  "robust_return_estimates": {
+    "710301": {
+      "n": 252,
+      "sample_mean_annual": 0.035073756048752736,
+      "prior_mean_annual": 0.0395844381991895,
+      "shrunk_mean_annual": 0.035073756048752736,
+      "robust_lcb_annual": 0.028757181050460438,
+      "annual_volatility": 0.00317154872895415,
+      "annual_mean_se": 0.006316574998292297,
+      "recent_63d_mean_annual": 0.02348323666950236,
+      "recent_126d_mean_annual": 0.021920768570676152,
+      "category": "bond"
+    },
+    "004400": {
+      "n": 252,
+      "sample_mean_annual": 0.04409512034962626,
+      "prior_mean_annual": 0.0395844381991895,
+      "shrunk_mean_annual": 0.04409512034962626,
+      "robust_lcb_annual": 0.03514016028546933,
+      "annual_volatility": 0.0044701501402904,
+      "annual_mean_se": 0.00895496006415693,
+      "recent_63d_mean_annual": 0.03695709065332009,
+      "recent_126d_mean_annual": 0.02900730534668905,
+      "category": "bond"
+    },
+    "021559": {
+      "n": 252,
+      "sample_mean_annual": 0.09167842459202091,
+      "prior_mean_annual": 0.0395844381991895,
+      "shrunk_mean_annual": 0.09167842459202091,
+      "robust_lcb_annual": 0.07066641389846057,
+      "annual_volatility": 0.027842379201543588,
+      "annual_mean_se": 0.02101201069356034,
+      "recent_63d_mean_annual": 0.11222555290308112,
+      "recent_126d_mean_annual": 0.12082433328277209,
+      "category": "bond"
+    },
+    "014846": {
+      "n": 252,
+      "sample_mean_annual": 0.021704990127154655,
+      "prior_mean_annual": 0.0395844381991895,
+      "shrunk_mean_annual": 0.021704990127154655,
+      "robust_lcb_annual": -0.01239229063975103,
+      "annual_volatility": 0.04319955730546255,
+      "annual_mean_se": 0.034097280766905685,
+      "recent_63d_mean_annual": -0.028331942638741836,
+      "recent_126d_mean_annual": -0.01400736554037163,
+      "category": "bond"
+    },
+    "000218": {
+      "n": 252,
+      "sample_mean_annual": -0.07287091779225541,
+      "prior_mean_annual": 0.0771366884499124,
+      "shrunk_mean_annual": -0.07287091779225541,
+      "robust_lcb_annual": -0.3086840434007857,
+      "annual_volatility": 0.2981359217859181,
+      "annual_mean_se": 0.23581312560853027,
+      "recent_63d_mean_annual": 0.07312869027303481,
+      "recent_126d_mean_annual": -0.31058866304709465,
+      "category": "gold"
+    },
+    "110020": {
+      "n": 252,
+      "sample_mean_annual": -0.09781621116702588,
+      "prior_mean_annual": 0.08135439636351266,
+      "shrunk_mean_annual": -0.09781621116702588,
+      "robust_lcb_annual": -0.2402009885871555,
+      "annual_volatility": 0.16888308974713534,
+      "annual_mean_se": 0.14238477742012962,
+      "recent_63d_mean_annual": -0.41274627947885056,
+      "recent_126d_mean_annual": -0.294975719862546,
+      "category": "equity_index"
+    },
+    "096001": {
+      "n": 252,
+      "sample_mean_annual": 0.0771366884499124,
+      "prior_mean_annual": 0.08135439636351266,
+      "shrunk_mean_annual": 0.0771366884499124,
+      "robust_lcb_annual": -0.03857815148432135,
+      "annual_volatility": 0.11830452656957047,
+      "annual_mean_se": 0.11571483993423375,
+      "recent_63d_mean_annual": 0.04356226813995212,
+      "recent_126d_mean_annual": 0.16005119439155102,
+      "category": "equity_index"
+    },
+    "017641": {
+      "n": 252,
+      "sample_mean_annual": 0.08297097401801612,
+      "prior_mean_annual": 0.08135439636351266,
+      "shrunk_mean_annual": 0.08297097401801612,
+      "robust_lcb_annual": -0.03738494598342247,
+      "annual_volatility": 0.1290575655445106,
+      "annual_mean_se": 0.12035592000143859,
+      "recent_63d_mean_annual": -0.049058464356568354,
+      "recent_126d_mean_annual": 0.08561321420023194,
+      "category": "equity_index"
+    },
+    "016452": {
+      "n": 252,
+      "sample_mean_annual": 0.08216925994593594,
+      "prior_mean_annual": 0.08135439636351266,
+      "shrunk_mean_annual": 0.08216925994593594,
+      "robust_lcb_annual": -0.11018308057596479,
+      "annual_volatility": 0.2091372825698095,
+      "annual_mean_se": 0.19235234052190073,
+      "recent_63d_mean_annual": -0.13258260819751033,
+      "recent_126d_mean_annual": 0.0506890002906486,
+      "category": "equity_index"
+    },
+    "019736": {
+      "n": 252,
+      "sample_mean_annual": 0.08053953278108938,
+      "prior_mean_annual": 0.08135439636351266,
+      "shrunk_mean_annual": 0.08053953278108938,
+      "robust_lcb_annual": -0.10901409835642525,
+      "annual_volatility": 0.20601448931166857,
+      "annual_mean_se": 0.18955363113751464,
+      "recent_63d_mean_annual": -0.13031715217874318,
+      "recent_126d_mean_annual": 0.056380695873119224,
+      "category": "equity_index"
+    },
+    "019172": {
+      "n": 252,
+      "sample_mean_annual": 0.08663403314470164,
+      "prior_mean_annual": 0.08135439636351266,
+      "shrunk_mean_annual": 0.08663403314470164,
+      "robust_lcb_annual": -0.10018753526745752,
+      "annual_volatility": 0.2016247616959236,
+      "annual_mean_se": 0.18682156841215916,
+      "recent_63d_mean_annual": -0.130200283620733,
+      "recent_126d_mean_annual": 0.05345662543232166,
+      "category": "equity_index"
+    },
+    "539001": {
+      "n": 252,
+      "sample_mean_annual": 0.07429825850311234,
+      "prior_mean_annual": 0.08135439636351266,
+      "shrunk_mean_annual": 0.07429825850311234,
+      "robust_lcb_annual": -0.11333321332785473,
+      "annual_volatility": 0.20117302896872635,
+      "annual_mean_se": 0.18763147183096707,
+      "recent_63d_mean_annual": -0.13001584929416543,
+      "recent_126d_mean_annual": 0.04741992428369213,
+      "category": "equity_index"
+    },
+    "019441": {
+      "n": 252,
+      "sample_mean_annual": 0.08884501500850028,
+      "prior_mean_annual": 0.08135439636351266,
+      "shrunk_mean_annual": 0.08884501500850028,
+      "robust_lcb_annual": -0.10091790410285226,
+      "annual_volatility": 0.2040176047246507,
+      "annual_mean_se": 0.18976291911135254,
+      "recent_63d_mean_annual": -0.11563167383346107,
+      "recent_126d_mean_annual": 0.06569645088940712,
+      "category": "equity_index"
+    }
+  },
+  "predictive_model": {
+    "method": "ONE_YEAR_BLOCKED_CV_SHRINKAGE",
+    "n_common_observations": 252,
+    "mean_shrinkage_weight": 1.0,
+    "mean_shrinkage_validation": {
+      "status": "BLOCKED_PAST_ONLY_CV",
+      "n_folds": 6,
+      "candidate_shrinkages": [
+        0.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "relative_validation_mse": [
+        13.307586888043824,
+        13.07130612432743,
+        12.873493157656718,
+        12.714147988031682,
+        12.593270615452326
+      ]
+    },
+    "covariance_shrinkage_weight": 0.03500335587241416,
+    "limitations": [
+      "63/126-day observations only widen uncertainty; no momentum extrapolation",
+      "forecast error covariance is estimated from same-year blocks, not calibrated coverage",
+      "fund NAV publication, dividends, vintage and exposure-change require independent audit"
+    ]
+  },
+  "frontier_grid": [
+    {
+      "mdd": 0.04,
+      "uncertainty": 0.0,
+      "variance": 0.0
+    },
+    {
+      "mdd": 0.04,
+      "uncertainty": 0.5,
+      "variance": 0.25
+    },
+    {
+      "mdd": 0.04,
+      "uncertainty": 1.0,
+      "variance": 0.5
+    },
+    {
+      "mdd": 0.04,
+      "uncertainty": 1.0,
+      "variance": 1.5
+    },
+    {
+      "mdd": 0.03,
+      "uncertainty": 0.5,
+      "variance": 0.5
+    },
+    {
+      "mdd": 0.03,
+      "uncertainty": 1.0,
+      "variance": 1.0
+    },
+    {
+      "mdd": 0.02,
+      "uncertainty": 1.0,
+      "variance": 1.0
+    }
+  ],
+  "frontier_distinct_non_cash_count": 3,
+  "grinn_021559_sensitivity": [
+    {
+      "grinn_min": 0.0,
+      "status": "OPTIMAL",
+      "grinn_weight": 2.8265513635300066e-11,
+      "model_score": 0.02837407791665234,
+      "historical_mdd": 0.0031418346815145215,
+      "scenario_mdd_p95": 0.004026549259926648,
+      "scenario_return_q25": 0.032640146687666904,
+      "scenario_cvar": -0.03617681888927516
+    },
+    {
+      "grinn_min": 0.1,
+      "status": "OPTIMAL",
+      "grinn_weight": 0.40000000004054953,
+      "model_score": 0.04937250073053117,
+      "historical_mdd": 0.004848438761174356,
+      "scenario_mdd_p95": 0.005495201625288493,
+      "scenario_return_q25": 0.05630380064498941,
+      "scenario_cvar": -0.034557969009571275
+    },
+    {
+      "grinn_min": 0.2,
+      "status": "OPTIMAL",
+      "grinn_weight": 0.3999999999208552,
+      "model_score": 0.04937250071294812,
+      "historical_mdd": 0.004848437679035644,
+      "scenario_mdd_p95": 0.00549520133094501,
+      "scenario_return_q25": 0.056303781768590744,
+      "scenario_cvar": -0.034557969932588875
+    },
+    {
+      "grinn_min": 0.4,
+      "status": "OPTIMAL",
+      "grinn_weight": 0.40000000002408276,
+      "model_score": 0.04937250071932046,
+      "historical_mdd": 0.004848432988082241,
+      "scenario_mdd_p95": 0.0054952000111536,
+      "scenario_return_q25": 0.056303701232297776,
+      "scenario_cvar": -0.034557973946922844
+    }
+  ],
+  "concentration_guardrail": {
+    "max_single_fund_weight": 0.4,
+    "status": "GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED"
+  },
+  "independent_scenario_mdd_p95": 0.00563186183054476,
+  "independent_scenario_return_q25": 0.05547712187155973,
+  "turnover_proxy": 0.4186305714086358,
+  "risk_budget": 0.04,
+  "return_target": 0.05,
+  "solver": "CVXPY/CLARABEL robust SOCP, affine historical MDD cuts",
+  "method": "one-year robust conic optimization with historical drawdown cuts and empirical signed-gap CVaR; frozen OOS required",
+  "limits": [
+    "Conic optimality is conditional on the finite scenario/buy-and-hold model",
+    "A 4% scenario MDD constraint cannot guarantee future realized MDD",
+    "Independent scenario seed still uses the SAME historical sample",
+    "Real subscriptions, redemption locks, delay, cost and cashflows require independent simulator validation",
+    "Cash benchmark is not used to validate dynamic-investment ablations"
+  ],
+  "config": {
+    "target_annual_return": 0.05,
+    "max_drawdown": 0.04,
+    "lookback_days": 252,
+    "horizon": 252,
+    "bootstrap_paths": 96,
+    "block_lengths": [
+      20,
+      60
+    ],
+    "historical_windows": 18,
+    "candidate_count": 2400,
+    "batch_size": 80,
+    "min_observations": 252,
+    "max_single_fund_weight": 0.4,
+    "min_cash_weight": 0.0,
+    "annual_cash_return": 0.0,
+    "annual_risk_free_rate": 0.02,
+    "turnover_cost_rate": 0.003,
+    "return_prior_shrinkage_days": 504,
+    "return_uncertainty_z": 1.0,
+    "seed": 42
+  },
+  "asof": "2026-11-12T15:00:00+08:00",
+  "regime_start": null,
+  "data_quality": "PUBLISHED_AT_RULE_INFERRED; DIVIDEND_SOURCE_REQUIRES_AUDIT",
+  "account_history": "SIMULATED_LOTS_NO_REAL_ACCOUNT_MDD",
+  "portfolio_scope": "ALL_CURRENT_HOLDINGS_REQUIRED; EXISTING_INDEX_EXPOSURE_FROZEN",
+  "style_regime_verification": "MISSING"
+}

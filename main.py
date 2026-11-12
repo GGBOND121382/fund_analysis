@@ -932,10 +932,10 @@ def main():
     p_wo.add_argument("--paths", type=int, default=192)
     p_wo.add_argument("--min-cash", type=float, default=0.0)
     p_wo.add_argument("--max-fund-weight", type=float, default=0.40,
-                      help="单只基金治理上限；默认40%，不是经验收益参数")
+                      help="单只基金治理上限；默认40%%，不是经验收益参数")
     p_wo.add_argument("--cash-return", type=float, default=0.0)
     p_wo.add_argument("--risk-free-rate", type=float, default=0.02,
-                      help="年化无风险利率假设，用于Sharpe计算；默认2%")
+                      help="年化无风险利率假设，用于Sharpe计算；默认2%%")
     p_wo.add_argument("--turnover-cost", type=float, default=0.003,
                       help="单边换仓成本压力代理（默认30bp；真实费率应逐基金替换）")
     p_wo.add_argument("--seed", type=int, default=42)
@@ -958,12 +958,12 @@ def main():
     p_js.add_argument("--weight-paths", type=int, default=64)
     p_js.add_argument("--min-cash", type=float, default=0.0)
     p_js.add_argument("--max-fund-weight", type=float, default=0.40,
-                      help="单只基金治理上限；默认40%，不是经验收益参数")
+                      help="单只基金治理上限；默认40%%，不是经验收益参数")
     p_js.add_argument("--regime-start", default=None, help="可选：经季报证据确认的当前风格起点")
     p_js.add_argument("--fee-stress-bps", default="30,60",
                        help="统一单边费用压力情景，单位bp；真实基金费率需另行接入")
     p_js.add_argument("--risk-free-rate", type=float, default=0.02,
-                       help="年化无风险利率假设，用于训练候选Sharpe；默认2%")
+                       help="年化无风险利率假设，用于训练候选Sharpe；默认2%%")
     p_js.add_argument("--seed", type=int, default=42)
 
     p_decide = sub.add_parser("decide", help="第6步：输出研究建议（schema 校验，RESEARCH_ONLY）")
@@ -992,13 +992,13 @@ def main():
     p_rank.add_argument("--rf", type=float, default=0.02, help="年化无风险利率（默认 0.02）")
     p_rank.add_argument("--min-days", type=int, default=60, help="区间内最少交易日数（默认 60）")
     p_rank.add_argument("--min-ann-return", type=float, default=0,
-                        help="年化收益率下限，小数（如 0.05 表示 5%，默认 0 不过滤）")
+                        help="年化收益率下限，小数（如 0.05 表示 5%%，默认 0 不过滤）")
     p_rank.add_argument("--min-sharpe", type=float, default=0,
                         help="夏普比率下限（如 7，默认 0 不过滤）")
     p_rank.add_argument("--max-drawdown", type=float, default=0,
-                        help="最大回撤上限，小数（如 0.02 表示 2%，默认 0 不过滤）")
+                        help="最大回撤上限，小数（如 0.02 表示 2%%，默认 0 不过滤）")
     p_rank.add_argument("--max-daily-return", type=float, default=0,
-                        help="单日涨跌幅上限，小数（如 0.03 表示 3%，过滤巨额赎回等净值异动，默认 0 不过滤）")
+                        help="单日涨跌幅上限，小数（如 0.03 表示 3%%，过滤巨额赎回等净值异动，默认 0 不过滤）")
     p_rank.add_argument("--types", default="", help="基金类型过滤，逗号分隔子串")
     p_rank.add_argument("--include-money", action="store_true", help="包含货币型基金（默认排除）")
     p_rank.add_argument("--include-closed", action="store_true",
