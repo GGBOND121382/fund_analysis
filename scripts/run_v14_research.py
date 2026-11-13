@@ -15,11 +15,12 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from fundkit import simulator, storage  # noqa: E402
+from fundkit import simulator, storage, policies  # noqa: E402
 from fundkit.adapters import CST, LocalDataAdapter  # noqa: E402
 from fundkit.v14_core_satellite import (CORE, SATELLITES, STRESS, Limits,  # noqa: E402
     combined_drawdown, fixed_weights, make_policy, optimized_weights)
-from fundkit.weight_optimizer import WeightSearchConfig, build_returns_asof  # noqa: E402
+from fundkit.weight_optimizer import WeightSearchConfig, build_returns_asof
+from fundkit.v15_signals import VARIANTS, IndexHistory, ValuationHistory  # noqa: E402
 
 
 def trade_constraints(codes, allow_missing=False):
@@ -95,7 +96,11 @@ def summarize(result, groups, contributed_cash):
                             "total_return_contribution": at["total_return_contribution"]}}
 
 
-def run_case(groups, target, limits, args, *, benchmark=False):
+def run_case(groups, target, limits, args, *, benchmark=False, variant="fixed"):
+    legacy = variant in ("legacy_b2", "legacy_a5")
+    use_signal = variant != "fixed" and not legacy
+    valuation = getattr(args, "valuation_history", None)
+    index_history = getattr(args, "index_history", None)
     caps, blocked_buy, blocked_sell, status = trade_constraints(
         groups, args.allow_missing_trade_status)
     params = dict(simulator.SIM_DEFAULTS, subscribe_fee_rate=args.fee_bps/10000,
@@ -106,12 +111,37 @@ def run_case(groups, target, limits, args, *, benchmark=False):
         budget_per_day=args.daily_inflow, allow_new_equity_index=True,
         equity_index_codes=frozenset(c for c, g in groups.items() if g.endswith("equity")),
         daily_limits=caps, params=params, track_attribution=True,
-        include_signal_history=False, track_exposures=True,
+        include_signal_history=(use_signal and index_history is None) or variant == "legacy_a5",
+        track_exposures=True, signal_history_limit=756 if legacy else 126,
     )
-    policy = make_policy(groups, target, limits, trade_limits=caps, blocked_buy=blocked_buy,
-                         blocked_sell=blocked_sell, fee_rate=args.fee_bps/10000,
-                         risk_gate=not benchmark, rebalance=not benchmark,
-                         group_rules=not benchmark)
+    if legacy:
+        params = policies.load_params()
+        params.update(target_weights=target, daily_limits=caps, disabled_new_buy_codes=sorted(blocked_buy),
+                      asset_categories={c: "bond" if g in CORE or g == "enhanced" else
+                          "gold" if g == "gold" else "equity_index" for c,g in groups.items()},
+                      equity_index_codes=sorted(cfg.equity_index_codes))
+        if variant == "legacy_a5":
+            from fundkit.v11_ablation import build_ablation_rules
+            from fundkit.v11_policy import make_b6
+            rule = next(x for x in build_ablation_rules() if x["rule_id"] == "A5_stop")
+            params["B6"] = {**params["B6"], **rule["params"]["B6"]}
+            base = make_b6(params)
+        else:
+            base = policies.make_b2(params)
+        def policy(state):
+            order = base(state) or {}
+            order["subscribe"] = {c:v for c,v in order.get("subscribe", {}).items()
+                                  if c in groups and c not in blocked_buy}
+            order["redeem"] = {c:v for c,v in order.get("redeem", {}).items()
+                               if c in groups and c not in blocked_sell}
+            return order
+        policy.on_execution = getattr(base, "on_execution", None)
+    else:
+        policy = make_policy(groups, target, limits, trade_limits=caps, blocked_buy=blocked_buy,
+                             blocked_sell=blocked_sell, fee_rate=args.fee_bps/10000,
+                             risk_gate=not benchmark, rebalance=not benchmark,
+                             group_rules=not benchmark, variant=variant, valuation_history=valuation,
+                             index_history=index_history)
     result = simulator.Simulator(args.common_codes, cfg).run(args.start, args.end, policy=policy,
                                                   initial_cash=args.initial_cash)
     report = summarize(result, groups, args.initial_cash + args.daily_inflow*len(result["daily"]))
@@ -132,6 +162,23 @@ def run_case(groups, target, limits, args, *, benchmark=False):
                   test_end=str(result["daily"].date.iloc[-1].date()),
                   historical_finite_window_target_met=bool(
                       report["cagr"] >= .05 and report["max_drawdown"] <= limits.drawdown))
+    decisions = report["decisions_by_reason"]
+    if variant == "valuation":
+        active = decisions.get("VALUATION_MONTH", 0)
+        missing = decisions.get("VALUATION_NOT_AVAILABLE", 0)
+        factors = result["events"].get("valuation_factor", pd.Series(dtype=float)).dropna()
+        report["valuation_coverage"] = {"months_with_signal": active, "months_missing": missing,
+                                         "non_neutral_months": int((factors != 1.).sum()),
+                                         "neutral_fallback_in_missing_months": bool(missing)}
+        if not active:
+            raise ValueError("VALUATION_DATA_BLOCKED: no decision month has fresh PE/PB and 36 prior monthly snapshots")
+    report["market_signal_missing_asset_days"] = decisions.get("MARKET_SIGNAL_NOT_AVAILABLE", 0)
+    report["market_signal_candidate_asset_days"] = (
+        len(result["daily"]) * sum(g in SATELLITES and target[c] > 1e-9
+                                  for c,g in groups.items()) if use_signal else 0)
+    if (use_signal and report["market_signal_candidate_asset_days"] and
+        report["market_signal_missing_asset_days"] == report["market_signal_candidate_asset_days"]):
+        raise ValueError("INDEX_DATA_BLOCKED: no usable market signal within the test window")
     return report, result
 
 
@@ -155,6 +202,10 @@ def main():
                    help="explicit research-only override when no local status file exists")
     p.add_argument("--allow-missing-dividends", action="store_true",
                    help="allow missing cash dividend file; results are explicitly incomplete")
+    p.add_argument("--layered", action="store_true", help="run fixed, dip, trend-only, dip+trend and valuation comparisons")
+    p.add_argument("--legacy", action="store_true", help="also compare legacy B2 and A5 on identical fixed targets")
+    p.add_argument("--valuation-csv", default="data/factors/csi300_valuation.csv")
+    p.add_argument("--index-csv", default=None, help="optional point-in-time total-return benchmarks, keyed by fund code")
     p.add_argument("--output", default="reports/v14_core_satellite")
     a = p.parse_args()
     try:
@@ -200,6 +251,22 @@ def main():
         if (a.end-a.start).days < 28:
             raise ValueError("DATA_BLOCKED: test window must span at least 28 calendar days")
         a.common_codes = list(eligible)
+        a.valuation_history, a.index_history = None, None
+        valuation_blocked = None
+        if a.layered:
+            try:
+                a.valuation_history = ValuationHistory(a.valuation_csv)
+                if a.valuation_history.is_proxy and not a.diagnostic:
+                    a.valuation_history = None
+                    raise ValueError("VALUATION_DATA_BLOCKED: proxy history requires --diagnostic")
+            except (ValueError, OSError, TypeError) as exc:
+                valuation_blocked = str(exc)
+            if a.index_csv:
+                a.index_history = IndexHistory(a.index_csv)
+                missing_bench = [c for c,g in eligible.items()
+                                 if g in SATELLITES and c not in a.index_history.frames]
+                if missing_bench:
+                    raise ValueError("INDEX_DATA_BLOCKED: missing benchmark series: " + ",".join(missing_bench))
         trade_constraints(eligible, a.allow_missing_trade_status)
         if not Path(storage.DIVIDENDS_FILE).exists() and not a.allow_missing_dividends:
             raise ValueError("DATA_BLOCKED: missing data/dividends.csv; run python main.py dividends, "
@@ -231,22 +298,28 @@ def main():
                "nav_publication": "T+2_CALENDAR_DAYS_23_59_PROXY",
                "observed_portfolio_drawdown_visibility": "T+3_CALENDAR_DAY_AT_14_55_PROXY",
                "initialization": "CASH_AND_FIXED_DAILY_INFLOW_NO_REAL_ACCOUNT",
+               "valuation_source_quality": (a.valuation_history.source_quality
+                                            if a.valuation_history else None),
+               "signal_source": ("USER_SUPPLIED_TOTAL_RETURN_BENCHMARKS" if a.index_history else
+                                 "PUBLISHED_FUND_TOTAL_RETURN_NAV_PROXY"),
                "cases": {}}
 
-    def record(name, groups, target, limits, audit=None, benchmark=False):
-        report, result = run_case(groups, target, limits, a, benchmark=benchmark)
+    def record(name, groups, target, limits, audit=None, benchmark=False, variant="fixed"):
+        report, result = run_case(groups, target, limits, a, benchmark=benchmark, variant=variant)
         _, dd = combined_drawdown({c: target[c] for c in groups}, 1., 0., groups)
         report["target_prescreen_stress_mdd"] = dd
         report["target_stress_feasible"] = dd <= limits.drawdown
         report["allocation_audit"] = audit
-        report["strategy"] = "FIXED_BUY_ONLY_NO_GUARDS" if benchmark else "CORE_SATELLITE"
+        report["strategy"] = "FIXED_BUY_ONLY_NO_GUARDS" if benchmark else variant
+        report["signal_parameter_version"] = "V15_PREDECLARED" if a.layered else None
         results["cases"][name] = report
         result["attribution"]["daily"].to_csv(out/f"{name}_daily_attribution.csv", index=False)
         result["weights"].to_csv(out/f"{name}_weights.csv", index=False)
         # Never export account cash amounts. Decision events here are already ratios.
         ev = result["events"].reindex(columns=["date", "code", "action", "event", "scope",
                        "planned_pct", "unfilled_pct", "observed_drawdown", "pre_stress_drawdown",
-                       "post_stress_drawdown", "stress_case", "accepted_buy_pct", "stress_blocked"])
+                       "post_stress_drawdown", "stress_case", "accepted_buy_pct", "stress_blocked",
+                       "signal_date", "trend_level", "valuation_rank", "valuation_factor"])
         ev.to_csv(out/f"{name}_execution_audit.csv", index=False)
         print(f"{name:24s} CAGR={report['cagr']:7.2%} MDD={report['max_drawdown']:6.2%} "
               f"Sharpe={report['sharpe']!s} buy={report['buys']} sell={report['redemptions']}",
@@ -263,14 +336,35 @@ def main():
                 record(f"buy_only_{label}", groups, target, limits, benchmark=True)
         except (ValueError, ArithmeticError) as exc:
             results["cases"][f"fixed_{label}"] = {"status":"DATA_BLOCKED", "reason":str(exc)}
+        if a.layered and cap:
+            for variant in VARIANTS:
+                if variant == "fixed":
+                    continue
+                name = f"{variant}_{label}"
+                try:
+                    if variant == "valuation":
+                        if valuation_blocked:
+                            raise ValueError(valuation_blocked)
+                        if groups.get("110020") != "china_equity":
+                            raise ValueError("VALUATION_DATA_BLOCKED: no CSI 300 fund in universe")
+                    record(name, groups, fixed_weights(groups, limits), limits, variant=variant)
+                except (ValueError, ArithmeticError) as exc:
+                    results["cases"][name] = {"status":"DATA_BLOCKED", "reason":str(exc)}
+        if a.legacy and cap:
+            for variant in ("legacy_b2", "legacy_a5"):
+                name = f"{variant}_{label}"
+                try:
+                    record(name, groups, fixed_weights(groups, limits), limits, variant=variant)
+                except (ValueError, ArithmeticError, OSError, KeyError) as exc:
+                    results["cases"][name] = {"status":"DATA_BLOCKED", "reason":str(exc)}
         enhanced_groups = {c:g for c,g in eligible.items() if c in groups or g == "enhanced"}
-        if a.enhancement_target > 0 and cap:
+        if a.enhancement_target > 0 and (cap or a.layered):
             try:
                 target = fixed_weights(enhanced_groups, limits, a.enhancement_target)
                 record(f"enhanced_{label}", enhanced_groups, target, limits)
             except (ValueError, ArithmeticError) as exc:
                 results["cases"][f"enhanced_{label}"] = {"status":"DATA_BLOCKED", "reason":str(exc)}
-        if a.optimizer and cap:
+        if a.optimizer and (cap or a.layered):
             name = f"socp_{label}"
             try:
                 cut = a.start.tz_localize(CST) + pd.Timedelta(hours=14, minutes=55)
@@ -286,6 +380,37 @@ def main():
         name for name, row in results["cases"].items()
         if row.get("historical_finite_window_target_met") and row["execution_status"] == "TRADES_OBSERVED"]
     results["long_term_target_validated"] = False
+    if a.layered:
+        pairs = {"dip": "fixed", "trend_only": "fixed", "trend": "dip", "valuation": "trend"}
+        cases = results["cases"]
+        results["layer_deltas"] = []
+        columns = ("cagr", "max_drawdown", "sharpe", "annualized_gross_turnover",
+                   "fees_fraction_of_paid_in_capital", "average_cash_weight")
+        for name, case in cases.items():
+            layer, _, suffix = name.partition("_sat_")
+            if layer not in pairs:
+                continue
+            previous = pairs[layer] + "_sat_" + suffix
+            other = cases[previous]
+            row = {"case": name, "against": previous}
+            if "status" in case or "status" in other:
+                row["status"] = "DATA_BLOCKED"
+            elif any(r["execution_status"] == "NO_FILLED_TRADES" for r in (case, other)):
+                row["status"] = "NO_FILLED_TRADES_NOT_COMPARABLE"
+            else:
+                row["status"] = ("SAME_AGGREGATE_OUTCOME" if
+                                 all(abs(case[k]-other[k]) < 1e-10 for k in
+                                     ("cagr", "max_drawdown", "annualized_gross_turnover"))
+                                 else "DIFFERENT_OUTCOME")
+                row.update({k: case[k] - other[k] if case[k] is not None and other[k] is not None
+                            else None for k in columns})
+            results["layer_deltas"].append(row)
+        pd.DataFrame(results["layer_deltas"]).to_csv(out/"layer_deltas.csv", index=False)
+        rows = []
+        for name, case in cases.items():
+            rows.append({"case":name, "status":case.get("status", case.get("execution_status")),
+                         **{k:case.get(k) for k in columns}, "reason":case.get("reason")})
+        pd.DataFrame(rows).to_csv(out/"comparison.csv", index=False)
     results["status"] = ("DATA_BLOCKED" if len(blocked) == len(results["cases"]) else
                          "PARTIAL_DATA_BLOCKED" if blocked else "RESEARCH_ONLY_COMPLETE")
     (out/"summary.json").write_text(json.dumps(results, indent=2, ensure_ascii=False,

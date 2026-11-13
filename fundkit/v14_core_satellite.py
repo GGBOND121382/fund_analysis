@@ -107,8 +107,12 @@ def combined_drawdown(marked, total, observed_dd, groups, *, fee=0.0):
 
 def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
                 blocked_sell=(), fee_rate=.006, risk_gate=True, rebalance=True,
-                group_rules=True):
-    """Fixed daily inflow, no price-timing. Rebalance only on cap breaches."""
+                group_rules=True, variant="fixed", valuation_history=None, index_history=None):
+    """Fixed inflow, with opt-in, bounded satellite signals."""
+    from fundkit.v15_signals import VARIANTS, TrendState, market_signal
+    use_dip, use_trend, use_value = VARIANTS[variant]
+    if use_value and valuation_history is None:
+        raise ValueError("VALUATION_DATA_BLOCKED: a historical valuation CSV is required")
     groups = dict(groups)
     if set(target) != set(groups) | {"cash"} or abs(sum(target.values()) - 1) > EPS:
         raise ValueError("invalid target weights")
@@ -121,6 +125,9 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
         sum(target[c] for c in codes) > cap + EPS for _, codes, cap in rules
     ):
         raise ValueError("target breaches group or fund caps")
+    satellites = [c for c,g in groups.items() if g in SATELLITES and target[c] > EPS]
+    trends = {c: TrendState() for c in satellites}
+    valuation_cache = {}
 
     def policy(state):
         notes = []
@@ -139,37 +146,109 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
         observed = max(0.0, 1 - hist[-1] / max(1.0, max(hist))) if hist else 0.0
         _, pre_stress = combined_drawdown(marked, total, observed, groups)
 
+        active_target = dict(target)
+        signal = {}
+        trend_sell = {}
+        valuation_trim = set()
+        paused = set()
+        if use_value:
+            period = str(state["date"])[:7]
+            if period not in valuation_cache:
+                valuation_cache[period] = valuation_history.signal(state["date"])
+                value = valuation_cache[period]
+                note("VALUATION_MONTH" if value else "VALUATION_NOT_AVAILABLE",
+                     valuation_rank=value["rank"] if value else None,
+                     valuation_factor=value["factor"] if value else None,
+                     signal_date=value["asof"] if value else None)
+            value = valuation_cache[period]
+            if value:
+                for c in satellites:
+                    if c == "110020":
+                        active_target[c] *= value["factor"]
+                        if value["factor"] < 1.0:
+                            valuation_trim.add(c)
+        # A valuation tilt cannot exceed either its sleeve or the overall satellite cap.
+        for name, codes, cap in rules:
+            if name in SATELLITES or name == "satellite_total":
+                total_target = sum(active_target[c] for c in codes)
+                if total_target > cap and total_target > EPS:
+                    for c in codes:
+                        active_target[c] *= cap/total_target
+        for c in satellites:
+            active_target[c] = min(active_target[c], limits.fund)
+            if use_dip or use_trend:
+                history = (index_history.rows(c, state["date"]) if index_history is not None else
+                           state.get("fund_nav_history", {}).get(c, []))
+                signal[c] = market_signal(history, state["date"])
+                if signal[c] is None:
+                    note("MARKET_SIGNAL_NOT_AVAILABLE", code=c)
+                    if use_trend and trends[c].scale < 1:
+                        paused.add(c)
+            if use_trend:
+                z = trends[c]
+                risk_pressure = pre_stress >= .8*limits.drawdown
+                if z.update(signal[c], allow_exit=risk_pressure):
+                    note("TREND_LEVEL_CHANGED", code=c, trend_level=z.level,
+                         signal_date=str(z.last.date()))
+                active_target[c] *= z.scale
+                if z.pause:
+                    paused.add(c)
+                if z.scale < 1 and z.direction < 0 and risk_pressure and signal[c] is not None:
+                    trend_sell[c] = active_target[c]
+        # Finance a cheap-valuation overweight with future core subscriptions,
+        # never by assuming an extra deposit or spending the cash floor.
+        overflow = max(0.0, sum(active_target[c] for c in groups) + target["cash"] - 1.0)
+        if overflow:
+            core_total = sum(active_target[c] for c,g in groups.items() if g in CORE)
+            if overflow > core_total:
+                raise ValueError("valuation tilt exceeds core funding")
+            for c,g in groups.items():
+                if g in CORE:
+                    active_target[c] *= (core_total-overflow)/core_total
+        # Risk removed by signals remains unallocated, not forced into other risky sleeves.
+        reserve_weight = max(target["cash"], 1 - sum(active_target[c] for c in groups))
+
         sells = {}
         sell_denominator = total
         sell_exposure = marked.copy()
+        def reduce(name, codes, dest, reason):
+            nonlocal sell_denominator
+            need = max(0.0, (sum(sell_exposure[c] for c in codes) -
+                             dest * sell_denominator) / (1 - dest * fee_rate))
+            if need <= EPS:
+                return
+            planned = 0.0
+            for c in sorted(codes, key=lambda c: (active_target[c]*total - sell_exposure[c], c)):
+                if need <= EPS or c in blocked_sell or marked[c] <= EPS:
+                    continue
+                item = h[c]
+                nav = marked[c] / float(item["shares"])
+                available = max(0.0, float(item["redeemable_shares"]) * nav - sells.get(c, 0.0)*nav)
+                amount = min(available, need)
+                if amount > EPS:
+                    sells[c] = sells.get(c, 0.0) + amount/nav
+                    sell_exposure[c] -= amount
+                    sell_denominator -= amount * fee_rate
+                    planned += amount
+                    need -= amount
+            note(reason if planned > EPS else ("CAP_REDEMPTION_BLOCKED" if reason == "CAP_REBALANCE" else reason + "_BLOCKED"),
+                 scope=name, planned_pct=planned/total, unfilled_pct=need/total)
+
         if rebalance:
             for name, codes, cap in rules:
-                if sum(sell_exposure[c] for c in codes) <= cap * sell_denominator + EPS:
-                    continue
-                target_weight = sum(target[c] for c in codes)
-                # Destination is halfway between target and trigger.
-                # Use a fixed trigger measured before any sell on the day.
-                dest = .5 * (target_weight + cap)
-                if sum(marked[c] for c in codes) <= cap * total + EPS:
-                    continue
-                need = max(0.0, (sum(sell_exposure[c] for c in codes) -
-                                 dest * sell_denominator) / (1 - dest * fee_rate))
-                planned = 0.0
-                for c in sorted(codes, key=lambda c: (target[c]*total - sell_exposure[c], c)):
-                    if need <= EPS or c in blocked_sell or marked[c] <= EPS:
-                        continue
-                    item = h[c]
-                    nav = marked[c] / float(item["shares"])
-                    available = max(0.0, float(item["redeemable_shares"]) * nav - sells.get(c, 0.0)*nav)
-                    amount = min(available, need)
-                    if amount > EPS:
-                        sells[c] = sells.get(c, 0.0) + amount/nav
-                        sell_exposure[c] -= amount
-                        sell_denominator -= amount * fee_rate
-                        planned += amount
-                        need -= amount
-                note("CAP_REBALANCE" if planned > EPS else "CAP_REDEMPTION_BLOCKED",
-                     scope=name, planned_pct=planned/total, unfilled_pct=need/total)
+                if (sum(sell_exposure[c] for c in codes) > cap * sell_denominator + EPS
+                        and sum(marked[c] for c in codes) > cap * total + EPS):
+                    dest = .5 * (sum(active_target[c] for c in codes) + cap)
+                    reduce(name, codes, dest, "CAP_REBALANCE")
+            for c, dest in trend_sell.items():
+                if sell_exposure[c] > (dest+.001)*sell_denominator:
+                    reduce(c, (c,), dest, "TREND_REBALANCE")
+            for c in sorted(valuation_trim):
+                dest = active_target[c]
+                # No trade for small valuation-induced drifts. Move halfway
+                # across a 0.5 pp band, not to a zero allocation.
+                if sell_exposure[c] > (dest+.005)*sell_denominator:
+                    reduce(c, (c,), dest+.0025, "VALUATION_REBALANCE")
         if sells:
             scenario, post_stress = combined_drawdown(
                 sell_exposure, total, observed, groups, fee=total - sell_denominator)
@@ -178,41 +257,53 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
             # Explicitly separate sale and buy days, no dependence on unsettled proceeds.
             return orders(sells=sells)
 
-        reserve = target["cash"] * total
+        reserve = reserve_weight * total
         budget = min(max(0.0, cash - reserve), float(state["external_cash_inflow_today"]))
         denominator_floor = total - budget * fee_rate
         buys = {}
         projected = marked.copy()
-        for c in sorted(groups, key=lambda c: (marked[c] - target[c]*total, c)):
-            if (c in blocked_buy or c not in state["nav"] or budget <= EPS or
+        def allocate(c, ceiling):
+            nonlocal budget
+            if (c in blocked_buy or c in paused or c not in state["nav"] or budget <= EPS or
                     (risk_gate and not hist and marked[c] > EPS)):
-                continue
+                return 0.
             if risk_gate and groups[c] not in CORE and (not hist or pre_stress > limits.drawdown):
-                continue
-            amount = min(budget, target[c]*denominator_floor - projected[c],
-                         trade_limits.get(c, float("inf")))
+                return 0.
+            amount = min(ceiling, budget, active_target[c]*denominator_floor - projected[c],
+                         trade_limits.get(c, float("inf")) - buys.get(c, 0.0))
             for _, codes, cap in rules:
                 if c in codes:
                     amount = min(amount, cap*denominator_floor -
                                  sum(projected[x] for x in codes))
             if amount <= EPS:
-                continue
+                return 0.
             if risk_gate:
-                # Stress is affine in gross buys with pretrade total held fixed.
-                # In a pre-existing breach, no risk-increasing buys are permitted.
-                ceiling = limits.drawdown
-                if pre_stress > ceiling:
-                    continue
+                if pre_stress > limits.drawdown:
+                    return 0.
                 fees_so_far = fee_rate * sum(buys.values())
                 for shock in STRESS.values():
                     base_loss = -sum(projected[x]*shock[groups[x]] for x in groups)
-                    available = total * (ceiling - observed)/(1 - observed) - base_loss - fees_so_far
+                    available = total * (limits.drawdown - observed)/(1 - observed) - base_loss - fees_so_far
                     marginal = -(1 - fee_rate)*shock[groups[c]] + fee_rate
                     amount = min(amount, available/marginal)
-            if amount > EPS:
-                buys[c] = amount
-                projected[c] += (1-fee_rate)*amount
-                budget -= amount
+            if amount <= EPS:
+                return 0.
+            buys[c] = buys.get(c, 0.0) + amount
+            projected[c] += (1-fee_rate)*amount
+            budget -= amount
+            return amount
+
+        if use_dip:
+            priority = .25*budget
+            dipped = [c for c in satellites if signal[c] is not None and signal[c]["dip"]]
+            for c in sorted(dipped, key=lambda c: (-signal[c]["drawdown20"], c)):
+                amount = allocate(c, priority)
+                priority -= amount
+                note("DIP_PRIORITY" if amount > EPS else "DIP_NO_FILL_PLANNED",
+                     code=c, planned_pct=amount/total,
+                     signal_date=str(signal[c]["date"].date()))
+        for c in sorted(groups, key=lambda c: (projected[c] - active_target[c]*total, c)):
+            allocate(c, budget)
         stress_case, post_stress = combined_drawdown(
             projected, total, observed, groups, fee=fee_rate*sum(buys.values()))
         note("FIXED_INFLOW", observed_drawdown=observed, pre_stress_drawdown=pre_stress,

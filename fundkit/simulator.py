@@ -68,6 +68,7 @@ class SimConfig:
     track_attribution: bool = False
     track_exposures: bool = False
     include_signal_history: bool = True
+    signal_history_limit: int | None = None
 
     def fee(self, code: str, kind: str) -> float:
         return self.fee_overrides.get(code, {}).get(kind, self.params[f"{kind}_fee_rate"])
@@ -128,6 +129,8 @@ class Simulator:
         out = {}
         for code, grp in self._published_nav.items():
             vis = grp[grp["published_at"] <= decision_ts]
+            if self.config.signal_history_limit is not None:
+                vis = vis.tail(self.config.signal_history_limit)
             if len(vis):
                 out[code] = [
                     {"date": pd.Timestamp(row.nav_date).date().isoformat(),
