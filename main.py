@@ -828,8 +828,11 @@ def cmd_optimize_strategy(args):
             result["training_data_start"] = candidate_pack["training_data_start"]
             all_results.append(result)
         except Exception as exc:  # noqa: BLE001
+            import traceback
             all_results.append({"fold": fold, "status": "DATA_BLOCKED",
-                                "reason": str(exc), "style_signal_quality": style_quality,
+                                "reason": str(exc),
+                                "traceback_tail": traceback.format_exc().splitlines()[-6:],
+                                "style_signal_quality": style_quality,
                                 "trade_ready": False})
 
     os.makedirs("reports", exist_ok=True)

@@ -408,7 +408,10 @@ def generate_weight_candidates(returns: pd.DataFrame,
         for i in range(n):
             if upper[i]-lower[i] <= 1e-12:
                 w[i]=lower[i]
-            elif abs(w[i]) < 1e-10:
+            elif abs(w[i]) < 1e-8:
+                # Solver noise can reach ~1e-10..1e-9; values this small carry
+                # no economic weight and trip downstream non-negativity checks
+                # (joint_optimizer rejects w < -1e-10).
                 w[i]=0.
         w[-1]=1.-w[:n].sum()
         if w[-1] < -1e-7:
