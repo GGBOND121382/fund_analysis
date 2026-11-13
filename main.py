@@ -52,6 +52,13 @@ def cmd_fetch(args):
         print(f"按类型 {keys} 过滤后: {len(fund_list)} 只")
 
     codes = fund_list["code"].tolist()
+    if getattr(args, "codes", ""):
+        requested = list(dict.fromkeys(x.strip() for x in args.codes.split(",") if x.strip()))
+        known = set(codes)
+        missing = [c for c in requested if c not in known]
+        if not requested or missing:
+            sys.exit("基金代码不在当前列表或被过滤: " + ",".join(missing or ["空列表"]))
+        codes = requested
     todo = [c for c in codes if not storage.is_fresh(c, args.refresh_days)]
     print(f"共 {len(codes)} 只，需更新 {len(todo)} 只（--refresh-days {args.refresh_days}）")
 
@@ -978,6 +985,7 @@ def main():
     p_fetch = sub.add_parser("fetch", help="抓取基金日净值（日K线）")
     p_fetch.add_argument("--limit", type=int, default=0, help="只抓取前 N 只（调试用）")
     p_fetch.add_argument("--workers", type=int, default=8, help="并发线程数（默认 8，过大易被限流）")
+    p_fetch.add_argument("--codes", default="", help="仅抓取指定基金，逗号分隔的6位代码")
     p_fetch.add_argument("--types", default="", help="基金类型过滤，逗号分隔子串，如 股票型,混合型")
     p_fetch.add_argument("--refresh-days", type=int, default=1,
                          help="距上次更新不足 N 天则跳过（默认 1，0 表示强制全量重抓）")

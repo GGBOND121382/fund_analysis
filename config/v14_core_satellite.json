@@ -1,0 +1,15 @@
+{
+  "purpose": "Research shortlist derived from the 2026-11-12 resilience study. Not a historical point-in-time universe or trade list.",
+  "candidate_asof": "2026-11-12",
+  "funds": {
+    "022379": "core_short",
+    "006488": "core_policy",
+    "472007": "core_rate",
+    "021695": "core_rate",
+    "003315": "core_policy",
+    "021559": "enhanced",
+    "018604": "enhanced",
+    "110020": "china_equity",
+    "000218": "gold"
+  }
+}

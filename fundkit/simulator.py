@@ -65,6 +65,9 @@ class SimConfig:
     daily_limits: dict = field(default_factory=dict)   # code -> 日申购上限（元）
     fee_overrides: dict = field(default_factory=dict)  # code -> {"subscribe": r, "redeem": r}
     params: dict = field(default_factory=lambda: dict(SIM_DEFAULTS))
+    track_attribution: bool = False
+    track_exposures: bool = False
+    include_signal_history: bool = True
 
     def fee(self, code: str, kind: str) -> float:
         return self.fee_overrides.get(code, {}).get(kind, self.params[f"{kind}_fee_rate"])
@@ -91,7 +94,7 @@ class Simulator:
             if df.empty or not {"date", "nav"}.issubset(df.columns):
                 raise ValueError(f"DATA_BLOCKED: {code} 缺失原始单位净值")
             self._actual_nav[code] = df.set_index("date")["nav"].sort_index()
-        pub = self.adapter.nav(self.codes, pd.Timestamp(end).tz_localize(CST))
+        pub = self.adapter.nav(self.codes, end.tz_localize(CST) + pd.Timedelta(hours=14, minutes=55))
         for code, grp in pub.groupby("fund_code"):
             self._published_nav[code] = grp[["nav_date", "published_at",
                                              "unit_nav", "adj_nav_total_return"]].reset_index(drop=True)
@@ -189,8 +192,22 @@ class Simulator:
             [(self.calendar[0] - pd.Timedelta(days=1), 1.0)]
             if initial_fee > 0 else [])
         prev_date = None
+        attribution = None
+        if cfg.track_attribution:
+            from fundkit.v14_attribution import Attribution
+            attribution = Attribution()
 
+        exposure_rows = []
         for day in self.calendar:
+            effects = {}
+            previous_value = (records[-1]["value"] if records else init_value + initial_fee)
+            before_cash = cash
+            prior_marks = {}
+            dividend_pnl = {}
+            if attribution is not None:
+                for code, lot_list in lots.items():
+                    mark = self._nav_at(code, prev_date if prev_date is not None else day)
+                    prior_marks[code] = sum(l.shares for l in lot_list) * (mark or 0.0)
             # 现金收益（按自然日间隔计息）
             if prev_date is not None and p["cash_annual_rate"] > 0 and cash > 0:
                 cash *= (1 + p["cash_annual_rate"]) ** ((day - prev_date).days / 365)
@@ -217,6 +234,8 @@ class Simulator:
                 for ex_date, div in self._dividends.get(code, ()):
                     if pd.Timestamp(ex_date) == day:
                         amt = held * div
+                        if attribution is not None:
+                            dividend_pnl[code] = dividend_pnl.get(code, 0.0) + amt
                         arrive = self._next_day(day, p["dividend_cash_lag_days"])
                         pending_cash[arrive] = pending_cash.get(arrive, 0.0) + amt
                         events.append({"date": str(day.date()), "code": code,
@@ -225,6 +244,25 @@ class Simulator:
             # 外部资金于 T 日价格变动及除息记账之后注入，按注入当时的组合净值发行单位。
             # 与随后同日 T 净值买入相符；不可用上一日 unit_nav 发行份额。
             preflow_value = self._value(lots, cash, pending_cash, day)
+            if attribution is not None and previous_value > 0:
+                if len(records):
+                    # Cash at the start of the day accrues interest, not the
+                    # pending proceeds arriving today.
+                    elapsed = (day - records[-1]["date"]).days
+                    effects["cash_interest"] = before_cash * (
+                        (1 + p["cash_annual_rate"]) ** (elapsed / 365) - 1
+                    ) / previous_value if p["cash_annual_rate"] > 0 else 0.0
+                for code, lot_list in lots.items():
+                    mark = self._nav_at(code, day)
+                    pnl = sum(l.shares for l in lot_list) * (mark or 0.0)
+                    pnl += dividend_pnl.get(code, 0.0) - prior_marks[code]
+                    if pnl:
+                        effects[code] = pnl / previous_value
+                if not records and initial_fee:
+                    for code, amount in initial_fee_by_code.items():
+                        effects[f"fee_{code}"] = -float(amount) / previous_value
+                    if not initial_fee_by_code:
+                        effects["fee_initial_unallocated"] = -initial_fee / previous_value
             if units > 0:
                 unit_nav = preflow_value / units
                 if unit_nav <= 0:
@@ -237,6 +275,8 @@ class Simulator:
                 units += cfg.budget_per_day / unit_nav
                 cash += cfg.budget_per_day
                 external_flows.append((day, -cfg.budget_per_day))
+
+            trade_denominator = preflow_value + cfg.budget_per_day
 
             # 策略决策（只见已公布净值）
             # 决策在场外基金常规15:00截止前5分钟；T日净值在决策时不可见，
@@ -298,7 +338,8 @@ class Simulator:
             state = {
                 "date": day, "cash": cash, "pending_value": sum(pending_cash.values()),
                 "nav": pub_navs,
-                "fund_nav_history": self._published_histories(decision_ts),
+                "fund_nav_history": (self._published_histories(decision_ts)
+                                     if cfg.include_signal_history else {}),
                 "holdings": holdings,
                 "value": cash + sum(pending_cash.values()) + sum(
                     h["value_pub"] for h in holdings.values() if h["value_pub"] is not None),
@@ -354,6 +395,11 @@ class Simulator:
                 if nav_t is None or nav_t <= 0:
                     continue
                 fee_amount = amt * cfg.fee(code, "subscribe")
+                if attribution is not None and trade_denominator > 0:
+                    key = f"fee_{code}"
+                    effects[key] = effects.get(key, 0.0) - (
+                        fee_amount * (unit_nav / (records[-1]["unit_nav"] if records else 1.0))
+                        / trade_denominator)
                 net = amt - fee_amount
                 lots[code].append(Lot(
                     code, net / nav_t, day, order_date=day,
@@ -387,6 +433,11 @@ class Simulator:
                         break
                     gross_proceeds = take * nav_t
                     fee_amount = gross_proceeds * cfg.fee(code, "redeem")
+                    if attribution is not None and trade_denominator > 0:
+                        key = f"fee_{code}"
+                        effects[key] = effects.get(key, 0.0) - (
+                            fee_amount * (unit_nav / (records[-1]["unit_nav"] if records else 1.0))
+                            / trade_denominator)
                     proceeds = gross_proceeds - fee_amount
                     arrive = self._next_day(day, p["redeem_cash_lag_days"])
                     pending_cash[arrive] = pending_cash.get(arrive, 0.0) + proceeds
@@ -416,11 +467,23 @@ class Simulator:
             records.append({"date": day, "value": value, "cash": cash,
                             "pending": sum(pending_cash.values()),
                             "units": units, "unit_nav": unit_nav})
+            if cfg.track_exposures:
+                exposure_rows.append({"date": day, **{
+                    code: sum(l.shares for l in lots[code])*(self._nav_at(code, day) or 0.)/value
+                    for code in self.codes},
+                    "cash": cash/value, "pending": sum(pending_cash.values())/value})
             unit_hist.append((day, unit_nav))
+            if attribution is not None:
+                attribution.add(day, unit_nav, effects)
 
         daily = pd.DataFrame(records)
-        return {"daily": daily, "events": pd.DataFrame(events),
-                "metrics": self._metrics(daily, external_flows)}
+        result = {"daily": daily, "events": pd.DataFrame(events),
+                  "metrics": self._metrics(daily, external_flows)}
+        if cfg.track_exposures:
+            result["weights"] = pd.DataFrame(exposure_rows)
+        if attribution is not None:
+            result["attribution"] = attribution.result()
+        return result
 
     # -- 内部工具 -----------------------------------------------------------
 

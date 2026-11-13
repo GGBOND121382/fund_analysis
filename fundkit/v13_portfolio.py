@@ -49,7 +49,7 @@ def _psd(x,n):
 def solve_robust_socp(historical_returns, scenario_returns,
                       mean_annual, covariance_annual, mean_error_covariance,
                       *, fund_lower=None, fund_upper=None, current_weights=None,
-                      config=None):
+                      config=None, group_upper=(), hard_stress_returns=None):
     import cvxpy as cp
     cfg=config or RobustSOCPConfig()
     cfg.validate()
@@ -77,6 +77,12 @@ def solve_robust_socp(historical_returns, scenario_returns,
 
     h=wealth_coefficients(r[None],cfg.cash_return_annual)[0]
     scenarios=wealth_coefficients(paths,cfg.cash_return_annual)
+    group_upper = tuple((tuple(indices), float(cap)) for indices, cap in group_upper)
+    if any(not indices or len(set(indices)) != len(indices) or min(indices) < 0
+           or max(indices) >= n or not 0 <= cap <= 1 for indices, cap in group_upper):
+        raise ValueError("invalid group upper bounds")
+    hard = (wealth_coefficients(hard_stress_returns,cfg.cash_return_annual)
+            if hard_stress_returns is not None else ())
     w=cp.Variable(n+1)
     z=cp.Variable(m)
     eta=cp.Variable()
@@ -84,6 +90,7 @@ def solve_robust_socp(historical_returns, scenario_returns,
     cons=[cp.sum(w)==1, w[:n]>=lo,w[:n]<=hi,w[n]>=cfg.min_cash_weight,
           w[n]<=1,cp.sum(w[:n])>=cfg.min_risky_weight,
           u>=z-eta,eta+cp.sum(u)/(m*(1-cfg.cvar_alpha))<=0]
+    cons += [cp.sum(w[list(indices)]) <= cap for indices, cap in group_upper]
     # Trivial peak at t=0 supplies a valid epigraph lower bound.
     cons += [z>=-cfg.drawdown_budget]
     lower=mu@w[:n] + cfg.cash_return_annual*w[n]
@@ -110,6 +117,13 @@ def solve_robust_socp(historical_returns, scenario_returns,
             gap=(1-cfg.drawdown_budget)*h[pair[0]]-h[pair[1]]
             new.append(gap@w<=0.)
             added.add((-1,*pair))
+        for k,g in enumerate(hard):
+            violation,pair=worst_violation(g,ww,cfg.drawdown_budget)
+            key=(-2-k,*pair)
+            if violation>cfg.tolerance and key not in added:
+                gap=(1-cfg.drawdown_budget)*g[pair[0]]-g[pair[1]]
+                new.append(gap@w<=0.)
+                added.add(key)
         for j,g in enumerate(scenarios):
             violation,pair=worst_violation(g,ww,cfg.drawdown_budget)
             if violation>z.value[j]+cfg.tolerance and (j,*pair) not in added:
@@ -121,7 +135,10 @@ def solve_robust_socp(historical_returns, scenario_returns,
                                   for g in scenarios])
             cvar=empirical_cvar(violations,cfg.cvar_alpha)
             hist_mdd=realized_mdd(h,ww)
+            hard_dd=[realized_mdd(g,ww) for g in hard]
             if (worst>cfg.tolerance or cvar>cfg.tolerance or
+                any(worst_violation(g,ww,cfg.drawdown_budget)[0]>cfg.tolerance for g in hard) or
+                any(ww[list(idx)].sum()>cap+cfg.tolerance for idx,cap in group_upper) or
                 np.max(violations-np.asarray(z.value))>cfg.tolerance or
                 ww.sum()<1-1e-5 or ww.sum()>1+1e-5 or
                 np.min(ww[:n]-lo)<-1e-5 or np.max(ww[:n]-hi)>1e-5):
@@ -135,6 +152,7 @@ def solve_robust_socp(historical_returns, scenario_returns,
                 "variance_penalty":float(.5*cfg.volatility_penalty*ww[:n]@sigma@ww[:n]),
                 "turnover_cost":float(cfg.turnover_cost*np.abs(ww[:n]-current[:n]).sum()),
                 "historical_mdd":hist_mdd,
+                "hard_stress_mdd":hard_dd,
                 "scenario_mdd_p95":float(np.quantile([realized_mdd(g,ww) for g in scenarios],cfg.cvar_alpha)),
                 "scenario_cvar_signed_gap":float(cvar),
                 "cut_count":len(added),"rounds":it,
