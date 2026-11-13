@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -59,6 +60,18 @@ class CoreSatelliteTest(unittest.TestCase):
         self.assertNotIn("g", blocked["subscribe"])
         self.assertIn("CAP_REDEMPTION_BLOCKED", [e["action"] for e in blocked["events"]])
 
+    def test_buy_and_sell_fee_paths_are_independent(self):
+        lim = Limits(.10)
+        target = fixed_weights(GROUPS, lim)
+        free = make_policy(GROUPS, target, lim, subscribe_fee_rate=0., redeem_fee_rate=0.)
+        directional = make_policy(GROUPS, target, lim, subscribe_fee_rate=0., redeem_fee_rate=.006)
+        for_buy = state({}, cash=100., flow=10.)
+        self.assertEqual(directional(for_buy), free(for_buy))
+        for_sell = state({"a": 12., "c1": 20.})
+        a_free = free(for_sell)["redeem"]["a"]
+        a_cost = directional(for_sell)["redeem"]["a"]
+        self.assertGreater(a_cost, a_free)
+
     def test_historical_drawdown_not_reset(self):
         groups = {"a": "china_equity"}
         pre = combined_drawdown({"a": 10.}, 100., .02, groups)[1]
@@ -79,6 +92,17 @@ class CoreSatelliteTest(unittest.TestCase):
         self.assertLessEqual(order["subscribe"].get("c1", 0), .4)
         none = p(state({}, cash=1., pending=99., flow=10.))
         self.assertEqual(none["subscribe"], {})
+
+    def test_socp_fee_penalty_only_charges_sales_when_subscription_is_free(self):
+        r = np.zeros((40, 2))
+        cov = np.zeros((2, 2))
+        ans = solve_robust_socp(
+            r, r[None], [.02, .02], cov, cov,
+            fund_lower=[.2, .7], fund_upper=[.2, .7],
+            current_weights=[.5, .3, .2], directional_fees=(0., .006),
+        )
+        self.assertEqual(ans["status"], "OPTIMAL")
+        self.assertAlmostEqual(ans["turnover_cost"], .3 * .006, places=8)
 
     def test_socp_has_independent_hard_stress_and_group_constraints(self):
         g = {"c1": "core_short", "a": "china_equity", "g": "gold"}
@@ -133,14 +157,33 @@ class AttributionTest(unittest.TestCase):
         self.assertTrue(np.allclose(result["weights"][["a", "cash", "pending"]].sum(axis=1), 1.))
         self.assertAlmostEqual(at["daily"].loc[1, "a"], 0.)
         self.assertAlmostEqual(at["daily"].loc[2, "a"], 0.)
+        summary = RunnerInputsTest.load_runner().summarize(result, {"a": "gold"}, 125.)
+        self.assertAlmostEqual(summary["subscription_fees_fraction_of_paid_in_capital"], 1.05/125.)
+        self.assertAlmostEqual(summary["redemption_fees_fraction_of_paid_in_capital"], .04/125.)
 
 
 class RunnerInputsTest(unittest.TestCase):
-    def test_postdated_shortlist_requires_diagnostic(self):
+    @staticmethod
+    def load_runner():
         path = Path(__file__).resolve().parents[1] / "scripts/run_v14_research.py"
         spec = importlib.util.spec_from_file_location("runner14", path)
         runner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(runner)
+        return runner
+
+    def test_fee_defaults_and_conflicts(self):
+        resolve = self.load_runner().resolve_fees
+        self.assertEqual(resolve(SimpleNamespace(layered=True))[:2], (0., 60.))
+        self.assertEqual(resolve(SimpleNamespace(layered=False))[:2], (60., 60.))
+        self.assertEqual(resolve(SimpleNamespace(layered=True, redeem_fee_bps=0.))[:2], (0., 0.))
+        self.assertEqual(resolve(SimpleNamespace(layered=True, fee_bps=30.))[:2], (30., 30.))
+        with self.assertRaisesRegex(ValueError, "cannot be combined"):
+            resolve(SimpleNamespace(fee_bps=30., subscribe_fee_bps=0.))
+        with self.assertRaisesRegex(ValueError, "fee bps"):
+            resolve(SimpleNamespace(redeem_fee_bps=-1.))
+
+    def test_postdated_shortlist_requires_diagnostic(self):
+        runner = self.load_runner()
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "pool.json"
             config.write_text(json.dumps({"candidate_asof": "2026-11-12",
@@ -171,17 +214,21 @@ class RunnerInputsTest(unittest.TestCase):
             (base/"data/dividends.csv").write_text("code,ex_date,div\n")
             cmd = [sys.executable, str(runner), "--start", "2026-05-01", "--end", "2026-06-30",
                    "--universe", "pool.json", "--diagnostic", "--optimizer",
-                   "--satellite-caps", ".10", "--enhancement-target", ".05"]
+                   "--satellite-caps", ".10", "--enhancement-target", ".05",
+                   "--subscribe-fee-bps", "0", "--redeem-fee-bps", "60"]
             result = subprocess.run(cmd, cwd=base, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             out = base/"reports/v14_core_satellite"
             doc = json.loads((out/"summary.json").read_text())
             self.assertEqual(doc["status"], "RESEARCH_ONLY_COMPLETE", result.stdout+result.stderr)
             self.assertEqual(doc["evidence"], "RETROSPECTIVE_SHORTLIST_LOOKAHEAD_DIAGNOSTIC")
+            self.assertEqual(doc["fees"]["subscribe_fee_bps"], 0.)
+            self.assertEqual(doc["fees"]["redeem_fee_bps"], 60.)
             self.assertEqual(set(doc["cases"]), {"fixed_sat_0", "fixed_sat_10", "buy_only_sat_10",
                                                   "socp_sat_10", "enhanced_sat_10"})
             for k, case in doc["cases"].items():
                 self.assertGreater(case["buys"], 0)
+                self.assertEqual(case["subscription_fees_fraction_of_paid_in_capital"], 0.)
                 self.assertAlmostEqual(sum(case["attribution"]["drawdown"]["loss_contribution"].values()),
                                        case["max_drawdown"])
                 audit = pd.read_csv(out/f"{k}_execution_audit.csv")

@@ -9,7 +9,7 @@ python scripts/fetch_v15_valuation_proxy.py
 python scripts/run_v15_research.py --start 2026-05-12 --end 2026-11-09 --diagnostic --valuation-csv data/factors/csi300_valuation_proxy.csv --optimizer --enhancement-target 0.05 --legacy
 ```
 
-估值下载只需一次。若已有本地估值 CSV，直接传 `--valuation-csv`。下载失败时可先跑第二条，其余层照跑，估值层明确 `DATA_BLOCKED`。若缺净值，按报错补抓指定代码。费用压力测试用 `--fee-bps 30` 另跑，并用 `--output` 分开保存。默认单边 60bp、每日入金 1000 元、初始空仓。
+估值下载只需一次。若已有本地估值 CSV，直接传 `--valuation-csv`。下载失败时可先跑第二条，其余层照跑，估值层明确 `DATA_BLOCKED`。若缺净值，按报错补抓指定代码。默认申购费 0 bp、每日入金 1000 元、初始空仓。赎回费默认使用 **60 bp 压力代理**，不代表账户实费，未按基金份额和持有期核验。用 `--redeem-fee-bps 0` 另跑零赎回费敏感性，并以 `--output` 分目录保存。历史双边收费场景可用 `--fee-bps 60` 复现，不能与分方向参数同用。
 
 ## 每档的同口径对照
 
@@ -25,6 +25,8 @@ python scripts/run_v15_research.py --start 2026-05-12 --end 2026-11-09 --diagnos
 
 固定 0%/5%/10%/15% 卫星**上限**，逐层不调参。历史名单选择偏差、海外跨时区信号和渠道约束都必须单独审计。新增策略默认用已披露复权基金净值作为趋势代理。可传 `--index-csv` 以外部基准替代信号，不替代实际基金成交净值。要求 `fund_code,observed_at,published_at,total_return_index`，逐基金必须匹配真实基准。对于 096001 应用等权标普全收益，不能用普通标普。海外须统一币种和时间戳。
 
-估值 CSV 要求 `index_code,observed_at,published_at,pe,pb`，可附 `source_quality`。乐咕抓取脚本是后验历史序列，披露时间用观测后一个自然日 23:59 作代理，不能冒充逐时点存档。代理文件必须显式 `--diagnostic`。缺失月份按中性处理并记入覆盖统计，全窗无可用月份则阻断估值层。规则均为预设实验，非拟合最优参数。
+估值 CSV 要求 `index_code,observed_at,published_at,pe,pb`，可附 `source_quality`。乐咕抓取脚本是后验历史序列，披露时间用观测后一个自然日 23:59 作代理，不能冒充逐时点存档。代理文件必须显式 `--diagnostic`。缺失月份按中性处理并记入覆盖统计，全窗无可用月份则阻断估值层。规则均为预设实验，非拟合最优参数。20%／80% 只是待检验的分位线，不是有证据支持的买卖阈值。
 
 输出 `comparison.csv`（各策略）、`layer_deltas.csv`（相邻消融的差）、`summary.json`（完整归因、执行与覆盖）、逐日权重及无本金金额的执行审计。净值试验以组合费后 TWR 年化≥5%、最大回撤≤4%为目标。短窗达标不等于长期达标。默认名单晚于这批历史窗口，所以全部是回看诊断，不能声称独立样本外。现金比例、零交易和费用必须与收益一并看。
+
+[零申购费重跑结果](V15_ZERO_SUBSCRIPTION_RESULTS.md)取代旧双边费用结果作为本账户的申购费口径。

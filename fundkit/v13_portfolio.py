@@ -49,7 +49,7 @@ def _psd(x,n):
 def solve_robust_socp(historical_returns, scenario_returns,
                       mean_annual, covariance_annual, mean_error_covariance,
                       *, fund_lower=None, fund_upper=None, current_weights=None,
-                      config=None, group_upper=(), hard_stress_returns=None):
+                      config=None, group_upper=(), hard_stress_returns=None, directional_fees=None):
     import cvxpy as cp
     cfg=config or RobustSOCPConfig()
     cfg.validate()
@@ -96,7 +96,19 @@ def solve_robust_socp(historical_returns, scenario_returns,
     lower=mu@w[:n] + cfg.cash_return_annual*w[n]
     objective=lower-cfg.uncertainty_penalty*cp.norm(root@w[:n],2)
     objective-=.5*cfg.volatility_penalty*cp.quad_form(w[:n],cp.psd_wrap(sigma))
-    objective-=cfg.turnover_cost*cp.norm1(w[:n]-current[:n])
+    delta = w[:n] - current[:n]
+    if directional_fees is None:
+        reference_cost = cfg.turnover_cost * cp.norm1(delta)
+    else:
+        buy_fee, sell_fee = directional_fees
+        if any(not np.isfinite(x) or not 0 <= x < 1 for x in (buy_fee, sell_fee)):
+            raise ValueError("invalid directional fees")
+        reference_cost = 0.
+        if buy_fee:
+            reference_cost += buy_fee * cp.sum(cp.pos(delta))
+        if sell_fee:
+            reference_cost += sell_fee * cp.sum(cp.pos(-delta))
+    objective -= reference_cost
     prob=cp.Problem(cp.Maximize(objective),cons)
     added=set()
     for it in range(1,cfg.max_rounds+1):
@@ -144,13 +156,18 @@ def solve_robust_socp(historical_returns, scenario_returns,
                 np.min(ww[:n]-lo)<-1e-5 or np.max(ww[:n]-hi)>1e-5):
                 return {"status":"NUMERICAL_REJECTED","reason":"independent path/risk certificate failed",
                         "weights":None,"rounds":it}
+            change = ww[:n] - current[:n]
+            turnover_cost = (cfg.turnover_cost * np.abs(change).sum()
+                             if directional_fees is None else
+                             buy_fee * np.maximum(change, 0.).sum()
+                             + sell_fee * np.maximum(-change, 0.).sum())
             return {
                 "status":"OPTIMAL","weights":ww,
                 "model_score":float(prob.value),
                 "estimated_mean_annual":float(mu@ww[:n]+cfg.cash_return_annual*ww[n]),
                 "forecast_uncertainty_penalty":float(cfg.uncertainty_penalty*np.linalg.norm(root@ww[:n])),
                 "variance_penalty":float(.5*cfg.volatility_penalty*ww[:n]@sigma@ww[:n]),
-                "turnover_cost":float(cfg.turnover_cost*np.abs(ww[:n]-current[:n]).sum()),
+                "turnover_cost":float(turnover_cost),
                 "historical_mdd":hist_mdd,
                 "hard_stress_mdd":hard_dd,
                 "scenario_mdd_p95":float(np.quantile([realized_mdd(g,ww) for g in scenarios],cfg.cvar_alpha)),

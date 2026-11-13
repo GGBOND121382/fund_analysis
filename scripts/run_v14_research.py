@@ -61,6 +61,24 @@ def load_universe(path, start, diagnostic):
     return groups, eligible_date
 
 
+def resolve_fees(args):
+    """Return subscription bps, redemption bps, and fee scenario provenance."""
+    symmetric = getattr(args, "fee_bps", None)
+    buy = getattr(args, "subscribe_fee_bps", None)
+    sell = getattr(args, "redeem_fee_bps", None)
+    if symmetric is not None and (buy is not None or sell is not None):
+        raise ValueError("--fee-bps cannot be combined with directional fee flags")
+    if symmetric is not None:
+        buy, sell, mode = symmetric, symmetric, "LEGACY_SYMMETRIC_OVERRIDE"
+    elif not getattr(args, "layered", False) and buy is None and sell is None:
+        buy, sell, mode = 60., 60., "V14_LEGACY_SYMMETRIC_DEFAULT"
+    else:
+        buy, sell, mode = 0. if buy is None else buy, 60. if sell is None else sell, "DIRECTIONAL"
+    if any(not math.isfinite(x) or not 0 <= x < 10000 for x in (buy, sell)):
+        raise ValueError("fee bps must be finite and in [0, 10000)")
+    return buy, sell, mode
+
+
 def summarize(result, groups, contributed_cash):
     at = result["attribution"]
     daily = result["daily"]
@@ -76,6 +94,10 @@ def summarize(result, groups, contributed_cash):
         group = group_map.get(key, "fees")
         dd_groups[group] = dd_groups.get(group, 0.0) + value
     fees = pd.to_numeric(events.get("fee_cny", pd.Series(dtype=float)), errors="coerce").fillna(0)
+    buy_fees = fees[events["event"].isin(("BUY", "INITIAL_BUY", "INITIAL_BUY_FEE"))].sum() if len(fees) else 0.
+    sell_fees = fees[events["event"].eq("REDEEM")].sum() if len(fees) else 0.
+    if not math.isclose(buy_fees + sell_fees, fees.sum(), abs_tol=1e-8):
+        raise ArithmeticError("unclassified transaction fees")
     buys = pd.to_numeric(events.get("amount", pd.Series(dtype=float)), errors="coerce").fillna(0)
     if "event" in events and not buys.empty:
         buys = buys.loc[events["event"] == "BUY"]
@@ -87,6 +109,9 @@ def summarize(result, groups, contributed_cash):
         raise ArithmeticError("drawdown attribution does not reconcile")
     return {**result["metrics"], "buys": counts["BUY"], "redemptions": counts["REDEEM"],
             "fees_fraction_of_paid_in_capital": float(fees.sum()/contributed_cash),
+            "subscription_fees_fraction_of_paid_in_capital": float(buy_fees/contributed_cash),
+            "redemption_fees_fraction_of_paid_in_capital": float(sell_fees/contributed_cash),
+            "ending_gain_fraction_of_paid_in_capital": float(daily.value.iloc[-1]/contributed_cash-1),
             "annualized_gross_turnover": float((buys.sum()+sells.sum())/daily.value.mean()/years),
             "average_cash_weight": float((daily.cash/daily.value).mean()),
             "average_pending_weight": float((daily.pending/daily.value).mean()),
@@ -103,8 +128,10 @@ def run_case(groups, target, limits, args, *, benchmark=False, variant="fixed"):
     index_history = getattr(args, "index_history", None)
     caps, blocked_buy, blocked_sell, status = trade_constraints(
         groups, args.allow_missing_trade_status)
-    params = dict(simulator.SIM_DEFAULTS, subscribe_fee_rate=args.fee_bps/10000,
-                  redeem_fee_rate=args.fee_bps/10000, cash_annual_rate=args.cash_rate,
+    buy_bps, sell_bps, _ = resolve_fees(args)
+    buy_fee, sell_fee = buy_bps/10000, sell_bps/10000
+    params = dict(simulator.SIM_DEFAULTS, subscribe_fee_rate=buy_fee,
+                  redeem_fee_rate=sell_fee, cash_annual_rate=args.cash_rate,
                   # T+2 23:59 is not visible at T+2 14:55.
                   published_lag_days=3)
     cfg = simulator.SimConfig(
@@ -124,7 +151,8 @@ def run_case(groups, target, limits, args, *, benchmark=False, variant="fixed"):
             from fundkit.v11_ablation import build_ablation_rules
             from fundkit.v11_policy import make_b6
             rule = next(x for x in build_ablation_rules() if x["rule_id"] == "A5_stop")
-            params["B6"] = {**params["B6"], **rule["params"]["B6"]}
+            params["B6"] = {**params["B6"], **rule["params"]["B6"],
+                            "subscription_fee_proxy": buy_fee, "redeem_fee_proxy": sell_fee}
             base = make_b6(params)
         else:
             base = policies.make_b2(params)
@@ -138,7 +166,8 @@ def run_case(groups, target, limits, args, *, benchmark=False, variant="fixed"):
         policy.on_execution = getattr(base, "on_execution", None)
     else:
         policy = make_policy(groups, target, limits, trade_limits=caps, blocked_buy=blocked_buy,
-                             blocked_sell=blocked_sell, fee_rate=args.fee_bps/10000,
+                             blocked_sell=blocked_sell, subscribe_fee_rate=buy_fee,
+                             redeem_fee_rate=sell_fee,
                              risk_gate=not benchmark, rebalance=not benchmark,
                              group_rules=not benchmark, variant=variant, valuation_history=valuation,
                              index_history=index_history)
@@ -196,7 +225,10 @@ def main():
     p.add_argument("--initial-cash", type=float, default=0.,
                    help="uninvested starting cash, not an initial holding and not bulk invested")
     p.add_argument("--daily-inflow", type=float, default=1000.)
-    p.add_argument("--fee-bps", type=float, default=60.)
+    p.add_argument("--fee-bps", type=float, help="legacy explicit symmetric fee override")
+    p.add_argument("--subscribe-fee-bps", type=float, help="v1.5 subscription fee, default 0")
+    p.add_argument("--redeem-fee-bps", type=float,
+                   help="research redemption fee proxy, default 60; use 0 for sensitivity")
     p.add_argument("--cash-rate", type=float, default=0.)
     p.add_argument("--allow-missing-trade-status", action="store_true",
                    help="explicit research-only override when no local status file exists")
@@ -214,10 +246,11 @@ def main():
                 a.start.tzinfo is not None or a.end.tzinfo is not None or
                 a.start != a.start.normalize() or a.end != a.end.normalize()):
             raise ValueError("start/end must be date-only and end must follow start")
+        buy_bps, sell_bps, fee_mode = resolve_fees(a)
         if (any(not math.isfinite(x) or x < 0 for x in
-                (a.daily_inflow, a.initial_cash, a.cash_rate, a.fee_bps, a.enhancement_target))
-                or a.daily_inflow <= 0 or a.fee_bps >= 10000 or a.enhancement_target > .1):
-            raise ValueError("invalid cash, fee or enhancement settings")
+                (a.daily_inflow, a.initial_cash, a.cash_rate, a.enhancement_target))
+                or a.daily_inflow <= 0 or a.enhancement_target > .1):
+            raise ValueError("invalid cash or enhancement settings")
         universe, selection_date = load_universe(a.universe, a.start, a.diagnostic)
         grids = sorted({0., *a.satellite_caps})
         for cap in grids:
@@ -290,7 +323,11 @@ def main():
                "diagnostic_override": a.diagnostic,
                "objective": {"net_cagr_at_least": .05, "max_drawdown_at_most": .04},
                "requested_start": str(a.start.date()), "requested_end": str(requested_end.date()),
-               "common_latest_test_date": str(a.end.date()), "fee_bps_proxy": a.fee_bps,
+               "common_latest_test_date": str(a.end.date()),
+               "fee_bps_proxy": buy_bps if buy_bps == sell_bps else None,
+               "fees": {"mode": fee_mode, "subscribe_fee_bps": buy_bps,
+                        "redeem_fee_bps": sell_bps, "redeem_fee_is_research_proxy": True,
+                        "redeem_fee_holding_period_schedule_verified": False},
                "stress_terminal_returns": STRESS, "fund_risk_groups": eligible,
                "dividend_source": ("LOCAL_DIVIDEND_CACHE_UNVERIFIED_COVERAGE"
                                    if Path(storage.DIVIDENDS_FILE).exists()
@@ -370,7 +407,9 @@ def main():
                 cut = a.start.tz_localize(CST) + pd.Timedelta(hours=14, minutes=55)
                 cfg = WeightSearchConfig(lookback_days=756)
                 ret = build_returns_asof(LocalDataAdapter(), list(enhanced_groups), cut, cfg)
-                target, audit = optimized_weights(ret, enhanced_groups, limits, fee_rate=a.fee_bps/10000)
+                fee_kwargs = ({"directional_fees": (buy_bps/10000, sell_bps/10000)}
+                              if fee_mode == "DIRECTIONAL" else {"fee_rate": buy_bps/10000})
+                target, audit = optimized_weights(ret, enhanced_groups, limits, **fee_kwargs)
                 record(name, enhanced_groups, target, limits, audit)
             except (ValueError, ArithmeticError) as exc:
                 results["cases"][name] = {"status":"DATA_BLOCKED", "reason":str(exc)}
@@ -384,8 +423,10 @@ def main():
         pairs = {"dip": "fixed", "trend_only": "fixed", "trend": "dip", "valuation": "trend"}
         cases = results["cases"]
         results["layer_deltas"] = []
-        columns = ("cagr", "max_drawdown", "sharpe", "annualized_gross_turnover",
-                   "fees_fraction_of_paid_in_capital", "average_cash_weight")
+        columns = ("total_return_twr", "cagr", "xirr", "ending_gain_fraction_of_paid_in_capital",
+                   "max_drawdown", "sharpe", "annualized_gross_turnover",
+                   "fees_fraction_of_paid_in_capital", "subscription_fees_fraction_of_paid_in_capital",
+                   "redemption_fees_fraction_of_paid_in_capital", "average_cash_weight")
         for name, case in cases.items():
             layer, _, suffix = name.partition("_sat_")
             if layer not in pairs:

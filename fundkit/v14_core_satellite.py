@@ -106,7 +106,8 @@ def combined_drawdown(marked, total, observed_dd, groups, *, fee=0.0):
 
 
 def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
-                blocked_sell=(), fee_rate=.006, risk_gate=True, rebalance=True,
+                blocked_sell=(), fee_rate=.006, subscribe_fee_rate=None,
+                redeem_fee_rate=None, risk_gate=True, rebalance=True,
                 group_rules=True, variant="fixed", valuation_history=None, index_history=None):
     """Fixed inflow, with opt-in, bounded satellite signals."""
     from fundkit.v15_signals import VARIANTS, TrendState, market_signal
@@ -116,7 +117,9 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
     groups = dict(groups)
     if set(target) != set(groups) | {"cash"} or abs(sum(target.values()) - 1) > EPS:
         raise ValueError("invalid target weights")
-    if not isfinite(fee_rate) or not 0 <= fee_rate < 1:
+    buy_fee = fee_rate if subscribe_fee_rate is None else subscribe_fee_rate
+    sell_fee = fee_rate if redeem_fee_rate is None else redeem_fee_rate
+    if any(not isfinite(x) or not 0 <= x < 1 for x in (buy_fee, sell_fee)):
         raise ValueError("invalid fee rate")
     rules = limits.constraints(groups) if group_rules else []
     blocked_buy, blocked_sell = set(blocked_buy), set(blocked_sell)
@@ -214,7 +217,7 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
         def reduce(name, codes, dest, reason):
             nonlocal sell_denominator
             need = max(0.0, (sum(sell_exposure[c] for c in codes) -
-                             dest * sell_denominator) / (1 - dest * fee_rate))
+                             dest * sell_denominator) / (1 - dest * sell_fee))
             if need <= EPS:
                 return
             planned = 0.0
@@ -228,7 +231,7 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
                 if amount > EPS:
                     sells[c] = sells.get(c, 0.0) + amount/nav
                     sell_exposure[c] -= amount
-                    sell_denominator -= amount * fee_rate
+                    sell_denominator -= amount * sell_fee
                     planned += amount
                     need -= amount
             note(reason if planned > EPS else ("CAP_REDEMPTION_BLOCKED" if reason == "CAP_REBALANCE" else reason + "_BLOCKED"),
@@ -259,7 +262,7 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
 
         reserve = reserve_weight * total
         budget = min(max(0.0, cash - reserve), float(state["external_cash_inflow_today"]))
-        denominator_floor = total - budget * fee_rate
+        denominator_floor = total - budget * buy_fee
         buys = {}
         projected = marked.copy()
         def allocate(c, ceiling):
@@ -280,16 +283,16 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
             if risk_gate:
                 if pre_stress > limits.drawdown:
                     return 0.
-                fees_so_far = fee_rate * sum(buys.values())
+                fees_so_far = buy_fee * sum(buys.values())
                 for shock in STRESS.values():
                     base_loss = -sum(projected[x]*shock[groups[x]] for x in groups)
                     available = total * (limits.drawdown - observed)/(1 - observed) - base_loss - fees_so_far
-                    marginal = -(1 - fee_rate)*shock[groups[c]] + fee_rate
+                    marginal = -(1 - buy_fee)*shock[groups[c]] + buy_fee
                     amount = min(amount, available/marginal)
             if amount <= EPS:
                 return 0.
             buys[c] = buys.get(c, 0.0) + amount
-            projected[c] += (1-fee_rate)*amount
+            projected[c] += (1-buy_fee)*amount
             budget -= amount
             return amount
 
@@ -305,7 +308,7 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
         for c in sorted(groups, key=lambda c: (projected[c] - active_target[c]*total, c)):
             allocate(c, budget)
         stress_case, post_stress = combined_drawdown(
-            projected, total, observed, groups, fee=fee_rate*sum(buys.values()))
+            projected, total, observed, groups, fee=buy_fee*sum(buys.values()))
         note("FIXED_INFLOW", observed_drawdown=observed, pre_stress_drawdown=pre_stress,
              post_stress_drawdown=post_stress, stress_case=stress_case,
              accepted_buy_pct=sum(buys.values())/total,
@@ -315,7 +318,7 @@ def make_policy(groups, target, limits, *, trade_limits=None, blocked_buy=(),
     return policy
 
 
-def optimized_weights(returns, groups, limits, *, fee_rate, seed=42):
+def optimized_weights(returns, groups, limits, *, fee_rate=0., directional_fees=None, seed=42):
     """As-of-only robust allocation; fixed baseline remains the primary comparator."""
     from fundkit.v13_model import fit_one_year_model
     from fundkit.v13_portfolio import RobustSOCPConfig, solve_robust_socp
@@ -341,7 +344,7 @@ def optimized_weights(returns, groups, limits, *, fee_rate, seed=42):
     ans = solve_robust_socp(
         r, paths, fit["mean_annual"], fit["return_cov_annual"],
         fit["forecast_error_cov_annual"], fund_upper=np.full(len(codes), limits.fund),
-        current_weights=current, group_upper=bounds,
+        current_weights=current, group_upper=bounds, directional_fees=directional_fees,
         hard_stress_returns=stress_paths(codes, groups),
         config=RobustSOCPConfig(drawdown_budget=limits.drawdown, turnover_cost=fee_rate,
                                 min_cash_weight=limits.minimum_cash,
@@ -363,7 +366,8 @@ def optimized_weights(returns, groups, limits, *, fee_rate, seed=42):
         raise ValueError("NO_RISK_FEASIBLE_TARGET: numerical invested floor")
     target = {**dict(zip(codes, map(float, w))), "cash": 1 - float(w.sum())}
     ordered = np.array([*w, target["cash"]])
-    historical, q95, q25, *_ = _risk_metrics(r, ordered[None, :], current, cfg, paths)
+    historical, q95, q25, *_ = _risk_metrics(
+        r, ordered[None, :], current, cfg, paths, directional_fees=directional_fees)
     _, stress_dd = combined_drawdown({c: target[c] for c in codes}, 1., 0., groups)
     if max(historical[0], q95[0], stress_dd) > limits.drawdown + 1e-6:
         raise ValueError("NO_RISK_FEASIBLE_TARGET: rebalanced-path independent risk check")
@@ -372,5 +376,7 @@ def optimized_weights(returns, groups, limits, *, fee_rate, seed=42):
              "joint_observations": len(returns), "training_start": str(returns.index[0].date()),
              "training_end": str(returns.index[-1].date()),
              "forecast_method": "V13_PRIOR_SHRINKAGE_NOT_BENCHMARK_CALIBRATED",
-             "turnover_reference": "FIXED_RESEARCH_WEIGHTS_NOT_ACCOUNT_HOLDINGS"}
+             "turnover_reference": "FIXED_RESEARCH_WEIGHTS_NOT_ACCOUNT_HOLDINGS",
+             "turnover_cost_model": "DIRECTIONAL" if directional_fees is not None else "LEGACY",
+             "objective_reference_turnover_cost": ans["turnover_cost"]}
     return target, audit

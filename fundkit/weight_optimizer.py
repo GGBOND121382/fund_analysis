@@ -100,13 +100,20 @@ def _scenarios(R: np.ndarray, cfg: WeightSearchConfig) -> np.ndarray:
 
 def _risk_metrics(returns: np.ndarray, weights: np.ndarray,
                   initial_current: np.ndarray, cfg: WeightSearchConfig,
-                  scenarios: np.ndarray):
+                  scenarios: np.ndarray, *, directional_fees=None):
     """批量复利路径；把初始换仓成本计入净值路径和最大回撤。"""
     n_assets = returns.shape[1]
     w = weights[:, :n_assets]
     cash = weights[:, n_assets]
     turnover = np.sum(np.abs(weights - initial_current[None, :]), axis=1) / 2.0
-    cost = np.minimum(turnover * cfg.turnover_cost_rate, 0.95)
+    if directional_fees is None:
+        cost = turnover * cfg.turnover_cost_rate
+    else:
+        buy_fee, sell_fee = directional_fees
+        delta = w - initial_current[None, :n_assets]
+        cost = (buy_fee * np.maximum(delta, 0.).sum(axis=1)
+                + sell_fee * np.maximum(-delta, 0.).sum(axis=1))
+    cost = np.minimum(cost, 0.95)
 
     r = np.einsum("std,bd->bst", scenarios, w)
     r += cash[:, None, None] * ((1 + cfg.annual_cash_return) ** (1 / 252) - 1)
