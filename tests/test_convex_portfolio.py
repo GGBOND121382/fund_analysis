@@ -76,7 +76,7 @@ class ContinuousPortfolioSolverTests(unittest.TestCase):
             max_single_fund_weight=.6)
         result=generate_weight_candidates(
             df,cfg=cfg,caps={'STOCK':0.},top_k=3)
-        self.assertEqual(result['solver'].split()[0],'HiGHS')
+        self.assertIn('CLARABEL',result['solver'])
         self.assertGreaterEqual(len(result['candidates']),1)
         self.assertLessEqual(len(result['candidates']),3)
         self.assertEqual(result['cash_benchmark']['weights']['cash'],1.)

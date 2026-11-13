@@ -1,0 +1,155 @@
+{
+  "window": [
+    "2026-05-12",
+    "2026-11-09"
+  ],
+  "fee_rate_assumption": 0.003,
+  "weights_source": "reports/v13_weights_recent252.json",
+  "weights": {
+    "710301": 0.1718315757,
+    "004400": 0.4,
+    "021559": 0.4,
+    "014846": 0.0,
+    "000218": 0.0,
+    "110020": 0.0,
+    "096001": 0.0281684242,
+    "017641": 0.0,
+    "016452": 0.0,
+    "019736": 0.0,
+    "019172": 0.0,
+    "539001": 0.0,
+    "019441": 0.0,
+    "cash": 1e-10
+  },
+  "capital_cny": 195123.58000000005,
+  "rules": {
+    "B2_cashflow_only": {
+      "status": "OK",
+      "cagr": 0.06046888316975729,
+      "mdd": 0.004918665272087175,
+      "sharpe": 2.581331688982169,
+      "buy_count": 464,
+      "redeem_count": 0,
+      "buy_amount_total": 123270.47,
+      "final_value": 326790.50681833684
+    },
+    "A1_no_timing": {
+      "status": "OK",
+      "cagr": 0.06042381063333502,
+      "mdd": 0.004916686018622274,
+      "sharpe": 2.580384675472901,
+      "buy_count": 462,
+      "redeem_count": 0,
+      "buy_amount_total": 123133.42,
+      "final_value": 326784.6824616001
+    },
+    "A2_base75": {
+      "status": "OK",
+      "cagr": 0.057495048076619426,
+      "mdd": 0.004812203922817226,
+      "sharpe": 2.5141879849316506,
+      "buy_count": 366,
+      "redeem_count": 0,
+      "buy_amount_total": 92711.29,
+      "final_value": 326387.54927350045
+    },
+    "A2_base50": {
+      "status": "OK",
+      "cagr": 0.0548383930636398,
+      "mdd": 0.004701454268798311,
+      "sharpe": 2.440948366326607,
+      "buy_count": 328,
+      "redeem_count": 0,
+      "buy_amount_total": 61807.55,
+      "final_value": 326026.0715936934
+    },
+    "A3_timing75_release50": {
+      "status": "OK",
+      "cagr": 0.057495048076619426,
+      "mdd": 0.004812203922817226,
+      "sharpe": 2.5141879849316506,
+      "buy_count": 366,
+      "redeem_count": 0,
+      "buy_amount_total": 92711.29,
+      "final_value": 326387.54927350045
+    },
+    "A3_timing75_release100": {
+      "status": "OK",
+      "cagr": 0.057495048076619426,
+      "mdd": 0.004812203922817226,
+      "sharpe": 2.5141879849316506,
+      "buy_count": 366,
+      "redeem_count": 0,
+      "buy_amount_total": 92711.29,
+      "final_value": 326387.54927350045
+    },
+    "A4_takeprofit": {
+      "status": "OK",
+      "cagr": 0.06042381063333502,
+      "mdd": 0.004916686018622274,
+      "sharpe": 2.580384675472901,
+      "buy_count": 462,
+      "redeem_count": 0,
+      "buy_amount_total": 123133.42,
+      "final_value": 326784.6824616001
+    },
+    "A5_stop": {
+      "status": "OK",
+      "cagr": 0.05792116585432927,
+      "mdd": 0.004898514591008429,
+      "sharpe": 2.468767200373229,
+      "buy_count": 439,
+      "redeem_count": 76,
+      "buy_amount_total": 121509.9,
+      "final_value": 326424.04219287576
+    },
+    "A6_joint75": {
+      "status": "OK",
+      "cagr": 0.055847803234956306,
+      "mdd": 0.00479822427230403,
+      "sharpe": 2.433267150304959,
+      "buy_count": 362,
+      "redeem_count": 1,
+      "buy_amount_total": 91345.0,
+      "final_value": 326148.0751429681
+    },
+    "A6_joint50": {
+      "status": "OK",
+      "cagr": 0.05324167537601321,
+      "mdd": 0.004692133867999049,
+      "sharpe": 2.3556837545701876,
+      "buy_count": 320,
+      "redeem_count": 1,
+      "buy_amount_total": 61305.02,
+      "final_value": 325792.68502579833
+    },
+    "A7_risk_budgeted_amount": {
+      "status": "OK",
+      "cagr": 0.05815272976837638,
+      "mdd": 0.0049186654290585,
+      "sharpe": 2.4754217875540525,
+      "buy_count": 444,
+      "redeem_count": 81,
+      "buy_amount_total": 122593.09,
+      "final_value": 326449.8001478222
+    }
+  },
+  "identifiability": [
+    {
+      "rules": [
+        "A1_no_timing",
+        "A4_takeprofit"
+      ],
+      "verdict": "PARAMETER_NOT_IDENTIFIABLE"
+    },
+    {
+      "rules": [
+        "A2_base75",
+        "A3_timing75_release50",
+        "A3_timing75_release100"
+      ],
+      "verdict": "PARAMETER_NOT_IDENTIFIABLE"
+    }
+  ],
+  "note": "执行机制审计；权重为 asof=2026-11-12 训练结果，窗口内表现为参考，非独立OOS"
+}

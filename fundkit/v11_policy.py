@@ -145,6 +145,28 @@ def make_b6(params):
             orders['subscribe']={}
             return orders
         base_allowed=sorted(allowed-excludes)
+        if cfg.get('amount_mode')=='risk_budgeted':
+            # Independent A7 experimental rule. Pick the trade amount only
+            # after the ledger has approved it, and check EACH candidate with
+            # the identical as-of exposure risk gate. Never bypass B5 pauses.
+            from fundkit.v13_execution import choose_daily_buys
+            paused={ev.get('code') for ev in orders['events']
+                    if ev.get('action') in ('PAUSE_NEW_BUY','FUND_RISK_DATA_BLOCKED')}
+            eligible=sorted(set(base_allowed)-paused)
+            gaps={c:max(0.,target.get(c,0.)-weights.get(c,0.))*total
+                  for c in eligible}
+            buys,decision=choose_daily_buys(
+                budget_cny=cash_plan['approved_buy_cny'],
+                deficits_cny=gaps,
+                proposal_for_budget=lambda budget: policies._water_filling(
+                    budget,weights,total,target,limits,eligible),
+                risk_checker=lambda proposed:checker(buys=proposed),
+                fee_rate=float(cfg.get('subscription_fee_proxy',.003)),
+                steps=int(cfg.get('amount_grid_steps',8)))
+            orders['events'].append({
+                'code':'PORTFOLIO','action':'V13_AMOUNT_DECISION',**decision})
+            orders['subscribe']=buys
+            return orders
         base_budget=cash_plan['base_budget_cny']
         if risk_pre['status']!='PASS':
             # Fail closed for additional risk when as-of scenario evidence is unknown.

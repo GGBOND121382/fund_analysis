@@ -22,7 +22,7 @@ from fundkit.risk_engine import estimate_robust_returns, portfolio_return_lcb
 class WeightSearchConfig:
     target_annual_return: float = .05
     max_drawdown: float = .04
-    lookback_days: int = 756
+    lookback_days: int = 252
     horizon: int = 252
     bootstrap_paths: int = 192
     block_lengths: tuple[int, ...] = (20, 60)
@@ -258,16 +258,20 @@ def optimize_target_weights(returns: pd.DataFrame,
         "independent_scenario_sharpe_q25":float(independent_sharpe[0]),
         "annual_risk_free_rate_assumption":cfg.annual_risk_free_rate,
         "robust_return_estimates":candidates["robust_return_estimates"],
+        "predictive_model":candidates.get("predictive_model"),
+        "frontier_grid":candidates.get("frontier_grid"),
+        "frontier_distinct_non_cash_count":candidates.get("frontier_distinct_non_cash_count"),
+        "grinn_021559_sensitivity":candidates.get("grinn_021559_sensitivity"),
         "concentration_guardrail":candidates["concentration_guardrail"],
         "independent_scenario_mdd_p95":independent_risk,
         "independent_scenario_return_q25":float(independent_return[0]),
         "turnover_proxy":chosen["turnover_proxy"],
         "risk_budget":cfg.max_drawdown,"return_target":cfg.target_annual_return,
         "solver":candidates["solver"],
-        "method":"continuous buy-and-hold LP with historical drawdown cuts "
-                 "and empirical scenario signed-gap CVaR; frozen OOS required",
+        "method":"one-year robust conic optimization with historical drawdown cuts "
+                 "and empirical signed-gap CVaR; frozen OOS required",
         "limits":[
-            "LP optimality is conditional on the finite scenario/buy-and-hold model",
+            "Conic optimality is conditional on the finite scenario/buy-and-hold model",
             "A 4% scenario MDD constraint cannot guarantee future realized MDD",
             "Independent scenario seed still uses the SAME historical sample",
             "Real subscriptions, redemption locks, delay, cost and cashflows "
@@ -333,133 +337,208 @@ def generate_weight_candidates(returns: pd.DataFrame,
                                top_k: int = 8,
                                min_l1_distance: float = 0.04,
                                categories: Mapping[str, str] | None = None) -> dict:
-    """Solve a deterministic continuous weight frontier; NEVER sample weights.
+    """Research frontier from direct continuous robust SOCP solves.
 
-    Each solution is the global optimum of a finite-scenario LP subject to
-    historical buy-and-hold MDD <=4% and empirical scenario signed-gap CVaR<=0.
-    Exposure floors index a research frontier; they are NOT fitted investment
-    parameters. Cash-only is returned as a separate diagnostic benchmark.
+    252-session primary window; no historical random weight sampling.
+    Variance/uncertainty budgets are a PRE-REGISTERED diagnostic grid, not
+    post-test tuned optimal parameters. Cash benchmark stays separate.
     """
-    from fundkit.convex_portfolio import PortfolioLPConfig, solve_continuous_weights
+    from fundkit.v13_model import fit_one_year_model
+    from fundkit.v13_portfolio import RobustSOCPConfig, solve_robust_socp
 
-    cfg = cfg or WeightSearchConfig()
+    cfg=cfg or WeightSearchConfig()
     cfg.validate()
-    if top_k < 1 or min_l1_distance < 0:
-        raise ValueError("top_k/min_l1_distance invalid")
-    df = _validate_returns(returns, cfg)
-    codes = list(df.columns)
-    R = df.to_numpy(float)
-    n = len(codes)
-    estimates = estimate_robust_returns(
-        df, categories=categories,
-        prior_shrinkage_days=cfg.return_prior_shrinkage_days,
-        uncertainty_z=cfg.return_uncertainty_z)
-    unknown = (set(caps or {}) | set(fixed_weights or {})).difference(codes)
+    if top_k<1 or min_l1_distance<0:
+        raise ValueError("invalid top_k/min_l1_distance")
+    risk_df=_validate_returns(returns,cfg)
+    df=risk_df.tail(252)  # prediction: latest year only
+    codes=list(df.columns)
+    n=len(codes); R=risk_df.to_numpy(float)  # historical stress can be older
+    model=fit_one_year_model(df,categories=categories,lookback=252,
+                             seed=cfg.seed)
+    unknown=(set(caps or {})|set(fixed_weights or {}))-set(codes)
     if unknown:
         raise ValueError(f"仓位上限/冻结仓位存在未知基金：{sorted(unknown)}")
-    lower = np.array([float((fixed_weights or {}).get(c,0.)) for c in codes])
-    upper = np.array([float((caps or {}).get(c,cfg.max_single_fund_weight))
-                      for c in codes])
-    for i, c in enumerate(codes):
+    lower=np.array([float((fixed_weights or {}).get(c,0.)) for c in codes])
+    upper=np.array([float((caps or {}).get(c,cfg.max_single_fund_weight))
+                    for c in codes])
+    for i,c in enumerate(codes):
         if c in (fixed_weights or {}):
-            upper[i] = lower[i]
+            upper[i]=lower[i]
     if (not np.isfinite(lower).all() or not np.isfinite(upper).all() or
         (lower<0).any() or (upper<lower).any() or (upper>1).any() or
         lower.sum()+cfg.min_cash_weight>1+1e-10):
-        raise ValueError("DATA_BLOCKED: invalid frozen positions or asset caps")
-    current = np.array([float((current_weights or {}).get(c,0.)) for c in
-                        codes+["cash"]])
-    if not np.isfinite(current).all() or (current<-1e-9).any() or current.sum()>1+1e-8:
-        raise ValueError("DATA_BLOCKED: invalid current portfolio")
+        raise ValueError("DATA_BLOCKED: invalid frozen holdings/caps")
+    current=np.array([float((current_weights or {}).get(c,0.))
+                      for c in codes+["cash"]])
+    if (not np.isfinite(current).all() or
+        (current<0).any() or current.sum()>1+1e-8):
+        raise ValueError("DATA_BLOCKED: invalid current holdings")
     if current.sum()<1-1e-8:
         current[-1]+=1-current.sum()
-    lower_returns=np.array([float(estimates[c]["robust_lcb_annual"]) for c in codes])
-    scenarios=_scenarios(R,cfg)
-    # Require distinct, non-cash investment portfolios for strategy ablation.
-    # Do not silently replace failures with a riskless 100% cash allocation.
-    floors=[0., .10, .20, .30, .40, .50, .60, .75, .90, .98]
-    floors=[x for x in floors if x<=1-cfg.min_cash_weight+1e-10]
-    if lower.sum() > 0:
-        floors=[max(x,float(lower.sum())) for x in floors]
-    floors=list(dict.fromkeys(floors))
-    generated=[]; rejected=[]
-    for floor in floors:
-        lp=solve_continuous_weights(
-            R,scenarios,lower_returns,current_weights=current,
-            fund_lower=lower,fund_upper=upper,
-            config=PortfolioLPConfig(
-                drawdown_budget=cfg.max_drawdown,cvar_alpha=.95,
+    sc=_scenarios(R,cfg)
+    # An actual drawdown/volatility/forecast-uncertainty frontier, not
+    # ten inactive minimum-risky-exposure constraints on a fully invested LP.
+    frontier_grid=[
+        (.04,0.,0.),(.04,.5,.25),(.04,1.,.5),(.04,1.,1.5),
+        (.03,.5,.5),(.03,1.,1.),(.02,1.,1.),
+    ]
+    grid=[(min(dd,cfg.max_drawdown),rho,lam) for dd,rho,lam in frontier_grid]
+    generated=[];rejected=[];solutions=[]
+    def solve(dd,rho,lam,lo=lower,hi=upper):
+        return solve_robust_socp(
+            R,sc,model["mean_annual"],model["return_cov_annual"],
+            model["forecast_error_cov_annual"],fund_lower=lo,
+            fund_upper=hi,current_weights=current,
+            config=RobustSOCPConfig(
+                drawdown_budget=dd,cvar_alpha=.95,
+                uncertainty_penalty=rho,volatility_penalty=lam,
                 turnover_cost=cfg.turnover_cost_rate,
-                cash_annual_return=cfg.annual_cash_return,
-                min_risky_weight=floor,min_cash_weight=cfg.min_cash_weight))
-        if lp["status"]!="OPTIMAL":
-            rejected.append({"min_risky_weight":floor,"status":lp["status"],
-                             "reason":lp.get("reason")})
+                cash_return_annual=cfg.annual_cash_return,
+                min_cash_weight=cfg.min_cash_weight))
+    for dd,rho,lam in grid:
+        ans=solve(dd,rho,lam)
+        if ans["status"]!="OPTIMAL":
+            rejected.append({"budget":dd,"uncertainty":rho,"variance":lam,
+                             "status":ans["status"],"reason":ans.get("reason")})
             continue
-        w=np.asarray(lp["weights"],float)
-        if w[:-1].sum() < 1e-6:
+        w=np.asarray(ans["weights"],float).copy()
+        # Conic solvers use floating tolerances: exact locked/zero holdings
+        # must be restored before public reports and the trading simulator.
+        for i in range(n):
+            if upper[i]-lower[i] <= 1e-12:
+                w[i]=lower[i]
+            elif abs(w[i]) < 1e-8:
+                # Solver noise can reach ~1e-10..1e-9; values this small carry
+                # no economic weight and trip downstream non-negativity checks
+                # (joint_optimizer rejects w < -1e-10).
+                w[i]=0.
+        w[-1]=1.-w[:n].sum()
+        if w[-1] < -1e-7:
+            rejected.append({"budget":dd,"uncertainty":rho,"variance":lam,
+                             "status":"NUMERICAL_REJECTED_NEGATIVE_CASH"})
             continue
-        # Independently review the daily constant-weight approximation used
-        # by the legacy portfolio risk estimator; do not hide discrepancies.
+        w[-1]=max(0.,w[-1])
+        solutions.append((dd,rho,lam,w))
+        if w[:-1].sum()<1e-6:
+            continue
         hdd,qdd,qret,turn,hsh,sq25,smed=_risk_metrics(
-            R,w[None,:],current,cfg,scenarios)
-        risk_bound=max(float(hdd[0]),float(qdd[0]),
-                       float(lp["historical_mdd"]),
-                       float(lp["scenario_mdd_quantile"]))
-        entry={
+            R,w[None,:],current,cfg,sc)
+        historical_mdd=float(hdd[0]);scenario_mdd=float(qdd[0])
+        risk_bound=max(historical_mdd,scenario_mdd,
+                       float(ans["historical_mdd"]),
+                       float(ans["scenario_mdd_p95"]))
+        if risk_bound>dd+1e-6:
+            rejected.append({"budget":dd,"uncertainty":rho,"variance":lam,
+                             "status":"REBALANCED_RISK_REVIEW_FAILED",
+                             "worst_mdd":risk_bound})
+            continue
+        if any(np.linalg.norm(
+            w-np.array([row["weights"][c] for c in codes+["cash"]]),ord=1)
+            < min_l1_distance for row in generated):
+            continue
+        lower_score=float(model["mean_annual"]@w[:n]-
+                          np.sqrt(max(0.,w[:n]@model["forecast_error_cov_annual"]@w[:n]))+
+                          cfg.annual_cash_return*w[-1])
+        row={
             "weights":{**{c:float(w[i]) for i,c in enumerate(codes)},
                        "cash":float(w[-1])},
-            "historical_mdd":float(hdd[0]),
-            "scenario_mdd_p95":float(qdd[0]),
+            "historical_mdd":historical_mdd,
+            "scenario_mdd_p95":scenario_mdd,
             "scenario_return_q25":float(qret[0]),
             "historical_sharpe":float(hsh[0]),
             "scenario_sharpe_q25":float(sq25[0]),
             "scenario_sharpe_median":float(smed[0]),
-            "robust_return_lcb":float(lower_returns @ w[:-1]+
-                                       cfg.annual_cash_return*w[-1]),
+            "robust_return_lcb":lower_score,
             "turnover_proxy":float(turn[0]),
-            "static_risk_feasible":bool(risk_bound<=cfg.max_drawdown+1e-7),
-            "lp_buy_hold_historical_mdd":float(lp["historical_mdd"]),
-            "lp_buy_hold_scenario_mdd_p95":float(lp["scenario_mdd_quantile"]),
-            "lp_scenario_signed_gap_cvar":float(lp["scenario_cvar_violation"]),
-            "lp_optimality":lp["status"],
-            "lp_iterations":lp["iteration_count"],
-            "lp_cuts":lp["cut_count"],
-            "frontier_min_risky_weight":floor,
+            "static_risk_feasible":True,
+            "model_annual_estimated_mean":float(ans["estimated_mean_annual"]),
+            "model_optimization_score":float(ans["model_score"]),
+            "lp_buy_hold_historical_mdd":float(ans["historical_mdd"]),
+            "lp_buy_hold_scenario_mdd_p95":float(ans["scenario_mdd_p95"]),
+            "lp_scenario_signed_gap_cvar":float(ans["scenario_cvar_signed_gap"]),
+            "frontier_drawdown_budget":dd,
+            "frontier_uncertainty_penalty":rho,
+            "frontier_volatility_penalty":lam,
+            "solver_status":ans["status"],
+            "solver_rounds":ans["rounds"],
         }
-        if not entry["static_risk_feasible"]:
-            rejected.append({"min_risky_weight":floor,
-                             "status":"REBALANCED_RISK_REVIEW_FAILED",
-                             "worst_mdd":risk_bound})
-            continue
-        if any(np.abs(w-np.array([r["weights"][c] for c in codes+["cash"]])).sum()
-               < min_l1_distance for r in generated):
-            continue
-        generated.append(entry)
-    # Keep genuinely different risk/return positions, with the best robust
-    # lower return as the primary candidate. No cash endpoint consumes a slot.
-    generated.sort(key=lambda r:(-r["robust_return_lcb"],
-                                 r["scenario_mdd_p95"],
-                                 -r["scenario_sharpe_q25"]))
+        generated.append(row)
+    generated.sort(key=lambda x:(-x["robust_return_lcb"],
+                                 x["scenario_mdd_p95"],-x["scenario_sharpe_q25"]))
     selected=generated[:top_k]
+    estimates={
+        c:{
+            "n":model["n_common_observations"],
+            "sample_mean_annual":model["diagnostics"][c]["sample_mean_annual"],
+            "prior_mean_annual":model["diagnostics"][c]["peer_prior_annual"],
+            "shrunk_mean_annual":model["diagnostics"][c]["forecast_annual"],
+            "robust_lcb_annual":model["diagnostics"][c]["lower_proxy_annual"],
+            "annual_volatility":float(np.sqrt(max(0.,model["return_cov_annual"][i,i]))),
+            "annual_mean_se":model["diagnostics"][c]["forecast_error_sd_annual"],
+            "recent_63d_mean_annual":model["diagnostics"][c]["recent_63d_mean_annual"],
+            "recent_126d_mean_annual":model["diagnostics"][c]["recent_126d_mean_annual"],
+            "category":model["diagnostics"][c]["category"],
+        } for i,c in enumerate(codes)}
+    # Mandatory counterfactual: isolate the opportunity cost of holding 021559
+    # on EXACTLY the same training NAV, forecast and scenario set.
+    sensitivity=[]
+    if "021559" in codes and "021559" not in (fixed_weights or {}):
+        idx=codes.index("021559")
+        for floor in (0.,.1,.2,.4):
+            lo=lower.copy();hi=upper.copy()
+            if floor==0:
+                hi[idx]=0.
+            else:
+                lo[idx]=max(lo[idx],floor)
+            if lo[idx]>hi[idx]+1e-10:
+                sensitivity.append({"grinn_min":floor,"status":"CAP_INFEASIBLE"})
+                continue
+            ans=solve(cfg.max_drawdown,1.,.5,lo,hi)
+            record={"grinn_min":floor,"status":ans["status"]}
+            if ans["status"]=="OPTIMAL":
+                w=np.asarray(ans["weights"],float)
+                h,q,ret,*_=_risk_metrics(R,w[None,:],current,cfg,sc)
+                record.update({
+                    "grinn_weight":float(w[idx]),
+                    "model_score":float(ans["model_score"]),
+                    "historical_mdd":float(h[0]),
+                    "scenario_mdd_p95":float(q[0]),
+                    "scenario_return_q25":float(ret[0]),
+                    "scenario_cvar":float(ans["scenario_cvar_signed_gap"]),
+                })
+            sensitivity.append(record)
     return {
-        "status":"CONVEX_RISK_FEASIBLE_FRONTIER" if selected else
+        "status":"ROBUST_SOCP_FEASIBLE_FRONTIER" if selected else
                  "NO_NONCASH_RISK_FEASIBLE_CANDIDATE",
-        "candidate_count_generated":len(floors),
+        "candidate_count_generated":len(grid),
         "candidate_count_returned":len(selected),
-        "frontier_risk_feasible_count":len(generated),
-        "static_risk_feasible_count":len(generated),
         "candidate_count_requested":top_k,
+        "static_risk_feasible_count":len(generated),
+        "frontier_risk_feasible_count":len(generated),
         "training_data_start":str(df.index[0].date()),
+        "risk_stress_data_start":str(risk_df.index[0].date()),
         "training_data_end":str(df.index[-1].date()),
         "robust_return_estimates":estimates,
-        "solver":"HiGHS LP / exact affine drawdown cut separation",
-        "model":"BUY_AND_HOLD_FINITE_SCENARIO_CVAR; REBALANCING_REVIEW",
+        "predictive_model":{
+            "method":"ONE_YEAR_BLOCKED_CV_SHRINKAGE",
+            "n_common_observations":model["n_common_observations"],
+            "mean_shrinkage_weight":model["mean_shrinkage_weight"],
+            "mean_shrinkage_validation":model["mean_shrinkage_validation"],
+            "covariance_shrinkage_weight":model["covariance_shrinkage_weight"],
+            "limitations":model["limitations"],
+        },
+        "solver":"CVXPY/CLARABEL robust SOCP, affine historical MDD cuts",
+        "model":"ONE_YEAR_ROBUST_BUY_AND_HOLD; REBALANCE_RISK_REVIEW",
+        "frontier_grid":[{"mdd":d,"uncertainty":r,"variance":l} for d,r,l in grid],
+        "frontier_distinct_non_cash_count":len(generated),
+        "grinn_021559_sensitivity":sensitivity,
         "rejected":rejected,
         "cash_benchmark":{"weights":{**{c:0. for c in codes},"cash":1.},
                           "research_only":True},
-        "concentration_guardrail":{"max_single_fund_weight":cfg.max_single_fund_weight,
-                                   "status":"GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED"},
+        "concentration_guardrail":{
+            "max_single_fund_weight":cfg.max_single_fund_weight,
+            "status":"GOVERNANCE_CAP_NOT_EMPIRICALLY_OPTIMIZED"},
         "candidates":selected,
         "research_only":True,
     }

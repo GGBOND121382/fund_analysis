@@ -1,0 +1,4 @@
+联合优化研究结果: reports/joint_strategy_optimization.json
+  fold1: OOS_TARGET_UNMET
+    B6 / A4_takeprofit | 验证 CAGR=8.19% MDD=3.57% | 测试 CAGR=-6.95% MDD=4.18%
+状态: RESEARCH_ONLY；不自动交易，不把反事实回测称为真实账户历史

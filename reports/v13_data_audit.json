@@ -1,0 +1,518 @@
+{
+ "git_head": "cd34e324923b9dffe2dd7c8a3b7be5bd81bdf9e4",
+ "branch": "codex/fund-analysis-v1.3-one-year-robust-20261112",
+ "python": "3.10.12",
+ "cvxpy": "1.7.5",
+ "clarabel": "0.11.1",
+ "akshare": "1.18.60",
+ "unittest": {
+  "ran": 128,
+  "status": "OK",
+  "log": "reports/p0_unittest.log"
+ },
+ "audit_date": "2026-11-12",
+ "calendar_end": "2026-11-09",
+ "snapshot_date": "2026-11-05",
+ "last_common_published_return_date": "2026-11-09",
+ "n_common_return_days_full": 509,
+ "first_common_date": "2024-08-16",
+ "funds": [
+  {
+   "code": "710301",
+   "name": "富安达增强收益债券A",
+   "category": "bond",
+   "type": "债券型-混合二级",
+   "nav_start": "2012-07-27",
+   "nav_end": "2026-11-10",
+   "records": 3445,
+   "missing_days": 32,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2015-06-01",
+     "ret": 0.0987
+    },
+    {
+     "date": "2015-06-26",
+     "ret": -0.0829
+    },
+    {
+     "date": "2020-02-03",
+     "ret": -0.0632
+    }
+   ],
+   "trade_status": {
+    "sub_status": "开放申购",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 100000000000.0
+   },
+   "nav_spotcheck_vs_eastmoney": {
+    "em_latest": "2026-11-12",
+    "local_latest": "2026-11-10",
+    "overlap_rows": 3445,
+    "recent20_max_abs_diff": 0.0,
+    "all_max_abs_diff": 0.0,
+    "n_diff_gt_0.005": 0
+   }
+  },
+  {
+   "code": "004400",
+   "name": "金信民兴债券A",
+   "category": "bond",
+   "type": "债券型-长债",
+   "nav_start": "2017-03-08",
+   "nav_end": "2026-11-11",
+   "records": 2312,
+   "missing_days": 46,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2018-06-20",
+     "ret": 0.7927
+    },
+    {
+     "date": "2021-09-17",
+     "ret": 0.6312
+    },
+    {
+     "date": "2021-12-01",
+     "ret": -0.2549
+    }
+   ],
+   "trade_status": {
+    "sub_status": "限大额",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 500.0
+   },
+   "nav_spotcheck_vs_eastmoney": {
+    "em_latest": "2026-11-12",
+    "local_latest": "2026-11-11",
+    "overlap_rows": 2312,
+    "recent20_max_abs_diff": 0.0,
+    "all_max_abs_diff": 0.0,
+    "n_diff_gt_0.005": 0
+   }
+  },
+  {
+   "code": "021559",
+   "name": "格林30天滚动持有债券A",
+   "category": "bond",
+   "type": "债券型-长债",
+   "nav_start": "2024-08-13",
+   "nav_end": "2026-11-10",
+   "records": 527,
+   "missing_days": 15,
+   "abnormal_day_count": 4,
+   "top_abnormal": [
+    {
+     "date": "2026-04-17",
+     "ret": 0.0078
+    },
+    {
+     "date": "2026-10-30",
+     "ret": -0.0073
+    },
+    {
+     "date": "2026-07-22",
+     "ret": 0.0071
+    }
+   ],
+   "trade_status": {
+    "sub_status": "开放申购",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 100000000000.0
+   },
+   "nav_spotcheck_vs_eastmoney": {
+    "em_latest": "2026-11-11",
+    "local_latest": "2026-11-10",
+    "overlap_rows": 527,
+    "recent20_max_abs_diff": 0.0,
+    "all_max_abs_diff": 0.0,
+    "n_diff_gt_0.005": 0
+   }
+  },
+  {
+   "code": "014846",
+   "name": "博时恒乐债券A",
+   "category": "bond",
+   "type": "债券型-混合二级",
+   "nav_start": "2022-04-28",
+   "nav_end": "2026-11-10",
+   "records": 1096,
+   "missing_days": 6,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2024-09-30",
+     "ret": 0.0157
+    },
+    {
+     "date": "2024-10-08",
+     "ret": 0.0107
+    },
+    {
+     "date": "2026-07-02",
+     "ret": -0.0105
+    }
+   ],
+   "trade_status": {
+    "sub_status": "限大额",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 10000000.0
+   },
+   "nav_spotcheck_vs_eastmoney": {
+    "em_latest": "2026-11-11",
+    "local_latest": "2026-11-10",
+    "overlap_rows": 1096,
+    "recent20_max_abs_diff": 0.0,
+    "all_max_abs_diff": 0.0,
+    "n_diff_gt_0.005": 0
+   }
+  },
+  {
+   "code": "000218",
+   "name": "国泰黄金ETF联接A",
+   "category": "gold",
+   "type": "指数型-其他",
+   "nav_start": "2016-04-15",
+   "nav_end": "2026-11-11",
+   "records": 2576,
+   "missing_days": 0,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2026-02-02",
+     "ret": -0.1152
+    },
+    {
+     "date": "2026-03-23",
+     "ret": -0.1102
+    },
+    {
+     "date": "2026-02-03",
+     "ret": 0.0659
+    }
+   ],
+   "trade_status": {
+    "sub_status": "开放申购",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 100000000000.0
+   },
+   "nav_spotcheck_vs_eastmoney": "not_checked"
+  },
+  {
+   "code": "110020",
+   "name": "易方达沪深300ETF联接A",
+   "category": "equity_index",
+   "type": "指数型-股票",
+   "nav_start": "2009-08-26",
+   "nav_end": "2026-11-11",
+   "records": 4179,
+   "missing_days": 10,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2015-08-24",
+     "ret": -0.0818
+    },
+    {
+     "date": "2015-07-27",
+     "ret": -0.0806
+    },
+    {
+     "date": "2024-09-30",
+     "ret": 0.0767
+    }
+   ],
+   "trade_status": {
+    "sub_status": "开放申购",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 100000000000.0
+   },
+   "nav_spotcheck_vs_eastmoney": "not_checked"
+  },
+  {
+   "code": "096001",
+   "name": "大成标普500等权重指数(QDII)A人民币",
+   "category": "equity_index",
+   "type": "指数型-海外股票",
+   "nav_start": "2011-03-25",
+   "nav_end": "2026-11-10",
+   "records": 3729,
+   "missing_days": 76,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2020-03-16",
+     "ret": -0.1314
+    },
+    {
+     "date": "2020-03-24",
+     "ret": 0.0964
+    },
+    {
+     "date": "2020-03-12",
+     "ret": -0.0943
+    }
+   ],
+   "trade_status": {
+    "sub_status": "限大额",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 50.0
+   },
+   "nav_spotcheck_vs_eastmoney": "not_checked"
+  },
+  {
+   "code": "017641",
+   "name": "摩根标普500指数(QDII)人民币A",
+   "category": "equity_index",
+   "type": "指数型-海外股票",
+   "nav_start": "2023-04-06",
+   "nav_end": "2026-11-10",
+   "records": 854,
+   "missing_days": 19,
+   "abnormal_day_count": 6,
+   "top_abnormal": [
+    {
+     "date": "2025-04-09",
+     "ret": 0.0899
+    },
+    {
+     "date": "2025-04-07",
+     "ret": -0.0564
+    },
+    {
+     "date": "2025-04-03",
+     "ret": -0.0444
+    }
+   ],
+   "trade_status": {
+    "sub_status": "限大额",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 10.0
+   },
+   "nav_spotcheck_vs_eastmoney": "not_checked"
+  },
+  {
+   "code": "016452",
+   "name": "南方纳斯达克100指数发起(QDII)A",
+   "category": "equity_index",
+   "type": "指数型-海外股票",
+   "nav_start": "2022-11-29",
+   "nav_end": "2026-11-10",
+   "records": 931,
+   "missing_days": 28,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2025-04-09",
+     "ret": 0.1135
+    },
+    {
+     "date": "2026-11-05",
+     "ret": -0.0615
+    },
+    {
+     "date": "2025-04-07",
+     "ret": -0.0548
+    }
+   ],
+   "trade_status": {
+    "sub_status": "限大额",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 10.0
+   },
+   "nav_spotcheck_vs_eastmoney": "not_checked"
+  },
+  {
+   "code": "019736",
+   "name": "宝盈纳斯达克100指数发起(QDII)A人民币",
+   "category": "equity_index",
+   "type": "指数型-海外股票",
+   "nav_start": "2024-03-22",
+   "nav_end": "2026-11-09",
+   "records": 625,
+   "missing_days": 13,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2025-04-09",
+     "ret": 0.1155
+    },
+    {
+     "date": "2026-11-05",
+     "ret": -0.0603
+    },
+    {
+     "date": "2025-04-07",
+     "ret": -0.0545
+    }
+   ],
+   "trade_status": {
+    "sub_status": "限大额",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 10.0
+   },
+   "nav_spotcheck_vs_eastmoney": "not_checked"
+  },
+  {
+   "code": "019172",
+   "name": "摩根纳斯达克100指数(QDII)人民币A",
+   "category": "equity_index",
+   "type": "指数型-海外股票",
+   "nav_start": "2023-09-25",
+   "nav_end": "2026-11-10",
+   "records": 745,
+   "missing_days": 11,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2025-04-09",
+     "ret": 0.1154
+    },
+    {
+     "date": "2026-11-05",
+     "ret": -0.0598
+    },
+    {
+     "date": "2025-04-07",
+     "ret": -0.0547
+    }
+   ],
+   "trade_status": {
+    "sub_status": "限大额",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 10.0
+   },
+   "nav_spotcheck_vs_eastmoney": "not_checked"
+  },
+  {
+   "code": "539001",
+   "name": "建信纳斯达克100指数(QDII)A人民币",
+   "category": "equity_index",
+   "type": "指数型-海外股票",
+   "nav_start": "2010-09-16",
+   "nav_end": "2026-11-10",
+   "records": 3729,
+   "missing_days": 198,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2025-04-09",
+     "ret": 0.1131
+    },
+    {
+     "date": "2020-03-16",
+     "ret": -0.1063
+    },
+    {
+     "date": "2020-03-13",
+     "ret": 0.0755
+    }
+   ],
+   "trade_status": {
+    "sub_status": "限大额",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 10.0
+   },
+   "nav_spotcheck_vs_eastmoney": "not_checked"
+  },
+  {
+   "code": "019441",
+   "name": "万家纳斯达克100指数发起式(QDII)A",
+   "category": "equity_index",
+   "type": "指数型-海外股票",
+   "nav_start": "2023-09-27",
+   "nav_end": "2026-11-09",
+   "records": 738,
+   "missing_days": 15,
+   "abnormal_day_count": 10,
+   "top_abnormal": [
+    {
+     "date": "2025-04-09",
+     "ret": 0.1132
+    },
+    {
+     "date": "2026-11-05",
+     "ret": -0.0603
+    },
+    {
+     "date": "2025-04-07",
+     "ret": -0.054
+    }
+   ],
+   "trade_status": {
+    "sub_status": "限大额",
+    "red_status": "开放赎回",
+    "daily_limit_cny": 5.0
+   },
+   "nav_spotcheck_vs_eastmoney": "not_checked"
+  }
+ ],
+ "qdii_lag": {
+  "096001": {
+   "nav_end": "2026-11-10",
+   "lag_days_vs_calendar": -1
+  },
+  "017641": {
+   "nav_end": "2026-11-10",
+   "lag_days_vs_calendar": -1
+  },
+  "016452": {
+   "nav_end": "2026-11-10",
+   "lag_days_vs_calendar": -1
+  },
+  "019736": {
+   "nav_end": "2026-11-09",
+   "lag_days_vs_calendar": 0
+  },
+  "019172": {
+   "nav_end": "2026-11-10",
+   "lag_days_vs_calendar": -1
+  },
+  "539001": {
+   "nav_end": "2026-11-10",
+   "lag_days_vs_calendar": -1
+  },
+  "019441": {
+   "nav_end": "2026-11-09",
+   "lag_days_vs_calendar": 0
+  }
+ },
+ "dividend_consistency_summary": {
+  "710301": "ALL_OK",
+  "004400": "ALL_OK",
+  "021559": "NO_DIVIDEND_RECORDS",
+  "014846": "ALL_OK",
+  "000218": "NO_DIVIDEND_RECORDS",
+  "110020": "NO_DIVIDEND_RECORDS",
+  "096001": "NO_DIVIDEND_RECORDS",
+  "017641": "NO_DIVIDEND_RECORDS",
+  "016452": "NO_DIVIDEND_RECORDS",
+  "019736": "NO_DIVIDEND_RECORDS",
+  "019172": "NO_DIVIDEND_RECORDS",
+  "539001": "NO_DIVIDEND_RECORDS",
+  "019441": "NO_DIVIDEND_RECORDS"
+ },
+ "adjust_checks_summary": {
+  "710301": "ALL_OK",
+  "004400": "ALL_OK",
+  "021559": "NO_DIVIDEND_RECORDS",
+  "014846": "ALL_OK",
+  "000218": "NO_DIVIDEND_RECORDS",
+  "110020": "NO_DIVIDEND_RECORDS",
+  "096001": "NO_DIVIDEND_RECORDS",
+  "017641": "NO_DIVIDEND_RECORDS",
+  "016452": "NO_DIVIDEND_RECORDS",
+  "019736": "NO_DIVIDEND_RECORDS",
+  "019172": "NO_DIVIDEND_RECORDS",
+  "539001": "NO_DIVIDEND_RECORDS",
+  "019441": "NO_DIVIDEND_RECORDS"
+ },
+ "data_dir_counts": {
+  "nav_files": 26613,
+  "fund_list_rows": 28177,
+  "fund_status_rows": 27885,
+  "dividend_rows": 49211
+ }
+}

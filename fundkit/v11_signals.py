@@ -7,10 +7,18 @@ import numpy as np
 import pandas as pd
 
 
-def published_returns(state, min_days=252):
+def published_returns(state, min_days=252, codes=None):
+    """Join only assets whose risk exposure is actually being assessed.
+
+    Do not discard all joint observations merely because some unrelated
+    (zero-position) fund has shorter published NAV history.
+    """
     data = {}
     day = pd.Timestamp(state['date']).tz_localize(None)
+    requested=set(codes) if codes is not None else None
     for code, rows in (state.get('fund_nav_history') or {}).items():
+        if requested is not None and code not in requested:
+            continue
         if not rows:
             continue
         f = pd.DataFrame(rows)
@@ -90,11 +98,13 @@ def scenario_risk_gate(state, proposed_buys=None, proposed_redemptions=None,
         value = float(h.get('value_pub') or 0.)
         if units > 0:
             exposure[code] = max(0., exposure.get(code, 0) - float(shares) * value / units)
-    matrix = published_returns(state, min_days=horizon)
-    absent = [code for code, amt in exposure.items() if amt > 1e-8 and code not in matrix.columns]
+    risk_codes=[code for code,amt in exposure.items() if amt>1e-8]
+    matrix = published_returns(state, min_days=horizon, codes=risk_codes)
+    absent = [code for code in risk_codes if code not in matrix.columns]
     if absent or len(matrix) < horizon:
         return {'status': 'RISK_UNKNOWN', 'reason': 'JOINT_HISTORY_INCOMPLETE',
-                'missing': absent, 'joint_days': len(matrix)}
+                'missing': absent, 'joint_days': len(matrix),
+                'risk_scope_codes':risk_codes}
     codes = [c for c in matrix.columns if exposure.get(c, 0) > 1e-8]
     if not codes:
         return {'status': 'PASS', 'mdd_p95': 0., 'historical_mdd': 0.}

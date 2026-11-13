@@ -35,7 +35,8 @@ class JointSearchConfig:
             raise ValueError("费用压力情景非法")
 
 
-def build_rule_grid(asset_categories: Mapping[str, str] | None = None) -> list[dict]:
+def build_rule_grid(asset_categories: Mapping[str, str] | None = None,
+                    *, include_v13: bool = False) -> list[dict]:
     """预先声明的止盈/止损候选网格；各阈值是待检验搜索点，不是推荐参数。"""
     categories = dict(asset_categories or {})
     bond_codes = sorted(c for c, k in categories.items() if k == "bond")
@@ -133,7 +134,7 @@ def build_rule_grid(asset_categories: Mapping[str, str] | None = None) -> list[d
             ),
         })
     from fundkit.v11_ablation import build_ablation_rules
-    rules.extend(build_ablation_rules())
+    rules.extend(build_ablation_rules(include_v13=include_v13))
     return rules
 
 def build_rolling_folds(dates: Sequence, train_days: int = 504,

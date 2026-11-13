@@ -698,7 +698,8 @@ def cmd_optimize_strategy(args):
 
     all_results = []
     asset_categories = {str(f["code"]): str(f.get("category", "unknown")) for f in all_funds}
-    rules = joint_optimizer.build_rule_grid(asset_categories)
+    rules = joint_optimizer.build_rule_grid(
+        asset_categories,include_v13=(strategy_scope=="b6-ablation"))
     if strategy_scope == "b6-ablation":
         rules = [r for r in rules if r["family"] == "B6" or
                  (r["family"] == "B2" and r["rule_id"] == "B2_cashflow_only")]
@@ -711,6 +712,40 @@ def cmd_optimize_strategy(args):
         min_test_days=args.test_days,
         fee_stress_rates=fee_rates, seed=args.seed,
         evaluate_ablation_on_test=(exploratory and strategy_scope == "b6-ablation"))
+
+    def evaluate_fixed_bond_benchmarks(validation_window, test_window):
+        """No test-set model selection; predetermined simple bond references."""
+        base_rule={"family":"B2","rule_id":"B2_cashflow_only","params":{}}
+        definitions=[]
+        if "021559" in all_codes:
+            definitions.append(("GRINN_100_REFERENCE_ONLY",{"021559":1.0},
+                                "violates single-fund 40% cap; research only"))
+        if bond_codes:
+            definitions.append(("BOND_EQUAL_WEIGHT",
+                                {c:1/len(bond_codes) for c in bond_codes},
+                                "no equity/gold; cashflow top-ups"))
+        other_bonds=[c for c in bond_codes if c!="021559"]
+        if "021559" in bond_codes and other_bonds:
+            reference={"021559":.4}
+            reference.update({c:.6/len(other_bonds) for c in other_bonds})
+            definitions.append(("GRINN40_BOND60",reference,
+                                "40% Grinn + equal weight other bond funds"))
+        out=[]
+        for name,nonzero,note in definitions:
+            weights={c:float(nonzero.get(c,0.)) for c in all_codes}
+            weights["cash"]=max(0.,1.-sum(weights.values()))
+            row={"name":name,"weights":weights,"note":note,
+                 "role":"FIXED_BENCHMARK_NOT_ELIGIBLE_FOR_TEST_SELECTION"}
+            for label,window in (("validation",validation_window),("test",test_window)):
+                try:
+                    fee_rows=[{"uniform_fee_rate_assumption":float(fee),
+                               **evaluator(weights,base_rule,window,float(fee))}
+                              for fee in fee_rates]
+                    row[label]=joint_optimizer._aggregate_fee_metrics(fee_rows)
+                except Exception as exc:
+                    row[label]={"status":"BENCHMARK_BLOCKED","reason":str(exc)}
+            out.append(row)
+        return out
 
     for fold in folds:
         style_quality = None
@@ -774,12 +809,16 @@ def cmd_optimize_strategy(args):
                         if k not in ("candidates","cash_benchmark")},
                     "weight_candidates": [],
                     "trade_ready": False,"research_only":True,
+                    "fixed_benchmarks":evaluate_fixed_bond_benchmarks(
+                        (va_start,va_end),(te_start,te_end)),
                 })
                 continue
             result = joint_optimizer.optimize_joint_fold(
                 candidate_pack["candidates"], rules_for_fold, evaluator,
                 (va_start, va_end), (te_start, te_end), joint_cfg)
             result["fold"] = fold
+            result["fixed_benchmarks"] = evaluate_fixed_bond_benchmarks(
+                (va_start,va_end),(te_start,te_end))
             result["style_signal_quality"] = style_quality
             result["rules_included"] = [r["rule_id"] for r in rules_for_fold]
             result["weight_candidate_generation"] = {
@@ -789,8 +828,11 @@ def cmd_optimize_strategy(args):
             result["training_data_start"] = candidate_pack["training_data_start"]
             all_results.append(result)
         except Exception as exc:  # noqa: BLE001
+            import traceback
             all_results.append({"fold": fold, "status": "DATA_BLOCKED",
-                                "reason": str(exc), "style_signal_quality": style_quality,
+                                "reason": str(exc),
+                                "traceback_tail": traceback.format_exc().splitlines()[-6:],
+                                "style_signal_quality": style_quality,
                                 "trade_ready": False})
 
     os.makedirs("reports", exist_ok=True)
@@ -888,15 +930,15 @@ def main():
     p_wo.add_argument("--codes", default="", help="基金代码，默认全部当前持仓；遗漏任何非零持仓则阻断")
     p_wo.add_argument("--asof", default=None, help="数据公开截止日 YYYY-MM-DD")
     p_wo.add_argument("--regime-start", default=None, help="当前持仓风格阶段起点；必须有披露证据")
-    p_wo.add_argument("--lookback", type=int, default=756)
+    p_wo.add_argument("--lookback", type=int, default=252)
     p_wo.add_argument("--candidates", type=int, default=2400)
     p_wo.add_argument("--paths", type=int, default=192)
     p_wo.add_argument("--min-cash", type=float, default=0.0)
     p_wo.add_argument("--max-fund-weight", type=float, default=0.40,
-                      help="单只基金治理上限；默认40%，不是经验收益参数")
+                      help="单只基金治理上限；默认40%%，不是经验收益参数")
     p_wo.add_argument("--cash-return", type=float, default=0.0)
     p_wo.add_argument("--risk-free-rate", type=float, default=0.02,
-                      help="年化无风险利率假设，用于Sharpe计算；默认2%")
+                      help="年化无风险利率假设，用于Sharpe计算；默认2%%")
     p_wo.add_argument("--turnover-cost", type=float, default=0.003,
                       help="单边换仓成本压力代理（默认30bp；真实费率应逐基金替换）")
     p_wo.add_argument("--seed", type=int, default=42)
@@ -919,12 +961,12 @@ def main():
     p_js.add_argument("--weight-paths", type=int, default=64)
     p_js.add_argument("--min-cash", type=float, default=0.0)
     p_js.add_argument("--max-fund-weight", type=float, default=0.40,
-                      help="单只基金治理上限；默认40%，不是经验收益参数")
+                      help="单只基金治理上限；默认40%%，不是经验收益参数")
     p_js.add_argument("--regime-start", default=None, help="可选：经季报证据确认的当前风格起点")
     p_js.add_argument("--fee-stress-bps", default="30,60",
                        help="统一单边费用压力情景，单位bp；真实基金费率需另行接入")
     p_js.add_argument("--risk-free-rate", type=float, default=0.02,
-                       help="年化无风险利率假设，用于训练候选Sharpe；默认2%")
+                       help="年化无风险利率假设，用于训练候选Sharpe；默认2%%")
     p_js.add_argument("--seed", type=int, default=42)
 
     p_decide = sub.add_parser("decide", help="第6步：输出研究建议（schema 校验，RESEARCH_ONLY）")
@@ -953,13 +995,13 @@ def main():
     p_rank.add_argument("--rf", type=float, default=0.02, help="年化无风险利率（默认 0.02）")
     p_rank.add_argument("--min-days", type=int, default=60, help="区间内最少交易日数（默认 60）")
     p_rank.add_argument("--min-ann-return", type=float, default=0,
-                        help="年化收益率下限，小数（如 0.05 表示 5%，默认 0 不过滤）")
+                        help="年化收益率下限，小数（如 0.05 表示 5%%，默认 0 不过滤）")
     p_rank.add_argument("--min-sharpe", type=float, default=0,
                         help="夏普比率下限（如 7，默认 0 不过滤）")
     p_rank.add_argument("--max-drawdown", type=float, default=0,
-                        help="最大回撤上限，小数（如 0.02 表示 2%，默认 0 不过滤）")
+                        help="最大回撤上限，小数（如 0.02 表示 2%%，默认 0 不过滤）")
     p_rank.add_argument("--max-daily-return", type=float, default=0,
-                        help="单日涨跌幅上限，小数（如 0.03 表示 3%，过滤巨额赎回等净值异动，默认 0 不过滤）")
+                        help="单日涨跌幅上限，小数（如 0.03 表示 3%%，过滤巨额赎回等净值异动，默认 0 不过滤）")
     p_rank.add_argument("--types", default="", help="基金类型过滤，逗号分隔子串")
     p_rank.add_argument("--include-money", action="store_true", help="包含货币型基金（默认排除）")
     p_rank.add_argument("--include-closed", action="store_true",

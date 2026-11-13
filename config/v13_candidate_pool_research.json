@@ -1,0 +1,254 @@
+{
+  "asof": "2026-11-12",
+  "purpose": "v1.3 pool-B research only; not a trade list",
+  "holdings": [
+    {
+      "code": "710301",
+      "name": "富安达增强收益债券A",
+      "category": "bond",
+      "role": "existing_holding"
+    },
+    {
+      "code": "004400",
+      "name": "金信民兴债券A",
+      "category": "bond",
+      "role": "existing_holding"
+    },
+    {
+      "code": "021559",
+      "name": "格林30天滚动持有债券A",
+      "category": "bond",
+      "role": "existing_holding"
+    },
+    {
+      "code": "014846",
+      "name": "博时恒乐债券A",
+      "category": "bond",
+      "role": "existing_holding"
+    },
+    {
+      "code": "000218",
+      "name": "国泰黄金ETF联接A",
+      "category": "gold",
+      "role": "existing_holding"
+    },
+    {
+      "code": "110020",
+      "name": "易方达沪深300ETF联接A",
+      "category": "equity_index",
+      "role": "existing_holding"
+    },
+    {
+      "code": "096001",
+      "name": "大成标普500等权重A",
+      "category": "equity_index",
+      "role": "existing_holding"
+    },
+    {
+      "code": "017641",
+      "name": "摩根标普500人民币A",
+      "category": "equity_index",
+      "role": "existing_holding"
+    },
+    {
+      "code": "016452",
+      "name": "南方纳斯达克100A",
+      "category": "equity_index",
+      "role": "existing_holding"
+    },
+    {
+      "code": "019736",
+      "name": "宝盈纳斯达克100A",
+      "category": "equity_index",
+      "role": "existing_holding"
+    },
+    {
+      "code": "019172",
+      "name": "摩根纳斯达克100A",
+      "category": "equity_index",
+      "role": "existing_holding"
+    },
+    {
+      "code": "539001",
+      "name": "建信纳斯达克100A",
+      "category": "equity_index",
+      "role": "existing_holding"
+    },
+    {
+      "code": "019441",
+      "name": "万家纳斯达克100A",
+      "category": "equity_index",
+      "role": "existing_holding"
+    }
+  ],
+  "candidates": [
+    {
+      "code": "022280",
+      "name": "鹏华纯债债券A",
+      "category": "bond",
+      "group": "一级债基",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模4.46亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "519188",
+      "name": "万家信用恒利债券A",
+      "category": "bond",
+      "group": "一级债基",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模70.03亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "003395",
+      "name": "安信尊享纯债",
+      "category": "bond",
+      "group": "中长纯债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模3.90亿;披露为单源/下限口径;利率债+政策金债下限39.0%"
+    },
+    {
+      "code": "021695",
+      "name": "国寿安保泰宁利率债债券",
+      "category": "bond",
+      "group": "中长纯债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模82.81亿;披露为单源/下限口径;利率债+政策金债下限38.5%"
+    },
+    {
+      "code": "014991",
+      "name": "嘉合磐恒债券A",
+      "category": "bond",
+      "group": "二级债基",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模5.40亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "018604",
+      "name": "民生加银添润债券A",
+      "category": "bond",
+      "group": "二级债基",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模5.56亿;披露为单源/下限口径;利率债+政策金债下限69.9%"
+    },
+    {
+      "code": "003167",
+      "name": "前海开源鼎瑞债券A",
+      "category": "bond",
+      "group": "二级债基",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模10.20亿;披露为单源/下限口径;利率债+政策金债下限60.9%"
+    },
+    {
+      "code": "006896",
+      "name": "新华聚利债券A",
+      "category": "bond",
+      "group": "二级债基",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模10.72亿;披露为单源/下限口径;利率债+政策金债下限49.1%"
+    },
+    {
+      "code": "007105",
+      "name": "国泰丰鑫纯债债券A",
+      "category": "bond",
+      "group": "信用债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模49.06亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "000191",
+      "name": "富国信用债债券A/B",
+      "category": "bond",
+      "group": "信用债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模132.08亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "000206",
+      "name": "易方达投资级信用债债券C",
+      "category": "bond",
+      "group": "信用债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模88.22亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "011658",
+      "name": "汇添富中高等级信用债A",
+      "category": "bond",
+      "group": "信用债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模11.21亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "021506",
+      "name": "华泰紫金智盈债券E",
+      "category": "bond",
+      "group": "信用债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模8.05亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "000033",
+      "name": "易方达信用债债券C",
+      "category": "bond",
+      "group": "信用债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模185.64亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "010232",
+      "name": "国寿安保泰安纯债债券",
+      "category": "bond",
+      "group": "利率债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模204.09亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    },
+    {
+      "code": "006488",
+      "name": "富荣富开1-3年国开债纯债A",
+      "category": "bond",
+      "group": "利率债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模14.30亿;披露为单源/下限口径;利率债+政策金债下限49.5%"
+    },
+    {
+      "code": "472007",
+      "name": "汇添富利率债",
+      "category": "bond",
+      "group": "利率债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模7.70亿;披露为单源/下限口径;利率债+政策金债下限44.8%"
+    },
+    {
+      "code": "003520",
+      "name": "万家1-3年政金债纯债A",
+      "category": "bond",
+      "group": "利率债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模2.33亿;披露为单源/下限口径;利率债+政策金债下限75.0%"
+    },
+    {
+      "code": "009784",
+      "name": "安信尊享添利利率债A",
+      "category": "bond",
+      "group": "利率债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模11.68亿;披露为单源/下限口径;利率债+政策金债下限61.2%"
+    },
+    {
+      "code": "003315",
+      "name": "景顺长城政策性金融债A",
+      "category": "bond",
+      "group": "利率债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模125.29亿;披露为单源/下限口径;利率债+政策金债下限65.1%"
+    },
+    {
+      "code": "022379",
+      "name": "富国安泽债券A",
+      "category": "bond",
+      "group": "短债/中短债",
+      "role": "new_candidate",
+      "evidence": "报告期2026-09-30;披露日2026-10-21;规模20.19亿;披露为单源/下限口径;敞口以前五大债券下限为准"
+    }
+  ]
+}

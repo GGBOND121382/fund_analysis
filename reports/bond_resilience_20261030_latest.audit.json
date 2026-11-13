@@ -1,0 +1,21 @@
+{
+  "baseline_date": "2026-10-29",
+  "end_date": "2026-11-12",
+  "screened_bond_funds": 7448,
+  "compared_funds": 5924,
+  "rejection_reasons": {
+    "no_cache": 64,
+    "missing_baseline": 528,
+    "missing_end": 932,
+    "short_window": 0,
+    "invalid_nav": 0
+  },
+  "dividend_data_available": true,
+  "same_date_comparison": true,
+  "limitations": [
+    "Very short post-shock window: total return/MDD only, no annualized forecasting",
+    "NAV data and dividends are cached locally; update before screening",
+    "Ranking does not establish duration, credit-quality or future resilience",
+    "Tradability and fee/lock restrictions must be audited before purchase"
+  ]
+}

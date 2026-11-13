@@ -1,0 +1,34 @@
+{
+ "021559": {
+  "em_latest": "2026-11-11",
+  "local_latest": "2026-11-10",
+  "overlap_rows": 527,
+  "recent20_max_abs_diff": 0.0,
+  "all_max_abs_diff": 0.0,
+  "n_diff_gt_0.005": 0
+ },
+ "004400": {
+  "em_latest": "2026-11-12",
+  "local_latest": "2026-11-11",
+  "overlap_rows": 2312,
+  "recent20_max_abs_diff": 0.0,
+  "all_max_abs_diff": 0.0,
+  "n_diff_gt_0.005": 0
+ },
+ "710301": {
+  "em_latest": "2026-11-12",
+  "local_latest": "2026-11-10",
+  "overlap_rows": 3445,
+  "recent20_max_abs_diff": 0.0,
+  "all_max_abs_diff": 0.0,
+  "n_diff_gt_0.005": 0
+ },
+ "014846": {
+  "em_latest": "2026-11-11",
+  "local_latest": "2026-11-10",
+  "overlap_rows": 1096,
+  "recent20_max_abs_diff": 0.0,
+  "all_max_abs_diff": 0.0,
+  "n_diff_gt_0.005": 0
+ }
+}
