@@ -1,0 +1,6 @@
+[
+  {"id": "equity_20260323", "label": "A股普跌", "baseline": "2026-03-20", "end": "2026-03-23", "source": "https://finance.sina.com.cn/jjxw/2026-03-23/doc-inhryhiw2465597.shtml"},
+  {"id": "rates_202606", "label": "6月利率债调整", "baseline": "2026-06-05", "end": "2026-06-11", "source": "https://finance.sina.com.cn/wm/2026-06-12/doc-iniceimm0189865.shtml"},
+  {"id": "credit_20261030", "label": "10月末信用事件与长债调整", "baseline": "2026-10-29", "end": "2026-11-06", "source": "https://m.sfccn.com/2026/11-2/5NMDE0MDZfMjI5MDI5NA.html"},
+  {"id": "bonds_202611", "label": "11月利率债与信用债再调整", "baseline": "2026-11-09", "end": "2026-11-12", "source": "https://www.cnfin.com/yw-lb/detail/20261112/4494666_1.html"}
+]
