@@ -70,17 +70,15 @@ def parse_money(js):
     return frame[["date", "income_per_10000"]].sort_values("date")
 
 
-def parse_nav(js, asof):
+def parse_nav(js, asof, history_years=3):
     d = pd.DataFrame(array(js, "Data_netWorthTrend"))
     a = pd.DataFrame(array(js, "Data_ACWorthTrend"), columns=["x", "acc_nav"])
     if d.empty or not {"x", "y", "unitMoney", "equityReturn"} <= set(d.columns):
         raise ValueError("missing_daily_nav")
     d = d.merge(a, on="x", how="left", validate="one_to_one").sort_values("x")
     d["date"] = local_date(d.x)
-    # All requested comparison windows are <=3 years. Retain an extra month,
-    # so old legacy restructurings outside the evaluated period do not block.
-    floor = (asof - pd.DateOffset(years=3, months=1)).date().isoformat()
-    d = d.loc[d.date.ge(floor)].copy()
+    floor = (asof - pd.DateOffset(years=history_years, months=1)).date().isoformat()
+    d = d.loc[d.date.ge(floor) & d.date.le(asof.date().isoformat())].copy()
     if d.empty:
         raise ValueError("no_recent_nav")
     n = pd.to_numeric(d.y, errors="coerce")
@@ -127,13 +125,13 @@ def parse_nav(js, asof):
                          "source": "eastmoney_nav_and_event_return"})
 
 
-def listed_history(code, asof):
+def listed_history(code, asof, history_years=3):
     symbol = ("sh" if code.startswith("5") else "sz") + code
     # Tencent returns at most 640 bars for a request. Bounded segments preserve
     # the full horizon, and adjusted levels must reconcile on their overlap.
-    anchor = asof - pd.DateOffset(years=3, months=1)
+    anchor = asof - pd.DateOffset(years=history_years, months=1)
     frames = []
-    for n in range(4):
+    for n in range(history_years + 1):
         start = anchor + pd.DateOffset(years=n)
         if start > asof:
             break
@@ -161,24 +159,77 @@ def tail_date(path):
     return tail[-1].split(b",", 1)[0].decode("utf-8", errors="ignore")
 
 
-def get_one(row, data, asof, refresh):
+def get_one(row, data, asof, refresh, history_years=3):
     code = row.code
     group, _, _, basis = market_category(row.name, row.type)
     dest = data / BUCKET[basis] / f"{code}.csv"
     asof_text = asof.date().isoformat()
     cached = tail_date(dest) if dest.is_file() else ""
+    marker = dest.with_suffix(".history.json")
+    head = ""
+    if cached:
+        with dest.open(encoding="utf-8-sig") as fh:
+            next(fh, "")
+            head = next(fh, "").split(",", 1)[0]
     if not refresh and cached >= asof_text:
-        return code, group, basis, "cached", cached, ""
+        if history_years <= 3 or head <= (asof - pd.DateOffset(years=history_years)).date().isoformat():
+            return code, group, basis, "cached", cached, ""
+        if marker.is_file():
+            try:
+                m = json.loads(marker.read_text(encoding="utf-8"))
+                if (m["head"], m["tail"]) == (head, cached) and m["years"] >= history_years:
+                    return code, group, basis, "cached", cached, m["note"]
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
     try:
+        note = ""
         if basis == "adjusted_close":
-            values = listed_history(code, asof)
+            values = listed_history(code, asof, history_years)
         else:
             js = read_url(f"{FUND_URL}/pingzhongdata/{code}.js")
-            values = parse_money(js) if basis == "income_per_10000" else parse_nav(js, asof)
+            if basis == "income_per_10000":
+                values = parse_money(js)
+            else:
+                # An old unreconciled dividend must not erase usable recent
+                # history. Record the first rejection and keep coverage explicit.
+                for depth in sorted({history_years, *(x for x in (5, 3, 1) if x < history_years)}, reverse=True):
+                    try:
+                        values = parse_nav(js, asof, depth)
+                        break
+                    except ValueError as exc:
+                        if depth == 1 or history_years == 3:
+                            raise
+                        if not note:
+                            note = f"long_history_rejected:{exc}"
+                if depth != history_years:
+                    note += f";retained_years={depth}"
         final = values.date.max()
-        if final >= cached:
+        first = values.date.min()
+        # Keep a newer cached endpoint when backfilling a historical run. Join
+        # only if proportional adjusted paths agree throughout their overlap.
+        if cached and (first > head or final < cached) and first <= cached and final >= head:
+            existing = pd.read_csv(dest, dtype={"date": str})
+            old = existing.set_index("date")
+            new = values.set_index("date")
+            common = old.index.intersection(new.index)
+            column = "income_per_10000" if basis == "income_per_10000" else "nav"
+            if len(common) < 2:
+                raise ValueError("backfill_cache_no_overlap")
+            if column == "nav":
+                ratio = old.loc[common, column] / new.loc[common, column]
+                if not np.allclose(ratio, ratio.iloc[0], rtol=1e-6, atol=0.):
+                    raise ValueError("backfill_cache_overlap_mismatch")
+                new[column] *= ratio.iloc[0]
+            elif not np.allclose(old.loc[common, column], new.loc[common, column], rtol=0, atol=1e-10):
+                raise ValueError("backfill_cash_overlap_mismatch")
+            values = pd.concat([new.loc[new.index < head],old,new.loc[new.index > cached]]).sort_index().reset_index()
+            first,final = values.date.min(),values.date.max()
+        if final >= cached and (not cached or first <= head or final > cached):
             atomically_write(values, dest)
-        return code, group, basis, "updated" if final >= asof_text else "stale", max(final, cached), ""
+            if history_years > 3:
+                marker.write_text(json.dumps({"head": first, "tail": final, "years": history_years,
+                                              "note": note}, ensure_ascii=False), encoding="utf-8")
+        return code, group, basis, "updated" if final >= asof_text else "stale", max(final, cached), note
     except (OSError, ValueError, TypeError, KeyError, IndexError) as exc:
         return code, group, basis, "failed", cached, str(exc)
 
@@ -188,12 +239,15 @@ def main(argv=None):
     p.add_argument("--data-dir", type=Path, required=True)
     p.add_argument("--asof", required=True)
     p.add_argument("--workers", type=int, default=5)
+    p.add_argument("--history-years", type=int, default=3)
     p.add_argument("--codes", help="comma-separated debug subset")
     p.add_argument("--refresh-catalog", action="store_true")
     p.add_argument("--refresh", action="store_true")
     a = p.parse_args(argv)
     if not 1 <= a.workers <= 16:
         p.error("workers must be between 1 and 16")
+    if not 1 <= a.history_years <= 25:
+        p.error("history-years must be between 1 and 25")
     end = pd.Timestamp(a.asof).normalize()
     cat = a.data_dir / "fund_list.csv"
     if a.refresh_catalog or not cat.is_file():
@@ -208,7 +262,8 @@ def main(argv=None):
     audit_file = a.data_dir / ("fetch_subset_audit.csv" if a.codes else "fetch_audit.csv")
     columns = ["code", "group", "pricing_basis", "state", "latest_date", "reason"]
     with ThreadPoolExecutor(max_workers=a.workers) as pool:
-        futures = [pool.submit(get_one, r, a.data_dir, end, a.refresh) for r in fund_list.itertuples(index=False)]
+        futures = [pool.submit(get_one, r, a.data_dir, end, a.refresh, a.history_years)
+                   for r in fund_list.itertuples(index=False)]
         for i, task in enumerate(as_completed(futures), 1):
             rows.append(task.result())
             if i % 250 == 0 or i == len(futures):
