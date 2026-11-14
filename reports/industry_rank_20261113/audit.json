@@ -1,0 +1,73 @@
+{
+  "asof": "2026-11-13",
+  "catalog_share_codes": 28346,
+  "valid_nav_paths": 25833,
+  "nav_audit_share_codes": 28346,
+  "valid_current_catalog_paths": 25833,
+  "exact_asof_paths": 23953,
+  "explicit_subset": false,
+  "horizons": [
+    {
+      "horizon": "5y",
+      "eligible": 6560,
+      "ranked": 6556,
+      "matched_ranked": 6516,
+      "rejected": {
+        "缺有效净值缓存": 2513,
+        "低波类别单日涨跌超过3%待核验": 577,
+        "期限起点缺历史": 13490,
+        "缺截止日净值": 1880,
+        "期限中间覆盖不足": 99,
+        "同基金其他份额": 3227
+      }
+    },
+    {
+      "horizon": "3y",
+      "eligible": 9104,
+      "ranked": 9101,
+      "matched_ranked": 9040,
+      "rejected": {
+        "缺有效净值缓存": 2513,
+        "低波类别单日涨跌超过3%待核验": 639,
+        "期限起点缺历史": 8268,
+        "缺截止日净值": 1880,
+        "期限中间覆盖不足": 147,
+        "同基金其他份额": 5795
+      }
+    },
+    {
+      "horizon": "1y",
+      "eligible": 12070,
+      "ranked": 12059,
+      "matched_ranked": 12006,
+      "rejected": {
+        "缺有效净值缓存": 2513,
+        "低波类别单日涨跌超过3%待核验": 220,
+        "期限起点缺历史": 2151,
+        "缺截止日净值": 1880,
+        "期限中间覆盖不足": 271,
+        "同基金其他份额": 9241
+      }
+    },
+    {
+      "horizon": "6m",
+      "eligible": 12506,
+      "ranked": 12495,
+      "matched_ranked": 12452,
+      "rejected": {
+        "缺有效净值缓存": 2513,
+        "低波类别单日涨跌超过3%待核验": 176,
+        "期限起点缺历史": 1343,
+        "缺截止日净值": 1880,
+        "期限中间覆盖不足": 284,
+        "同基金其他份额": 9644
+      }
+    }
+  ],
+  "oos_requested_folds": 12,
+  "oos_holding_months": 3,
+  "oos_fold_rows": 7697,
+  "oos_paired_complete_rows": 7632,
+  "oos_mode": "historical replay on supplied snapshot; survivor/current-classification bias possible",
+  "elapsed_seconds": 343.69
+}
