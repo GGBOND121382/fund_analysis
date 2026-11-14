@@ -28,6 +28,20 @@ def catalog_rows():
 
 
 class IndustryRankTest(unittest.TestCase):
+    def test_november_13_extends_instead_of_double_counting(self):
+        e = [Shock(key,key,pd.Timestamp(start),pd.Timestamp(end))
+             for key,start,end in (
+                 ("credit_20261030","2026-10-29","2026-11-06"),
+                 ("bonds_202611","2026-11-09","2026-11-12"),
+                 ("bonds_202611_through_13","2026-11-09","2026-11-13"),
+                 ("bonds_20261113_daily","2026-11-12","2026-11-13"))]
+        start = pd.Timestamp("2026-05-13")
+        self.assertEqual([x.id for x in legacy_events(e,pd.Timestamp("2026-11-12"),start,True,"domestic")],
+                         ["credit_20261030","bonds_202611"])
+        for current in (True,False):
+            self.assertEqual([x.id for x in legacy_events(e,pd.Timestamp("2026-11-13"),start,current,"domestic")],
+                             ["credit_20261030","bonds_202611_through_13"])
+
     def test_midmonth_no_future_or_incomplete_month(self):
         ds = pd.bdate_range("2025-12-26","2026-12-31")
         x = np.linspace(1,1.1,len(ds))

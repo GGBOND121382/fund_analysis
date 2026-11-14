@@ -1,4 +1,6 @@
 [
   {"id":"bond_202211","label":"2022年11月债市赎回冲击","baseline":"2022-11-10","end":"2022-11-17","source":"https://www.cs.com.cn/tzjj/jjdt/202211/t20221118_6308779.html"},
-  {"id":"rates_20250317","label":"2025年3月长端利率上行","baseline":"2025-03-14","end":"2025-03-17","source":"https://finance.sina.com.cn/money/bond/2025-03-17/doc-inepyfee0478612.shtml"}
+  {"id":"rates_20250317","label":"2025年3月长端利率上行","baseline":"2025-03-14","end":"2025-03-17","source":"https://finance.sina.com.cn/money/bond/2025-03-17/doc-inepyfee0478612.shtml"},
+  {"id":"bonds_202611_through_13","label":"11月利率债与信用债再调整（含13日）","baseline":"2026-11-09","end":"2026-11-13","source":"https://www.cnfin.com/zs-lb/detail/20261113/4495409_1.html"},
+  {"id":"bonds_20261113_daily","label":"11月13日单日债市冲击","baseline":"2026-11-12","end":"2026-11-13","source":"https://www.cnfin.com/zs-lb/detail/20261113/4495409_1.html"}
 ]

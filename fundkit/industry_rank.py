@@ -13,7 +13,7 @@ from fundkit.defensive_screen import Shock
 HORIZONS = {"5y": (60, 1050), "3y": (36, 645), "1y": (12, 215), "6m": (6, 105)}
 LOW_VOL = re.compile("债|固收|绝对收益|货币|FOF-稳健")
 PERIODIC = re.compile(r"(?<!\d)(\d{1,3})\s*(个月|月|年)\s*(?:定期开放|定开|开放|封闭)")
-LEGACY_IDS = {"credit_20261030", "bonds_202611"}
+EXTENDED_NOVEMBER = "bonds_202611_through_13"
 METHODS = ("research", "industry_proxy", "legacy", "return_only", "drawdown_only", "preservation")
 RANK_COLS = tuple(f"{m}_rank" for m in METHODS)
 PARETO_AXES = ("return_for_rank", "max_drawdown", "worst_stress_drawdown", "worst_stress_return")
@@ -144,11 +144,16 @@ def percentile(s, higher=True):
 def legacy_events(events, asof, begin, current, family):
     selected = [e for e in events if begin <= e.baseline < e.end <= asof
                 and (not e.families or family in e.families)]
+    # The 13-Nov extension is the same episode, not a second independent
+    # stress event. Keep the original variant available for 12-Nov reruns.
+    november = (EXTENDED_NOVEMBER if any(e.id == EXTENDED_NOVEMBER for e in selected)
+                else "bonds_202611")
+    legacy_ids = {"credit_20261030", november}
     if current:
-        return [e for e in selected if e.id in LEGACY_IDS]
+        return [e for e in selected if e.id in legacy_ids]
     # Historical baseline uses the last two completed broad/bond shocks.
     # As-of dates prevent the 2026 selloff from leaking into earlier folds.
-    return sorted([e for e in selected if e.id in LEGACY_IDS or e.id.startswith(("rates_", "bond_"))],
+    return sorted([e for e in selected if e.id in legacy_ids or e.id.startswith(("rates_", "bond_"))],
                   key=lambda e:e.end)[-2:]
 
 
