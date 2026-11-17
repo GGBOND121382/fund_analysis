@@ -31,6 +31,22 @@ def optional_csv(path):
     return read_csv(path) if path.is_file() else pd.DataFrame()
 
 
+def channel_purchase_status(value):
+    """Describe one sales channel's purchase label; never infer global investability."""
+    if value is None or pd.isna(value) or not str(value).strip():
+        return "未查询到该渠道状态"
+    label = str(value).strip()
+    mapping = {
+        "开放申购": "该渠道开放申购",
+        "限大额": "该渠道限额申购",
+        "暂停申购": "该渠道暂停申购",
+        "暂停交易": "该渠道显示暂停交易",
+        "封闭期": "该渠道显示封闭期",
+        "定期开放": "该渠道显示定期开放",
+    }
+    return mapping.get(label, f"该渠道状态待核实：{label}")
+
+
 def screen(data_dir, asof, events, top, min_peers, *, universe="defensive"):
     funds = read_csv(data_dir / "fund_list.csv").drop_duplicates("code")
     status = optional_csv(data_dir / "fund_status.csv")
@@ -51,11 +67,22 @@ def screen(data_dir, asof, events, top, min_peers, *, universe="defensive"):
         if group is None:
             continue
         base, share = share_identity(name)
+        channel = status.get(code, {})
+        raw_sub_status = channel.get("sub_status")
+        channel_source = channel.get("status_source")
+        if channel_source is None or pd.isna(channel_source) or not str(channel_source).strip():
+            channel_source = "来源未记录" if channel else "未查询到渠道记录"
+        channel_checked_at = channel.get("status_checked_at")
+        if channel_checked_at is None or pd.isna(channel_checked_at) or not str(channel_checked_at).strip():
+            channel_checked_at = "未知"
         row = {"code": code, "name": name, "fund_type": fund.type, "group": group,
                "product": base, "share": share, "has_lock": bool(LOCK.search(name)),
                "scenario_family": family, "currency": currency, "pricing_basis": basis,
                "required_shocks": len(selected), "shock_set": ",".join(s.id for s in selected),
-               **{k: status.get(code, {}).get(k) for k in ("sub_status", "red_status", "daily_limit")},
+               **{k: channel.get(k) for k in ("sub_status", "red_status", "daily_limit")},
+               "channel_purchase_status": channel_purchase_status(raw_sub_status),
+               "channel_status_source": channel_source,
+               "channel_status_checked_at": channel_checked_at,
                "selection_status": "", "data_issue": "", "asof_exact": False,
                "horizon_tier": "", "shock_observations": 0, "nav_observations": 0}
         folder = {"income_per_10000": "money", "adjusted_close": "listed", "fund_nav": "nav"}[basis]
@@ -105,6 +132,14 @@ def write_reports(out, full, short, events, end, watch_codes):
     out.mkdir(parents=True, exist_ok=True)
     full.to_csv(out / "universe.csv", index=False, encoding="utf-8-sig")
     short.to_csv(out / "shortlist.csv", index=False, encoding="utf-8-sig")
+    channel_columns = [
+        "code", "name", "fund_type", "group", "has_lock", "sub_status", "red_status",
+        "daily_limit", "channel_purchase_status", "channel_status_source",
+        "channel_status_checked_at", "selection_status",
+    ]
+    full[[c for c in channel_columns if c in full.columns]].to_csv(
+        out / "purchase_channel_status.csv", index=False, encoding="utf-8-sig"
+    )
     if "peer_rank" not in full:
         full = full.assign(peer_rank=float("nan"))
     ranked = full.loc[full.peer_rank.notna()].sort_values(["group", "horizon_tier", "peer_rank"])
@@ -131,16 +166,27 @@ def write_reports(out, full, short, events, end, watch_codes):
                         .to_dict(orient="index"),
         "by_pricing_basis": full.groupby("pricing_basis").selection_status.value_counts()
                                 .unstack(fill_value=0).to_dict(orient="index"),
+        "purchase_channel_status_counts": full.channel_purchase_status.value_counts(dropna=False).to_dict(),
+        "purchase_channel_status_sources": sorted(full.channel_status_source.dropna().astype(str).unique().tolist()),
+        "purchase_channel_status_checked_at": sorted(full.channel_status_checked_at.dropna().astype(str).unique().tolist()),
+        "purchase_channel_status_is_ranking_filter": False,
+        "purchase_channel_status_note": "单一销售渠道快照，仅作参考；不代表全渠道可购买状态，不参与评分或入榜筛选。赎回状态单独记录，不作为申购条件。",
         "shocks": [dict(id=s.id, label=s.label, baseline=s.baseline.date().isoformat(),
                         end=s.end.date().isoformat(), source=s.source, families=s.families) for s in events],
     }
     (out / "audit.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
+    channel_summary = "；".join(
+        f"{k}: {v}" for k, v in audit["purchase_channel_status_counts"].items()
+    )
     lines = [f"# 稳健基金分组筛选（{audit['end']}）", "",
              f"目录内范围 {len(full)} 个份额代码，本地有净值文件 "
              f"{audit['funds_with_local_nav_file']} 个，截止日净值精确匹配 "
              f"{audit['exact_asof_share_codes']} 个，实际评分 "
              f"{audit['fully_scored_representatives']} 只代表份额，入围 {len(short)} 只。",
-             "覆盖不足时，名次只代表有数据的同类样本，不代表全市场。", "",
+             "覆盖不足时，名次只代表有数据的同类样本，不代表全市场。",
+             "申购状态仅是天天基金渠道快照，不代表其他销售平台；不参与评分、排序或剔除。赎回状态单独列示，不作为能否申购的条件。",
+             f"渠道申购状态分布：{channel_summary}",
+             "另见 purchase_channel_status.csv，包含渠道来源、核验时间、申购状态和赎回状态。", "",
              "| 代码 | 名称 | 结果 | 组内名次 | 6月收益/回撤 | 1年收益/回撤 | "
              "2年年化/回撤 | 3年年化/回撤 | 最差冲击收益/回撤 | 有持有期 |",
              "|---|---|---|---|---|---|---|---|---|---|"]
