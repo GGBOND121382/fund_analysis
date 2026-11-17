@@ -19,7 +19,8 @@ from fundkit.industry_rank import (HORIZONS, RANK_COLS, NavPath, assemble, compa
                                    effective_group, fold_dates, ranking, stress_metrics)
 from scripts import fetch_all_fund_rank_data as fetch
 
-WATCH = ("025368","019851")
+WATCH = ("025368","019851","021559","004400","710301")
+LP_REASON = "长封闭定开（≥24月）默认排除排名"
 STRESS_COLS = ["code","name","group","event","label","baseline","stress_end","source",
                "stress_return","stress_drawdown","peak_date","trough_date","recovery_date",
                "recovery_calendar_days","recovery_status","last_observed"]
@@ -110,8 +111,9 @@ def save(df,path):
     df.drop(columns=["_monthly"],errors="ignore").to_csv(path,index=False,encoding="utf-8-sig")
 
 
-def current_rank(catalog, paths, events, end, out, top, min_peers):
+def current_rank(catalog, paths, events, end, out, top, min_peers, excluded=None):
     coverage,stress,by_status,watch = [],[],[],[]
+    excluded = excluded if excluded is not None else catalog.iloc[0:0]
     legacy_cache = {}
     for h in HORIZONS:
         f, missing = assemble(catalog,paths,end,h,events,stress_cache=legacy_cache)
@@ -129,6 +131,8 @@ def current_rank(catalog, paths, events, end, out, top, min_peers):
         for label,table in (("ranking",full),("matched",same)):
             sorted_ = table.sort_values(["group","research_rank","code"],na_position="last")
             save(sorted_,out/f"{label}_{h}.csv")
+        top10 = full.loc[full.research_rank.le(top)].sort_values(["group","research_rank","code"])
+        save(top10,out/f"top10_{h}.csv")
         # Require agreement rather than a new weighted average of the ranks.
         consensus = same.research_rank.le(top) & same.legacy_rank.le(top)
         consensus &= same.industry_proxy_rank.isna() | same.industry_proxy_rank.le(top)
@@ -136,6 +140,11 @@ def current_rank(catalog, paths, events, end, out, top, min_peers):
         shortlist = full.loc[full[list(RANK_COLS)].le(top).any(axis=1) | full.pareto.eq(True)]
         save(shortlist.sort_values(["group","research_rank","code"]),out/f"shortlist_{h}.csv")
         rejected = pd.DataFrame(missing,columns=["code","group","reason"])
+        # Excluded long-periodic funds stay auditable in every horizon's unranked file.
+        if len(excluded):
+            rejected = pd.concat([rejected,pd.DataFrame(
+                {"code":excluded.code,"group":excluded.group,"reason":LP_REASON})],
+                ignore_index=True)
         save(rejected,out/f"unranked_{h}.csv")
         for code in WATCH:
             hit = full.loc[full.code.eq(code)]
@@ -196,6 +205,46 @@ def paired_deltas(summary):
     return pd.concat(rows,ignore_index=True)
 
 
+def long_periodic_audit(catalog, paths, events, end, out):
+    """Raw per-horizon metrics for funds excluded from ranking eligibility."""
+    rows = []
+    for h in HORIZONS:
+        f, missing = assemble(catalog,paths,end,h,events)
+        if len(f):
+            rows.append(f.assign(horizon=h,audit_status="已评估（不参与排名）"))
+        for code,group,reason in missing:
+            rows.append(pd.DataFrame([dict(horizon=h,code=code,group=group,audit_status=reason)]))
+    table = pd.concat(rows,ignore_index=True) if rows else pd.DataFrame(
+        columns=["horizon","code","group","audit_status"])
+    save(table,out/"long_periodic_audit.csv")
+    return table
+
+
+def recency_audit(catalog, paths, end, out, days=5):
+    """Per-code presence of the most recent business days up to the cutoff."""
+    expected = pd.bdate_range(end=end,periods=days)
+    rows = []
+    for row in catalog.itertuples(index=False):
+        nav = paths.get(row.code)
+        if nav is None:
+            rows.append(dict(code=row.code,group=row.group,nav_end=None,exact_end=False,
+                             missing_recent_days=",".join(str(d.date()) for d in expected)))
+            continue
+        have = set(nav.dates.normalize())
+        missing = [str(d.date()) for d in expected if d not in have]
+        rows.append(dict(code=row.code,group=row.group,
+                         nav_end=str(nav.dates[-1].date()),exact_end=bool(nav.dates[-1]==end),
+                         missing_recent_days=",".join(missing)))
+    table = pd.DataFrame(rows)
+    save(table,out/"nav_recency_audit.csv")
+    summary = {"recent_business_days":[str(d.date()) for d in expected]}
+    for d in expected:
+        summary[f"exact_{d.date()}"] = int(table.missing_recent_days.fillna("").str.contains(
+            str(d.date())).eq(False).sum()) if len(table) else 0
+    summary["codes_missing_any_recent_day"] = int(table.missing_recent_days.fillna("").ne("").sum())
+    return table,summary
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--asof",required=True)
@@ -211,6 +260,8 @@ def main(argv=None):
     p.add_argument("--pit-catalog-dir",type=Path,help="exact YYYY-MM-DD.csv catalog for every formation date")
     p.add_argument("--top",type=int,default=10)
     p.add_argument("--min-peers",type=int,default=5)
+    p.add_argument("--include-long-periodic",action="store_true",
+                   help="rank ≥24-month closed-interval bond funds; default excludes them from eligibility")
     a = p.parse_args(argv)
     if a.oos_folds<0 or a.oos_months<1 or a.top<1 or a.min_peers<2:
         p.error("invalid fold count, holding months, top, or peer count")
@@ -232,9 +283,17 @@ def main(argv=None):
     if not paths:
         p.error("no valid NAV cache; see nav_audit.csv and run with --fetch or point at populated --data-dir")
     start = time.monotonic()
-    coverage = current_rank(catalog,paths,events,end,a.output,a.top,a.min_peers)
+    excluded = catalog.iloc[0:0]
+    rankable = catalog
+    if not a.include_long_periodic:
+        excluded = catalog[catalog.is_long_periodic]
+        rankable = catalog[~catalog.is_long_periodic]
+    coverage = current_rank(rankable,paths,events,end,a.output,a.top,a.min_peers,excluded)
+    if len(excluded):
+        long_periodic_audit(excluded,paths,events,end,a.output)
+    _,recency = recency_audit(catalog,paths,end,a.output)
     # Without an archive, never label the supplied snapshot an unbiased OOS test.
-    replay = catalog[catalog.code.isin(paths)]
+    replay = rankable[rankable.code.isin(paths)]
     if historical is not None:
         historical = {t:d[d.code.isin(paths)] for t,d in historical.items()}
     selected,summary = compare_forward(replay,paths,events,end,a.oos_folds,a.oos_months,a.top,a.min_peers,historical)
@@ -245,6 +304,9 @@ def main(argv=None):
     for name,table in (("oos_selections",selected),("oos_folds",summary),("oos_summary",rollup(summary)),("oos_paired_deltas",paired_deltas(summary))):
         save(table,a.output/f"{name}.csv")
     cov = {"asof":a.asof,"catalog_share_codes":len(catalog),"valid_nav_paths":len(paths),
+           "long_periodic_excluded":int(len(excluded)),
+           "include_long_periodic":bool(a.include_long_periodic),
+           "nav_recency":recency,
            "nav_audit_share_codes":len(audit),
            "valid_current_catalog_paths":int(catalog.code.isin(paths).sum()),
            "exact_asof_paths":int(audit.get("exact_end",pd.Series(dtype=bool)).eq(True).sum()),

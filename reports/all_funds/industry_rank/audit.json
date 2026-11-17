@@ -1,0 +1,94 @@
+{
+  "asof": "2026-11-16",
+  "catalog_share_codes": 28346,
+  "valid_nav_paths": 25841,
+  "long_periodic_excluded": 145,
+  "include_long_periodic": false,
+  "nav_recency": {
+    "recent_business_days": [
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-16"
+    ],
+    "exact_2026-11-10": 24795,
+    "exact_2026-11-11": 24774,
+    "exact_2026-11-12": 24739,
+    "exact_2026-11-13": 24234,
+    "exact_2026-11-16": 22151,
+    "codes_missing_any_recent_day": 6617
+  },
+  "nav_audit_share_codes": 28346,
+  "valid_current_catalog_paths": 25841,
+  "exact_asof_paths": 22151,
+  "explicit_subset": false,
+  "horizons": [
+    {
+      "horizon": "5y",
+      "eligible": 6520,
+      "ranked": 6513,
+      "matched_ranked": 6512,
+      "rejected": {
+        "缺有效净值缓存": 2457,
+        "低波类别单日涨跌超过3%待核验": 576,
+        "期限起点缺历史": 11730,
+        "缺截止日净值": 3645,
+        "期限中间覆盖不足": 41,
+        "同基金其他份额": 3232,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    },
+    {
+      "horizon": "3y",
+      "eligible": 9053,
+      "ranked": 9047,
+      "matched_ranked": 9045,
+      "rejected": {
+        "缺有效净值缓存": 2457,
+        "低波类别单日涨跌超过3%待核验": 646,
+        "期限起点缺历史": 6543,
+        "缺截止日净值": 3645,
+        "期限中间覆盖不足": 52,
+        "同基金其他份额": 5805,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    },
+    {
+      "horizon": "1y",
+      "eligible": 11172,
+      "ranked": 11166,
+      "matched_ranked": 11165,
+      "rejected": {
+        "缺有效净值缓存": 2457,
+        "低波类别单日涨跌超过3%待核验": 233,
+        "期限起点缺历史": 1988,
+        "缺截止日净值": 3645,
+        "期限中间覆盖不足": 44,
+        "同基金其他份额": 8662,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    },
+    {
+      "horizon": "6m",
+      "eligible": 11607,
+      "ranked": 11601,
+      "matched_ranked": 11600,
+      "rejected": {
+        "缺有效净值缓存": 2457,
+        "低波类别单日涨跌超过3%待核验": 205,
+        "期限起点缺历史": 1178,
+        "缺截止日净值": 3645,
+        "期限中间覆盖不足": 56,
+        "同基金其他份额": 9053,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    }
+  ],
+  "oos_requested_folds": 12,
+  "oos_holding_months": 3,
+  "oos_fold_rows": 7488,
+  "oos_paired_complete_rows": 7423,
+  "oos_mode": "historical replay on supplied snapshot; survivor/current-classification bias possible",
+  "elapsed_seconds": 378.33
+}

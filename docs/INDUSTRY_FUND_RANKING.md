@@ -16,7 +16,7 @@ python scripts/run_industry_fund_ranking.py --asof 2026-11-13 --data-dir data/al
 
 ## 排名方法
 
-- 5 年、3 年、1 年、半年独立入榜。同一分类、基金、币种、计价方式只保留一份额，优先 A 份额。长封闭定开债单列，持有期与低流动性不扣分。原异常规则只在低波分类和各自评价期限内检查单日涨跌超过 3% 的样本。缺历史或待核验的标的分别进 `unranked_*.csv`。
+- 5 年、3 年、1 年、半年独立入榜。同一分类、基金、币种、计价方式只保留一份额，优先 A 份额。长封闭定开债（封闭/定开间隔 ≥24 个月）默认排除排名资格，原始指标单列在 `long_periodic_audit.csv`，各期限 `unranked_*.csv` 中标记排除原因；加 `--include-long-periodic` 恢复旧的单列入榜行为。持有期与低流动性不扣分。原异常规则只在低波分类和各自评价期限内检查单日涨跌超过 3% 的样本。缺历史或待核验的标的分别进 `unranked_*.csv`。
 - 收益项取区间复权收益，三年及五年转年化。稳定性取同类等权平均之上的完整日历月占比，采用当期比较样本的月收益，月中截点的半年榜用五个完整月。下行损失取负月收益之和的绝对值，频率与亏损月平均跌幅也独立输出。回撤取日净值峰谷。分位为平均并列名次转成 0–1，较优为高分，绝对指标一并保留。
 - `research` 为收益/稳定性/下行损失 = 50/25/25，未宣称最优。`industry_proxy` 为济安金信 2019 年公开因子与权重的同类分位实现，短债/中长纯债/利率债/信用债/一级债基用 67/33，二级债基用 56/22/11/11（最后两项为亏损频率、亏损月平均跌幅）。其他组不套用债基公式。不是复刻机构星级，也不把短期诊断称作正式评级。
 - `legacy` 为收益/区间最大回撤/两轮最差冲击回撤/两轮最差冲击收益 = 35/35/20/10。第二轮压力为 11 月 9 日到截止日，11 月 12 日截面保持原窗，11 月 13 日及之后采用 11 月 9–13 日扩展窗。13 日单日损益另外列示，旧法不会把扩展窗与原窗或单日重复计入。不同历史长度、异常核验与产品分组可能改变可比样本。完整样本表中旧分数只使用有两轮数据的基金。`matched_*.csv` 把所有方案重算在同一基金池，适合比较名次变动。
@@ -34,12 +34,14 @@ python scripts/run_industry_fund_ranking.py --asof 2026-11-13 --data-dir data/al
 | 输出 | 用途 |
 |---|---|
 | `ranking_{5y,3y,1y,6m}.csv` | 四期限完整同类研究榜，含原始指标与多套名次 |
-| `matched_*.csv` / `shortlist_*.csv` / `unranked_*.csv` | 同池对照 / 发现候选 / 不排名原因 |
+| `top10_{5y,3y,1y,6m}.csv` | 各类别 research 前十分榜（仅辅助阅读，不截断完整榜） |
+| `matched_*.csv` / `shortlist_*.csv` / `unranked_*.csv` | 同池对照 / 发现候选 / 不排名原因（含长定开默认排除） |
+| `long_periodic_audit.csv` | ≥24 个月长封闭定开债的原始指标，默认不参与排名 |
 | `consensus_*.csv` | 共同样本内，新旧法均进同组前 N，适用时行业代理也须进前 N |
-| `stress_events.csv` / `watchlist.csv` | 单事件压力与修复 / 025368、019851 的期限归属 |
+| `stress_events.csv` / `watchlist.csv` | 单事件压力与修复 / 025368、019851、021559、004400、710301 的期限归属 |
 | `oos_selections.csv` / `oos_folds.csv` | 每只入围基金、形成和评价日、配对覆盖 |
 | `oos_paired_deltas.csv` / `oos_summary.csv` | 同折差值和分组汇总 |
-| `audit.json` / `coverage_by_group.csv` / `nav_audit.csv` | 覆盖、取样、缺失及验证口径 |
+| `audit.json` / `coverage_by_group.csv` / `nav_audit.csv` / `nav_recency_audit.csv` | 覆盖、取样、缺失、最近交易日更新缺口及验证口径 |
 
 全量跑完后，回传 `audit.json`、`coverage_by_group.csv`、`watchlist.csv`、`consensus_*.csv`、`oos_paired_deltas.csv` 和 `stress_events.csv`，或在 GitHub Actions / PR 附上压缩产物。不要提交原始全市场缓存。
 

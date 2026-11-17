@@ -144,6 +144,63 @@ class IndustryRankTest(unittest.TestCase):
             self.assertFalse((f.method.eq("legacy") & f.horizon.eq("6m")).any())
             self.assertTrue((f.method.eq("legacy") & f.horizon.eq("3y")).any())
 
+    def test_long_periodic_excluded_by_default_but_audited(self):
+        rows = catalog_rows()+[("000005","戊36个月定开债券A","债券型-长债"),
+                               ("000006","己3个月定开债券A","债券型-长债")]
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            pd.DataFrame(rows,columns=["code","name","type"]).to_csv(d/"fund_list.csv",index=False)
+            (d/"total_return").mkdir()
+            for i,(code,_,_) in enumerate(rows):
+                ds = pd.bdate_range("2019-01-01","2026-11-12")
+                v = np.exp((.001+i*.0005)*np.arange(len(ds))/10)
+                pd.DataFrame({"date":ds,"nav":v}).to_csv(d/"total_return"/f"{code}.csv",index=False)
+            out = d/"out"
+            main(["--asof","2026-11-12","--data-dir",str(d),"--output",str(out),
+                  "--min-peers","2","--oos-folds","1"])
+            a = pd.read_csv(out/"ranking_6m.csv",dtype={"code":str})
+            self.assertNotIn("000005",a.code.tolist())
+            self.assertIn("000006",a.code.tolist())
+            u = pd.read_csv(out/"unranked_6m.csv",dtype={"code":str})
+            hit = u[u.code.eq("000005")]
+            self.assertEqual(len(hit),1)
+            self.assertIn("长封闭定开",hit.reason.iloc[0])
+            lp = pd.read_csv(out/"long_periodic_audit.csv",dtype={"code":str})
+            self.assertIn("000005",lp.code.tolist())
+            t = pd.read_csv(out/"top10_6m.csv",dtype={"code":str})
+            self.assertGreater(len(t),0)
+            audit = json.loads((out/"audit.json").read_text(encoding="utf-8"))
+            self.assertEqual(audit["long_periodic_excluded"],1)
+            self.assertIn("nav_recency",audit)
+            # Opt-in keeps the previous behaviour.
+            out2 = d/"out2"
+            main(["--asof","2026-11-12","--data-dir",str(d),"--output",str(out2),
+                  "--min-peers","2","--oos-folds","1","--include-long-periodic"])
+            b = pd.read_csv(out2/"ranking_6m.csv",dtype={"code":str})
+            self.assertIn("000005",b.code.tolist())
+
+    def test_recency_audit_flags_missing_recent_days(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            pd.DataFrame(catalog_rows(),columns=["code","name","type"]).to_csv(d/"fund_list.csv",index=False)
+            (d/"total_return").mkdir()
+            for i,(code,_,_) in enumerate(catalog_rows()):
+                end = "2026-11-11" if code=="000001" else "2026-11-12"
+                ds = pd.bdate_range("2025-12-26",end)
+                v = np.exp((.001+i*.001)*np.arange(len(ds))/10)
+                pd.DataFrame({"date":ds,"nav":v}).to_csv(d/"total_return"/f"{code}.csv",index=False)
+            out = d/"out"
+            main(["--asof","2026-11-12","--data-dir",str(d),"--output",str(out),
+                  "--min-peers","2","--oos-folds","1"])
+            r = pd.read_csv(out/"nav_recency_audit.csv",dtype={"code":str})
+            lag = r[r.code.eq("000001")].iloc[0]
+            self.assertEqual(lag.nav_end,"2026-11-11")
+            self.assertFalse(lag.exact_end)
+            self.assertIn("2026-11-12",str(lag.missing_recent_days))
+            ok = r[r.code.eq("000002")].iloc[0]
+            self.assertTrue(ok.exact_end)
+            self.assertTrue(pd.isna(ok.missing_recent_days) or ok.missing_recent_days=="")
+
 
 if __name__=="__main__":
     unittest.main()
