@@ -166,7 +166,7 @@ def write_reports(out, full, short, events, end, watch_codes):
                         .to_dict(orient="index"),
         "by_pricing_basis": full.groupby("pricing_basis").selection_status.value_counts()
                                 .unstack(fill_value=0).to_dict(orient="index"),
-        "purchase_channel_status_counts": full.channel_purchase_status.value_counts(dropna=False).to_dict(),
+        "purchase_channel_status_counts": {str(k): int(v) for k, v in full.channel_purchase_status.value_counts(dropna=False).items()},
         "purchase_channel_status_sources": sorted(full.channel_status_source.dropna().astype(str).unique().tolist()),
         "purchase_channel_status_checked_at": sorted(full.channel_status_checked_at.dropna().astype(str).unique().tolist()),
         "purchase_channel_status_is_ranking_filter": False,
