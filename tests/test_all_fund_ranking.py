@@ -7,8 +7,9 @@ import numpy as np
 import pandas as pd
 
 from fundkit.defensive_screen import Shock, market_category, money_index
+from fundkit.fetcher import subscribable_codes
 from scripts.fetch_all_fund_rank_data import parse_catalog, parse_money, parse_nav, listed_history
-from scripts.screen_defensive_funds import screen, write_reports
+from scripts.screen_defensive_funds import channel_purchase_status, screen, write_reports
 from unittest.mock import patch
 
 
@@ -53,6 +54,20 @@ class AllFundRankingTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "no_valid_hfq"):
                 listed_history("508000", pd.Timestamp("2026-11-12"))
 
+    def test_channel_subscription_status_is_source_specific(self):
+        status = pd.DataFrame([
+            ("000001", "开放申购", "暂停赎回", 0),
+            ("000002", "限大额", "开放赎回", 15000),
+            ("000003", "限大额", "开放赎回", 1000),
+            ("000004", "暂停申购", "开放赎回", 0),
+        ], columns=["code", "sub_status", "red_status", "daily_limit"])
+        self.assertEqual(subscribable_codes(status, min_daily_limit=10000),
+                         {"000001", "000002"})
+        self.assertEqual(channel_purchase_status("开放申购"), "该渠道开放申购")
+        self.assertEqual(channel_purchase_status("限大额"), "该渠道限额申购")
+        self.assertEqual(channel_purchase_status("暂停申购"), "该渠道暂停申购")
+        self.assertEqual(channel_purchase_status(None), "未查询到该渠道状态")
+
     def test_all_scope_ranking_not_truncated_to_shortlist(self):
         end = pd.Timestamp("2026-11-12")
         events = [Shock("a", "a", pd.Timestamp("2026-06-05"), pd.Timestamp("2026-06-11")),
@@ -67,6 +82,12 @@ class AllFundRankingTest(unittest.TestCase):
                      ("000003","海外股票A","QDII-普通股票"),
                      ("000004","货币A","货币型-普通货币"),("000005","未分类",None)]
             pd.DataFrame(codes,columns=["code","name","type"]).to_csv(data/"fund_list.csv",index=False)
+            status = pd.DataFrame([
+                ("000001", "暂停申购", "开放赎回", np.nan, "test channel", "2026-11-12T10:00:00+0800"),
+                ("000002", "开放申购", "暂停赎回", 0, "test channel", "2026-11-12T10:00:00+0800"),
+                ("000003", "限大额", "开放赎回", 5000, "test channel", "2026-11-12T10:00:00+0800"),
+            ], columns=["code","sub_status","red_status","daily_limit","status_source","status_checked_at"])
+            status.to_csv(data/"fund_status.csv",index=False)
             ds = pd.bdate_range("2024-01-01",end)
             for i,(code,*_) in enumerate(codes[:3]):
                 pd.DataFrame({"date":ds,"nav":np.linspace(1.,1.1+i*.05,len(ds))}).to_csv(data/"nav"/f"{code}.csv",index=False)
@@ -78,8 +99,18 @@ class AllFundRankingTest(unittest.TestCase):
             self.assertEqual(len(pd.read_csv(out/"ranking.csv")),4)
             self.assertEqual(len(pd.read_csv(out/"unranked.csv")),1)
             self.assertEqual(len(short),3)
-            self.assertEqual(full.set_index("code").required_shocks.to_dict(),
+            indexed = full.set_index("code")
+            self.assertEqual(indexed.required_shocks.to_dict(),
                              {"000001":2,"000002":2,"000003":3,"000004":2,"000005":2})
+            # Channel purchase status is annotation only: paused subscription and
+            # paused redemption do not change either fund's inclusion or peer group.
+            self.assertEqual(indexed.loc["000001", "peer_count"], 2)
+            self.assertEqual(indexed.loc["000002", "peer_count"], 2)
+            self.assertEqual(indexed.loc["000001", "channel_purchase_status"], "该渠道暂停申购")
+            self.assertEqual(indexed.loc["000002", "channel_purchase_status"], "该渠道开放申购")
+            self.assertTrue((out/"purchase_channel_status.csv").is_file())
+            self.assertEqual(len(pd.read_csv(out/"purchase_channel_status.csv")), 5)
+            self.assertFalse(audit["purchase_channel_status_is_ranking_filter"])
 
 
 if __name__ == "__main__":
