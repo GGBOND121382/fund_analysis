@@ -100,16 +100,31 @@ def fetch_trade_status() -> pd.DataFrame:
     return df[["code", "sub_status", "red_status", "daily_limit"]]
 
 
-def tradable_codes(status_df: pd.DataFrame, min_daily_limit: float = 10000) -> set:
-    """可交易 = 赎回开放，且（申购开放 或 限大额但日限额 >= min_daily_limit）。
+def subscribable_codes(status_df: pd.DataFrame, min_daily_limit: float = 10000) -> set:
+    """返回该销售渠道当前显示可申购的基金代码。
 
-    注意快照中"开放申购"的日限额字段 0 或 1e10+ 均表示未设限，只对"限大额"应用阈值。
+    这是渠道级申购筛选，不代表基金在所有销售渠道均可购买。
+    申购资格只由 sub_status 和 daily_limit 判断；暂停赎回不影响申购资格。
+    "开放申购"的 daily_limit 为 0 或极大值均按开放申购处理；
+    只有"限大额"才应用 min_daily_limit。
     """
-    red_ok = status_df["red_status"] == "开放赎回"
-    sub_open = status_df["sub_status"] == "开放申购"
-    sub_limited = (status_df["sub_status"] == "限大额") & (
-        status_df["daily_limit"].fillna(0) >= min_daily_limit)
-    return set(status_df.loc[red_ok & (sub_open | sub_limited), "code"])
+    if min_daily_limit < 0:
+        raise ValueError("min_daily_limit must be non-negative")
+    required = {"code", "sub_status", "daily_limit"}
+    missing = required.difference(status_df.columns)
+    if missing:
+        raise ValueError(f"trade status missing columns: {sorted(missing)}")
+    codes = status_df["code"].astype(str).str.zfill(6)
+    sub = status_df["sub_status"].fillna("").astype(str).str.strip()
+    limit = pd.to_numeric(status_df["daily_limit"], errors="coerce")
+    sub_open = sub.eq("开放申购")
+    sub_limited = sub.eq("限大额") & limit.ge(min_daily_limit)
+    return set(codes.loc[sub_open | sub_limited])
+
+
+def tradable_codes(status_df: pd.DataFrame, min_daily_limit: float = 10000) -> set:
+    """兼容旧接口；实际含义是该销售渠道当前可申购，不检查赎回状态。"""
+    return subscribable_codes(status_df, min_daily_limit=min_daily_limit)
 
 
 def fetch_fund_nav(

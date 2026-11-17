@@ -40,7 +40,7 @@ python main.py fetch --workers 8                    # 全量抓取
 python main.py fetch --sources em_f10,em_js         # 自定义数据源及优先级
 python main.py fetch --refresh-days 0               # 强制重抓（默认 1 天内已抓过的跳过）
 
-# 3. 按区间指标排序（默认排除货币型 + 不可交易基金，默认分红复权口径）
+# 3. 按区间指标排序（默认仅排除货币型；不按单一销售平台状态筛选）
 python main.py rank --start 2025-01-01 --end 2026-10-01 --metric sharpe --top 30 --with-name
 python main.py rank --metric max_drawdown --types 债券型        # 最大回撤默认升序（越小越好）
 python main.py rank --metric sharpe --max-avg-gap 3             # 过滤低频披露基金（定开等）
@@ -60,9 +60,9 @@ python main.py rank --metric ann_return --csv result.csv        # 完整结果�
 | `ann_vol` | 年化波动率 | 升序 |
 | `max_drawdown` | 最大回撤 | 升序 |
 
-其他参数：`--rf` 年化无风险利率（默认 0.02）、`--min-days` 区间内最少交易日数（默认 60）、`--max-avg-gap` 净值平均披露间隔天数上限（过滤周频披露的定开基金，避免夏普虚高）、`--include-money` 包含货币基金（默认排除，其净值字段为万份收益口径，不能用于净值指标）、`--include-closed` 包含当前不可交易的基金（默认排除）、`--min-daily-limit` "限大额"基金的日累计限定金额下限（默认 10000 元，低于此额度视为不可交易，可挡住 0 元/10 元每天的象征性限额）、`--asc/--desc` 强制排序方向、`--rank-workers` 排序计算进程数（默认 CPU 核数）。
+其他参数：`--rf` 年化无风险利率（默认 0.02）、`--min-days` 区间内最少交易日数（默认 60）、`--max-avg-gap` 净值平均披露间隔天数上限（过滤周频披露的定开基金，避免夏普虚高）、`--include-money` 包含货币基金（默认排除，其净值字段为万份收益口径，不能用于净值指标）、`--tradable-only` 可选地按天天基金渠道当前申购状态筛选、`--min-daily-limit` 与该可选筛选配合使用（默认 10000 元/日）、`--include-closed` 仅为旧命令兼容保留（当前默认已包含暂停申购/封闭期基金）、`--asc/--desc` 强制排序方向、`--rank-workers` 排序计算进程数（默认 CPU 核数）。
 
-**可交易判定规则**（数据来自天天基金申购状态批量快照，含日累计限定金额，随 `python main.py list` 更新）：赎回状态须为「开放赎回」，且申购状态为「开放申购」，或「限大额」且日累计限额达到 `--min-daily-limit`。注意快照中"开放申购"的限额字段为 0 表示未设限。
+**销售渠道状态说明**：研究排名默认不按任何单一销售平台的申购状态筛选；某个平台未上架、暂停申购或限额，不会导致基金从历史排名中消失。若明确需要查看天天基金渠道的当前申购范围，可加 `--tradable-only`。该状态只代表该渠道快照，不代表其他平台；赎回状态单独记录，不作为能否申购的条件。
 
 ## 项目结构
 

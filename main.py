@@ -26,9 +26,9 @@ def cmd_list(_args):
 
     status = fetcher.fetch_trade_status()
     storage.save_trade_status(status)
-    tradable = fetcher.tradable_codes(status)
+    subscribable = fetcher.subscribable_codes(status)
     print(f"\n交易状态快照已更新: {len(status)} 只 -> {storage.FUND_STATUS_FILE}")
-    print(f"当前可交易（开放/限大额申购 且 开放赎回）: {len(tradable)} 只")
+    print(f"天天基金渠道显示可申购: {len(subscribable)} 只（仅依据申购状态，不检查赎回状态）")
     print(status["sub_status"].value_counts().to_string())
 
     print("\n提示: 分红复权数据由 `python main.py dividends` 单独抓取维护")
@@ -145,16 +145,18 @@ def cmd_rank(args):
         mask = fund_list["type"].astype(str).apply(lambda s: any(k in s for k in keys))
         allow = set(fund_list.loc[mask, "code"])
         codes = [c for c in codes if c in allow]
-    if not args.include_closed:
+    if getattr(args, "tradable_only", False):
         try:
             status = storage.load_trade_status()
         except FileNotFoundError:
-            sys.exit("交易状态过滤需要状态快照，请先运行: python main.py list（--include-closed 可关闭该过滤）")
+            sys.exit("渠道申购状态过滤需要快照，请先运行: python main.py list")
         n0 = len(codes)
-        allow = fetcher.tradable_codes(status, min_daily_limit=args.min_daily_limit)
+        allow = fetcher.subscribable_codes(status, min_daily_limit=args.min_daily_limit)
         codes = [c for c in codes if c in allow]
-        print(f"已过滤不可交易基金 {n0 - len(codes)} 只，剩余 {len(codes)} 只"
-              f"（限大额阈值 {args.min_daily_limit:,.0f} 元/日，--include-closed 可关闭）")
+        print(f"已按天天基金渠道申购状态过滤 {n0 - len(codes)} 只，剩余 {len(codes)} 只"
+              f"（限大额阈值 {args.min_daily_limit:,.0f} 元/日；不代表其他平台的可购买状态）")
+    else:
+        print("研究排名未按单一销售渠道申购状态筛选；暂停申购或平台未覆盖的基金仍保留在排名样本中。")
 
     div_map, split_map = {}, {}
     if not args.no_adjust:
@@ -1012,10 +1014,12 @@ def main():
                         help="单日涨跌幅上限，小数（如 0.03 表示 3%%，过滤巨额赎回等净值异动，默认 0 不过滤）")
     p_rank.add_argument("--types", default="", help="基金类型过滤，逗号分隔子串")
     p_rank.add_argument("--include-money", action="store_true", help="包含货币型基金（默认排除）")
+    p_rank.add_argument("--tradable-only", action="store_true",
+                        help="仅保留天天基金接口当前显示开放申购或达到限额阈值的基金；这是单一渠道筛选，不代表全渠道可购买")
     p_rank.add_argument("--include-closed", action="store_true",
-                        help="包含封闭期/暂停申赎等当前不可交易的基金（默认排除）")
+                        help="兼容旧命令；当前默认已包含暂停申购/封闭期基金，此参数不再改变筛选范围")
     p_rank.add_argument("--min-daily-limit", type=float, default=10000,
-                        help="限大额基金的日累计限定金额下限，元（默认 10000，低于此额度视为不可交易）")
+                        help="配合 --tradable-only 使用：限大额基金的日累计限定金额下限，元（默认 10000）")
     p_rank.add_argument("--no-adjust", action="store_true",
                         help="不做分红复权（默认用后复权口径，除息日分红加回收益）")
     p_rank.add_argument("--max-avg-gap", type=float, default=0,
