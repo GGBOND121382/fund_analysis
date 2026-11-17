@@ -6,14 +6,17 @@ import argparse
 import json
 from pathlib import Path
 from shutil import copyfile
+import sys
 
 import pandas as pd
 
-import fetch_all_fund_rank_data as fetch
-import screen_defensive_funds as rank
-from fundkit.fetcher import fetch_trade_status
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import fetch_all_fund_rank_data as fetch  # noqa: E402
+import screen_defensive_funds as rank  # noqa: E402
+from fundkit.fetcher import fetch_trade_status  # noqa: E402
 STATUS_SOURCE = "天天基金/东方财富申购状态批量接口（AkShare fund_purchase_em）"
 
 
