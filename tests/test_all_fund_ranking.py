@@ -9,6 +9,7 @@ import pandas as pd
 from fundkit.defensive_screen import Shock, market_category, money_index
 from fundkit.fetcher import subscribable_codes
 from scripts.fetch_all_fund_rank_data import parse_catalog, parse_money, parse_nav, listed_history
+from scripts.run_all_fund_ranking import refresh_channel_status
 from scripts.screen_defensive_funds import channel_purchase_status, screen, write_reports
 from unittest.mock import patch
 
@@ -67,6 +68,38 @@ class AllFundRankingTest(unittest.TestCase):
         self.assertEqual(channel_purchase_status("限大额"), "该渠道限额申购")
         self.assertEqual(channel_purchase_status("暂停申购"), "该渠道暂停申购")
         self.assertEqual(channel_purchase_status(None), "未查询到该渠道状态")
+
+    def test_channel_status_refresh_records_source_and_timestamp(self):
+        with tempfile.TemporaryDirectory() as t:
+            data = Path(t)
+            status = pd.DataFrame(
+                [("000001", "开放申购", "暂停赎回", 0)],
+                columns=["code", "sub_status", "red_status", "daily_limit"],
+            )
+            with patch("scripts.run_all_fund_ranking.fetch_trade_status", return_value=status):
+                audit = refresh_channel_status(data)
+            saved = pd.read_csv(data/"fund_status.csv", dtype={"code": str})
+            self.assertEqual(audit["state"], "updated")
+            self.assertFalse(audit["ranking_filter"])
+            self.assertIn("天天基金", saved.status_source.iloc[0])
+            self.assertTrue(saved.status_checked_at.iloc[0])
+
+    def test_channel_status_fetch_failure_preserves_previous_snapshot(self):
+        with tempfile.TemporaryDirectory() as t:
+            data = Path(t)
+            old = pd.DataFrame(
+                [("000001", "暂停申购", "开放赎回", 0, "old source", "2026-11-12T10:00:00+0800")],
+                columns=["code", "sub_status", "red_status", "daily_limit",
+                         "status_source", "status_checked_at"],
+            )
+            old.to_csv(data/"fund_status.csv", index=False)
+            with patch("scripts.run_all_fund_ranking.fetch_trade_status",
+                       side_effect=RuntimeError("offline")):
+                audit = refresh_channel_status(data)
+            saved = pd.read_csv(data/"fund_status.csv", dtype={"code": str})
+            self.assertEqual(audit["state"], "failed_using_previous_cache")
+            self.assertIn("offline", audit["error"])
+            self.assertEqual(saved.status_source.iloc[0], "old source")
 
     def test_all_scope_ranking_not_truncated_to_shortlist(self):
         end = pd.Timestamp("2026-11-12")
