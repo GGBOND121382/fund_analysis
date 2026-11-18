@@ -35,12 +35,12 @@ def optional(path):
 
 
 def load_catalog(path, codes=None):
-    d = read(path).drop_duplicates("code")
+    d = pd.read_csv(path, dtype={"code": str, "product_id": str},
+                    keep_default_na=False).drop_duplicates("code")
     if codes is not None:
         missing = set(codes)-set(d.code)
         if missing:
             raise ValueError(f"code absent from catalog: {sorted(missing)}")
-        d = d[d.code.isin(codes)]
     if d.empty or not d.code.str.fullmatch(r"\d{6}").fillna(False).all():
         raise ValueError("empty catalog or invalid six-digit code")
     rows = []
@@ -50,9 +50,19 @@ def load_catalog(path, codes=None):
         group,periodic = effective_group(name,group,r.type)
         product,share = share_identity(name)
         rows.append(dict(code=r.code,name=name,fund_type=r.type,group=group,product=product,
+                         product_id=getattr(r,"product_id","").strip(),
                          share=share,scenario_family=family,currency=currency,
                          pricing_basis=basis,is_long_periodic=periodic))
-    return pd.DataFrame(rows)
+    catalog = pd.DataFrame(rows)
+    # Optional product IDs must come from the input catalog. Use a name to
+    # inherit an ID only when that name points to a single ID in this cohort.
+    name_cols = ["group","currency","pricing_basis","product"]
+    known = catalog.loc[catalog.product_id.ne(""), name_cols+["product_id"]].drop_duplicates()
+    unique = known.loc[~known.duplicated(name_cols,keep=False)].rename(columns={"product_id":"_name_id"})
+    catalog = catalog.merge(unique,on=name_cols,how="left",validate="many_to_one")
+    identity = catalog.product_id.where(catalog.product_id.ne(""),catalog.pop("_name_id"))
+    catalog["product_key"] = ("id:"+identity).fillna("name:"+catalog["product"])
+    return catalog if codes is None else catalog.loc[catalog.code.isin(codes)]
 
 
 def load_paths(catalog, data, end):
@@ -111,6 +121,19 @@ def save(df,path):
     df.drop(columns=["_monthly"],errors="ignore").to_csv(path,index=False,encoding="utf-8-sig")
 
 
+def legacy_top(full, top, stress_cache):
+    """Export the existing legacy rank and the actual two windows it used."""
+    result = full.loc[full.legacy_rank.le(top)].sort_values(["group","legacy_rank","code"]).copy()
+    records = []
+    for row in result.itertuples(index=False):
+        first, second = row.stress_ids.split(",")
+        dd1, ret1 = stress_cache[row.code, first]
+        dd2, ret2 = stress_cache[row.code, second]
+        records.append((first, ret1, dd1, second, ret2, dd2))
+    columns = [f"shock_{i}_{metric}" for i in (1,2) for metric in ("id","return","mdd")]
+    return result.join(pd.DataFrame(records,index=result.index,columns=columns))
+
+
 def current_rank(catalog, paths, events, end, out, top, min_peers, excluded=None):
     coverage,stress,by_status,watch = [],[],[],[]
     excluded = excluded if excluded is not None else catalog.iloc[0:0]
@@ -133,6 +156,7 @@ def current_rank(catalog, paths, events, end, out, top, min_peers, excluded=None
             save(sorted_,out/f"{label}_{h}.csv")
         top10 = full.loc[full.research_rank.le(top)].sort_values(["group","research_rank","code"])
         save(top10,out/f"top10_{h}.csv")
+        save(legacy_top(full,top,legacy_cache),out/f"top10_legacy_{h}.csv")
         # Require agreement rather than a new weighted average of the ranks.
         consensus = same.research_rank.le(top) & same.legacy_rank.le(top)
         consensus &= same.industry_proxy_rank.isna() | same.industry_proxy_rank.le(top)

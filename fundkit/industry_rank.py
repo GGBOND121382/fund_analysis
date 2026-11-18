@@ -17,7 +17,7 @@ EXTENDED_NOVEMBER = "bonds_202611_through_13"
 METHODS = ("research", "industry_proxy", "legacy", "return_only", "drawdown_only", "preservation")
 RANK_COLS = tuple(f"{m}_rank" for m in METHODS)
 PARETO_AXES = ("return_for_rank", "max_drawdown", "worst_stress_drawdown", "worst_stress_return")
-FEATURE_COLS = ("code", "group", "product", "share", "name", "currency", "pricing_basis",
+FEATURE_COLS = ("code", "group", "product", "product_key", "share", "name", "currency", "pricing_basis",
                 "scenario_family", "fund_type", "is_long_periodic", "obs", "start", "end",
                 "period_return", "return_for_rank", "max_drawdown", "negative_month_loss",
                 "negative_month_frequency", "negative_month_mean", "worst_stress_drawdown",
@@ -192,7 +192,8 @@ def assemble(catalog, paths, end, horizon, events, current=True, stress_cache=No
     df = pd.DataFrame(features)
     df["_a"] = ~df.share.isin(["A", ""])
     df = df.sort_values(["_a","obs","code"], ascending=[True,False,True])
-    duplicate = df.duplicated(["group","product","currency","pricing_basis"])
+    identity = "product_key" if "product_key" in df else "product"
+    duplicate = df.duplicated(["group",identity,"currency","pricing_basis"])
     rejected.extend((r.code,r.group,"同基金其他份额") for r in df.loc[duplicate].itertuples())
     return df.loc[~duplicate].drop(columns="_a"), rejected
 

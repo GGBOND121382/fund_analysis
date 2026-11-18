@@ -8,8 +8,8 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
-from fundkit.defensive_screen import Shock
-from fundkit.industry_rank import (NavPath, assemble, compare_forward, effective_group,
+from fundkit.defensive_screen import Shock, share_identity
+from fundkit.industry_rank import (HORIZONS, NavPath, assemble, compare_forward, effective_group,
                                    feature, forward, legacy_events, pareto, ranking, stress_metrics)
 from scripts.fetch_all_fund_rank_data import get_one
 from scripts.run_industry_fund_ranking import load_catalog, main
@@ -28,6 +28,50 @@ def catalog_rows():
 
 
 class IndustryRankTest(unittest.TestCase):
+    def test_fof_parenthesis_share_identity(self):
+        pairs = [
+            ("025029", "025030", "宝盈淳悦稳健配置3个月持有混合发起(FOF)"),
+            ("024495", "024496", "平安盈轩90天持有债券(ETF-FOF)"),
+        ]
+        rows = [(code, name+share, "FOF-稳健型") for a,c,name in pairs
+                for code,share in ((a,"A"),(c,"C"))]
+        self.assertEqual(share_identity("示例（FOF） C类 "),("示例（FOF）","C"))
+        self.assertEqual(share_identity("示例ETF"),("示例ETF",""))
+        self.assertEqual(share_identity("示例(FOF)"),("示例(FOF)",""))
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)/"fund_list.csv"
+            pd.DataFrame(rows,columns=["code","name","type"]).to_csv(p,index=False)
+            catalog = load_catalog(p)
+            ds = pd.bdate_range("2019-01-01","2026-11-16")
+            paths = {code:path(ds,np.linspace(1,1.3,len(ds))) for code,_,_ in rows}
+            for horizon in HORIZONS:
+                frame,rejected = assemble(catalog,paths,ds[-1],horizon,[])
+                self.assertEqual(set(frame.code),{"025029","024495"})
+                self.assertEqual({(r[0],r[2]) for r in rejected},
+                                 {("025030","同基金其他份额"),("024496","同基金其他份额")})
+
+    def test_catalog_product_ids_take_precedence_without_merging_conflicts(self):
+        rows = [
+            ("100001","甲债券A","债券型-长债","001"),
+            ("100002","改名债券C","债券型-长债","001"),
+            ("100003","甲债券E","债券型-长债",""),
+            ("100004","乙债券A","债券型-长债","002"),
+            ("100005","乙债券C","债券型-长债","003"),
+            ("100006","乙债券E","债券型-长债",""),
+            ("100007","甲债券美元A","债券型-长债","001"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)/"fund_list.csv"
+            pd.DataFrame(rows,columns=["code","name","type","product_id"]).to_csv(p,index=False)
+            catalog = load_catalog(p)
+            self.assertEqual(catalog.product_key.tolist(),
+                             ["id:001","id:001","id:001","id:002","id:003","name:乙债券","id:001"])
+            self.assertEqual(load_catalog(p,["100003"]).product_key.tolist(),["id:001"])
+            ds = pd.bdate_range("2025-01-01","2026-11-16")
+            paths = {code:path(ds,np.linspace(1,1.1,len(ds))) for code, *_ in rows}
+            frame,_ = assemble(catalog,paths,ds[-1],"6m",[])
+            self.assertEqual(set(frame.code),{"100001","100004","100005","100006","100007"})
+
     def test_november_13_extends_instead_of_double_counting(self):
         e = [Shock(key,key,pd.Timestamp(start),pd.Timestamp(end))
              for key,start,end in (
@@ -137,6 +181,16 @@ class IndustryRankTest(unittest.TestCase):
             self.assertNotIn("025368",b.code.tolist())
             self.assertNotIn("000003",a.code.tolist())
             self.assertEqual(len(pd.read_csv(out/"matched_6m.csv")),3)
+            for horizon in HORIZONS:
+                top = pd.read_csv(out/f"top10_legacy_{horizon}.csv",dtype={"code":str})
+                self.assertEqual(len(top),3)
+                self.assertTrue(top.legacy_peer_count.eq(3).all())
+                self.assertTrue(top.shock_1_id.eq("credit_20261030").all())
+                self.assertTrue(top.shock_2_id.eq("bonds_202611").all())
+                np.testing.assert_allclose(top[["shock_1_return","shock_2_return"]].min(axis=1),
+                                           top.worst_stress_return)
+                np.testing.assert_allclose(top[["shock_1_mdd","shock_2_mdd"]].max(axis=1),
+                                           top.worst_stress_drawdown)
             f = pd.read_csv(out/"oos_folds.csv")
             self.assertGreater(len(f),0)
             self.assertTrue(f.paired_complete.all())

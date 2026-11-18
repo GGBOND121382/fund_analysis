@@ -12,6 +12,12 @@ python scripts/run_industry_fund_ranking.py --asof 2026-11-13 --data-dir data/al
 
 如果缓存已经包含足够历史，可去掉 `--fetch` 离线计算。不要用原来只有汇总指标的 CSV 或 Excel 当作日净值输入。日净值读取 `data/all_funds/total_return`、`money`、`listed`，也可用原 `nav` 与分红/拆分表作为净值后备。联网抓取使用公开东方财富基金净值及腾讯 REITs 后复权收盘价。批量抓取耗时取决于网络、剩余缺口与品种类型。若源头没有足够历史，保留可核验的短序列与原因，不外推、不填零。快照日选所有可比品种共有的交易日，缺该日净值的样本单列。
 
+在保存了 2026-11-16 原始缓存的机器上，可以不抓取新数据，另存一套结果用于和原榜对照：
+
+```powershell
+python scripts/run_industry_fund_ranking.py --asof 2026-11-16 --data-dir data/all_funds --output reports/all_funds/industry_rank_dedup_20261116
+```
+
 正式前推如有逐期历史目录，把各形成日的 `YYYY-MM-DD.csv`（列为 `code,name,type`）放同一目录，增加 `--pit-catalog-dir <目录>`。必须每个形成日都有精确文件。退市/清盘产品的日净值也须放在缓存中，当前公募目录的联网抓取不保证覆盖已退出产品。未提供历史目录时，脚本明确标记为在当前目录上回放，不能消除幸存者偏差或类别变更。缺未来净值不当作零收益，不在形成期预先排除。尚不模拟实际认购开放状态、申赎费、锁定期或清盘兑付。
 
 ## 排名方法
@@ -34,7 +40,8 @@ python scripts/run_industry_fund_ranking.py --asof 2026-11-13 --data-dir data/al
 | 输出 | 用途 |
 |---|---|
 | `ranking_{5y,3y,1y,6m}.csv` | 四期限完整同类研究榜，含原始指标与多套名次 |
-| `top10_{5y,3y,1y,6m}.csv` | 各类别 research 前十分榜（仅辅助阅读，不截断完整榜） |
+| `top10_{5y,3y,1y,6m}.csv` | 各类别 research 前十，不截断完整榜 |
+| `top10_legacy_{5y,3y,1y,6m}.csv` | 各类别 legacy 前十，列出两轮冲击的事件 ID、各自区间收益与最大回撤，以及 legacy 可比组样本数。无双窗口或同类样本不足不入榜。含收益和全期回撤，并非纯冲击损失榜 |
 | `matched_*.csv` / `shortlist_*.csv` / `unranked_*.csv` | 同池对照 / 发现候选 / 不排名原因（含长定开默认排除） |
 | `long_periodic_audit.csv` | ≥24 个月长封闭定开债的原始指标，默认不参与排名 |
 | `consensus_*.csv` | 共同样本内，新旧法均进同组前 N，适用时行业代理也须进前 N |
@@ -44,6 +51,8 @@ python scripts/run_industry_fund_ranking.py --asof 2026-11-13 --data-dir data/al
 | `audit.json` / `coverage_by_group.csv` / `nav_audit.csv` / `nav_recency_audit.csv` | 覆盖、取样、缺失、最近交易日更新缺口及验证口径 |
 
 全量跑完后，回传 `audit.json`、`coverage_by_group.csv`、`watchlist.csv`、`consensus_*.csv`、`oos_paired_deltas.csv` 和 `stress_events.csv`，或在 GitHub Actions / PR 附上压缩产物。不要提交原始全市场缓存。
+
+份额去重优先使用目录中可选、经核验的 `product_id` 列（保留前导零）。同类、同币种、同计价方式内，没有 ID 的份额可沿用同基础名称对应的唯一 ID，否则按基础名称回退。已知但不同的 ID 不合并，也不会通过缺 ID 的份额间接合并。无 ID 的目录仍能运行，名称回退识别 `(FOF)A`、`（FOF）C类` 等份额后缀，不猜测名称不同的产品是否为同一基金。
 
 ## 公开方法
 

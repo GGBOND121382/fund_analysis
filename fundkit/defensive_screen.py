@@ -16,7 +16,7 @@ GROUPS = {
     "混合型-偏债": "偏债混合",
 }
 LOCK = re.compile(r"定期开放|定开|封闭|持有期|滚动持有|(?:个月|月|日|天|年)持有")
-SHARE = re.compile(r"(?<=[\u4e00-\u9fff])\s*([A-Z])(?:类)?$")
+SHARE = re.compile(r"(?<=[\u4e00-\u9fff)）])\s*([A-Z])(?:类)?\s*$")
 WINDOWS = {"6m": (6, 105), "1y": (12, 215), "2y": (24, 430), "3y": (36, 645)}
 AXES = ("return_score", "drawdown_score", "shock_score")
 TIER_WINDOWS = {
