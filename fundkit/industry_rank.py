@@ -8,7 +8,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from fundkit.defensive_screen import Shock
+from fundkit.defensive_screen import Shock, balance_ranks
 
 HORIZONS = {"5y": (60, 1050), "3y": (36, 645), "1y": (12, 215), "6m": (6, 105)}
 LOW_VOL = re.compile("债|固收|绝对收益|货币|FOF-稳健")
@@ -263,6 +263,80 @@ def ranking(group, min_peers=5, mark_pareto=True):
                               ascending=[False,True,True,False,True])
         z.loc[t.index, m+"_rank"] = np.arange(1,len(t)+1)
     return z
+
+
+MAIN_FIELDS = {
+    "return_score": "main_return_score", "drawdown_score": "main_drawdown_score",
+    "shock_score": "main_shock_score", "pareto": "main_pareto",
+    "balance_score": "main_balance_score", "weakest_score": "main_weakest_score",
+    "peer_rank": "main_rank",
+}
+MAIN_SHOCK_STATS = ["worst_shock_return", "worst_shock_mdd", "median_shock_mdd"]
+
+
+def main_stress_features(stress, events, end):
+    """Index valid event returns/drawdowns using the original dated scenario set."""
+    complete = {e.id: e for e in events if e.end <= end}
+    s = stress.loc[stress.event.isin(complete)].copy()
+    for col, attr in (("baseline", "baseline"), ("stress_end", "end")):
+        expected = pd.to_datetime(s.event.map({k: getattr(e, attr) for k, e in complete.items()}))
+        if not pd.to_datetime(s[col]).eq(expected).all():
+            raise ValueError(f"stress table has incorrect {col} for configured scenario")
+    for col in ("stress_return", "stress_drawdown"):
+        s[col] = pd.to_numeric(s[col], errors="raise")
+        if np.isinf(s[col]).any():
+            raise ValueError(f"invalid non-finite {col}")
+    return s.set_index(["code", "event"], verify_integrity=True)
+
+
+def add_main_ranking(frame, stress, events, end, min_peers):
+    """Apply the historical main order to one fixed horizon, on comparable products."""
+    z = frame.copy().reset_index(drop=True)
+    z["main_stress_ids"] = ""
+    z["main_stress_count"] = 0
+    z["main_stress_required"] = 0
+    z["main_missing_stress_ids"] = ""
+    for col in MAIN_SHOCK_STATS:
+        z[col] = np.nan
+    for col in MAIN_FIELDS.values():
+        z[col] = pd.Series(pd.NA, index=z.index, dtype="boolean") if col == "main_pareto" else np.nan
+    z["main_status"] = "主榜已结束冲击不足两轮"
+    z["main_peer_count"] = 0
+    for family, g in z.groupby("scenario_family"):
+        ids = [e.id for e in events if e.end <= end and (not e.families or family in e.families)]
+        index = pd.MultiIndex.from_product([g.code, ids], names=["code", "event"])
+        data = stress.reindex(index)
+        returns = data.stress_return.to_numpy().reshape(len(g), len(ids))
+        draws = data.stress_drawdown.to_numpy().reshape(len(g), len(ids))
+        valid = np.isfinite(returns) & np.isfinite(draws)
+        z.loc[g.index, "main_stress_ids"] = ",".join(ids)
+        z.loc[g.index, "main_stress_required"] = len(ids)
+        z.loc[g.index, "main_stress_count"] = valid.sum(axis=1)
+        z.loc[g.index, "main_missing_stress_ids"] = [
+            ",".join(e for e, ok in zip(ids, observed) if not ok) for observed in valid
+        ]
+        if len(ids) < 2:
+            continue
+        z.loc[g.index, "main_status"] = "主榜冲击净值覆盖不足"
+        ok = valid.all(axis=1)
+        idx = g.index[ok]
+        z.loc[idx, "worst_shock_return"] = returns[ok].min(axis=1)
+        z.loc[idx, "worst_shock_mdd"] = draws[ok].max(axis=1)
+        z.loc[idx, "median_shock_mdd"] = np.median(draws[ok], axis=1)
+    for _, g in z.groupby("group"):
+        if g.main_stress_ids.nunique() != 1:
+            raise ValueError("funds in same peer group have different main stress scenarios")
+        v = g.loc[g[MAIN_SHOCK_STATS].notna().all(axis=1)]
+        z.loc[g.index, "main_peer_count"] = len(v)
+        z.loc[v.index, "main_status"] = "主榜同类样本不足"
+        if len(v) < min_peers:
+            continue
+        scores = balance_ranks(v, ["return_for_rank"], ["max_drawdown"])
+        for source, target in MAIN_FIELDS.items():
+            z.loc[scores.index, target] = scores[source]
+        z.loc[scores.index, "main_status"] = "主榜已排名"
+    return z
+
 
 
 def forward(nav, signal, end):

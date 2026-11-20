@@ -1,0 +1,155 @@
+{
+  "asof": "2026-11-16",
+  "catalog_share_codes": 28346,
+  "valid_nav_paths": 25841,
+  "exact_asof_paths": 22151,
+  "explicit_subset": false,
+  "long_periodic_excluded": 145,
+  "include_long_periodic": false,
+  "main_method": "historical three-axis Pareto → balance → weakest → code; fixed horizon",
+  "main_top": 10,
+  "main_min_peers": 5,
+  "main_events": [
+    {
+      "id": "gold_20260130",
+      "baseline": "2026-01-29",
+      "end": "2026-02-02",
+      "families": [
+        "commodity"
+      ]
+    },
+    {
+      "id": "equity_20260323",
+      "baseline": "2026-03-20",
+      "end": "2026-03-23",
+      "families": []
+    },
+    {
+      "id": "rates_202606",
+      "baseline": "2026-06-05",
+      "end": "2026-06-11",
+      "families": []
+    },
+    {
+      "id": "credit_20261030",
+      "baseline": "2026-10-29",
+      "end": "2026-11-06",
+      "families": []
+    },
+    {
+      "id": "us_20261105",
+      "baseline": "2026-11-04",
+      "end": "2026-11-06",
+      "families": [
+        "overseas"
+      ]
+    },
+    {
+      "id": "bonds_202611",
+      "baseline": "2026-11-09",
+      "end": "2026-11-12",
+      "families": []
+    }
+  ],
+  "horizons": [
+    {
+      "horizon": "5y",
+      "eligible": 6405,
+      "ranked": 6395,
+      "research_ranked": 6396,
+      "legacy_ranked": 6395,
+      "main_status": {
+        "主榜同类样本不足": 9,
+        "主榜已排名": 6395,
+        "主榜冲击净值覆盖不足": 1
+      },
+      "rejected": {
+        "缺有效净值缓存": 2457,
+        "低波类别单日涨跌超过3%待核验": 576,
+        "期限起点缺历史": 11730,
+        "缺截止日净值": 3645,
+        "期限中间覆盖不足": 41,
+        "同基金其他份额": 3347,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    },
+    {
+      "horizon": "3y",
+      "eligible": 8827,
+      "ranked": 8813,
+      "research_ranked": 8815,
+      "legacy_ranked": 8813,
+      "main_status": {
+        "主榜同类样本不足": 12,
+        "主榜已排名": 8813,
+        "主榜冲击净值覆盖不足": 2
+      },
+      "rejected": {
+        "缺有效净值缓存": 2457,
+        "低波类别单日涨跌超过3%待核验": 646,
+        "期限起点缺历史": 6543,
+        "缺截止日净值": 3645,
+        "期限中间覆盖不足": 52,
+        "同基金其他份额": 6031,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    },
+    {
+      "horizon": "1y",
+      "eligible": 10858,
+      "ranked": 10848,
+      "research_ranked": 10849,
+      "legacy_ranked": 10848,
+      "main_status": {
+        "主榜已排名": 10848,
+        "主榜同类样本不足": 9,
+        "主榜冲击净值覆盖不足": 1
+      },
+      "rejected": {
+        "缺有效净值缓存": 2457,
+        "低波类别单日涨跌超过3%待核验": 233,
+        "期限起点缺历史": 1988,
+        "缺截止日净值": 3645,
+        "期限中间覆盖不足": 44,
+        "同基金其他份额": 8976,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    },
+    {
+      "horizon": "6m",
+      "eligible": 11285,
+      "ranked": 11138,
+      "research_ranked": 11277,
+      "legacy_ranked": 11276,
+      "main_status": {
+        "主榜同类样本不足": 7,
+        "主榜已排名": 11138,
+        "主榜冲击净值覆盖不足": 140
+      },
+      "rejected": {
+        "缺有效净值缓存": 2457,
+        "低波类别单日涨跌超过3%待核验": 205,
+        "期限起点缺历史": 1178,
+        "缺截止日净值": 3645,
+        "期限中间覆盖不足": 56,
+        "同基金其他份额": 9375,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    }
+  ],
+  "input_mode": "published feature/stress snapshot; no NAV refresh or new historical replay",
+  "source_snapshot": "industry_rank_dedup_20261116",
+  "source_sha256": {
+    "audit.json": "1940cb87c3f981dd0045a673e7b3e3af1506badb085a73a0bf1d380c5b457289",
+    "stress_events.csv": "4fc37901d1c9082f3777529b8d899f53a215b124d9390eb9ee79efb14ff56842",
+    "ranking_5y.csv": "284464de5d9b6dc45de6f7afe5b160ecb4083f49c341715ffe72d369fc403d0a",
+    "unranked_5y.csv": "ba956051207de0972b2d07d9974a38cdea843d1efe950bd6d1337af1ec8f00f1",
+    "ranking_3y.csv": "39ca91364ca01e9de4b9623b67a753b5d6617ecf66a4ff5173c9d77837f98507",
+    "unranked_3y.csv": "8ecd60305d04d15df7a83fcddef25b9f284dfa9e98b0dc0545d76092e8f35a29",
+    "ranking_1y.csv": "bd253417a8400d35dcacc580af5fb27dcc830116c4097fde1575bf20581a1270",
+    "unranked_1y.csv": "0d6343db00c736a8fe645f5ccc782c48ffb70ef24f8ca8bcf8973e61e5bf3f87",
+    "ranking_6m.csv": "e4e4471fdc855903e299bd839c4219a7114ff0eb524d5dcb5835283fcc23e339",
+    "unranked_6m.csv": "9a72b804e947f4f9b46c49c26ced867c02c021a17b8b7a9fd9f4ac051ddf24b5"
+  },
+  "oos_includes_main": false
+}

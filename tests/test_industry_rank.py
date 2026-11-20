@@ -8,9 +8,10 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
-from fundkit.defensive_screen import Shock, share_identity
-from fundkit.industry_rank import (HORIZONS, NavPath, assemble, compare_forward, effective_group,
-                                   feature, forward, legacy_events, pareto, ranking, stress_metrics)
+from fundkit.defensive_screen import Shock, pareto as historical_pareto, share_identity
+from fundkit.industry_rank import (HORIZONS, NavPath, add_main_ranking, assemble, compare_forward,
+                                   effective_group, feature, forward, legacy_events, main_stress_features,
+                                   pareto, ranking, stress_metrics)
 from scripts.fetch_all_fund_rank_data import get_one
 from scripts.run_industry_fund_ranking import load_catalog, main
 
@@ -28,6 +29,42 @@ def catalog_rows():
 
 
 class IndustryRankTest(unittest.TestCase):
+    def test_historical_pareto_matches_strict_dominance_with_ties(self):
+        rng = np.random.default_rng(12)
+        x = rng.integers(0, 5, size=(120, 3))
+        expected = [not ((x >= a).all(axis=1) & (x > a).any(axis=1)).any() for a in x]
+        np.testing.assert_array_equal(historical_pareto(x), expected)
+        self.assertTrue(historical_pareto(np.ones((5, 3))).all())
+
+    def test_main_counts_only_applicable_completed_configured_events(self):
+        end = pd.Timestamp("2026-11-16")
+        events = [Shock(key,key,pd.Timestamp(start),pd.Timestamp(finish),families=family)
+                  for key,start,finish,family in (
+                      ("first","2026-03-20","2026-03-23",()),
+                      ("second","2026-11-09","2026-11-12",()),
+                      ("overseas","2026-10-29","2026-11-04",("overseas",)),
+                      ("future","2026-11-16","2026-11-17",()))]
+        f = pd.DataFrame(dict(code=["000001","000002","000003","000004","000005"],
+                              group=["domestic"]*4+["overseas"],
+                              scenario_family=["domestic"]*4+["overseas"],
+                              return_for_rank=[.10,.20,.12,.99,.30],
+                              max_drawdown=[.05,.30,.10,.01,.10],
+                              end=end, research_rank=[4,2,3,1,1]))
+        raw = pd.DataFrame([(c,e.id,e.baseline,e.end, -loss, loss)
+                            for c,loss in zip(f.code,[.01,.03,.02,.001,.05]) for e in events
+                            if not (c == "000004" and e.id == "first")],
+                           columns=["code","event","baseline","stress_end","stress_return","stress_drawdown"])
+        metrics = main_stress_features(raw,events,end)
+        self.assertNotIn("future",metrics.index.get_level_values("event"))
+        z = add_main_ranking(f,metrics,events,end,2)
+        self.assertEqual(z.loc[z.main_rank.eq(1),"code"].tolist(),["000001"])
+        self.assertEqual(z.main_rank.iloc[:3].tolist(),[1,3,2])
+        self.assertEqual(z.research_rank.tolist(),f.research_rank.tolist())
+        self.assertEqual(z.main_stress_required.tolist(),[2,2,2,2,3])
+        self.assertEqual(z.main_missing_stress_ids.iloc[3],"first")
+        self.assertEqual(z.main_status.iloc[3],"主榜冲击净值覆盖不足")
+        self.assertEqual(z.main_status.iloc[4],"主榜同类样本不足")
+
     def test_fof_parenthesis_share_identity(self):
         pairs = [
             ("025029", "025030", "宝盈淳悦稳健配置3个月持有混合发起(FOF)"),
@@ -191,6 +228,18 @@ class IndustryRankTest(unittest.TestCase):
                                            top.worst_stress_return)
                 np.testing.assert_allclose(top[["shock_1_mdd","shock_2_mdd"]].max(axis=1),
                                            top.worst_stress_drawdown)
+            replay = d/"replay"
+            main(["--asof","2026-11-12","--replay-snapshot",str(out),"--output",str(replay),
+                  "--min-peers","2"])
+            for h in HORIZONS:
+                for label in ("ranking", "top10", "top10_stress", "top10_research", "top10_legacy"):
+                    left = pd.read_csv(out/f"{label}_{h}.csv",dtype={"code":str})
+                    right = pd.read_csv(replay/f"{label}_{h}.csv",dtype={"code":str})
+                    pd.testing.assert_frame_equal(left,right)
+                t = pd.read_csv(out/f"top10_{h}.csv",dtype={"code":str})
+                self.assertTrue(t.main_rank.notna().all())
+            with self.assertRaisesRegex(ValueError,"cutoff"):
+                main(["--asof","2026-11-13","--replay-snapshot",str(out),"--output",str(replay)])
             f = pd.read_csv(out/"oos_folds.csv")
             self.assertGreater(len(f),0)
             self.assertTrue(f.paired_complete.all())

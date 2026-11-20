@@ -4,19 +4,22 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+import hashlib
 import json
 import math
 from pathlib import Path
 import sys
 import time
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from fundkit.defensive_screen import Shock, adjusted_asof, market_category, money_index, share_identity
 from fundkit.industry_rank import (HORIZONS, RANK_COLS, NavPath, assemble, compare_forward,
-                                   effective_group, fold_dates, ranking, stress_metrics)
+                                   add_main_ranking, effective_group, fold_dates, main_stress_features,
+                                   ranking, stress_metrics)
 from scripts import fetch_all_fund_rank_data as fetch
 
 WATCH = ("025368","019851","021559","004400","710301")
@@ -134,55 +137,8 @@ def legacy_top(full, top, stress_cache):
     return result.join(pd.DataFrame(records,index=result.index,columns=columns))
 
 
-def current_rank(catalog, paths, events, end, out, top, min_peers, excluded=None):
-    coverage,stress,by_status,watch = [],[],[],[]
-    excluded = excluded if excluded is not None else catalog.iloc[0:0]
-    legacy_cache = {}
-    for h in HORIZONS:
-        f, missing = assemble(catalog,paths,end,h,events,stress_cache=legacy_cache)
-        result,matched = [],[]
-        for group,g in f.groupby("group",sort=True):
-            z = ranking(g,min_peers)
-            result.append(z)
-            cohort = g[g.stress_count.eq(2)]
-            if len(cohort)>=min_peers:
-                matched.append(ranking(cohort,min_peers))
-            coverage.append(dict(horizon=h,group=group,eligible=len(g),matched=len(cohort),
-                                 ranked=int(z.research_rank.notna().sum())))
-        full = pd.concat(result,ignore_index=True) if result else ranking(f,min_peers)
-        same = pd.concat(matched,ignore_index=True) if matched else full.iloc[0:0]
-        for label,table in (("ranking",full),("matched",same)):
-            sorted_ = table.sort_values(["group","research_rank","code"],na_position="last")
-            save(sorted_,out/f"{label}_{h}.csv")
-        top10 = full.loc[full.research_rank.le(top)].sort_values(["group","research_rank","code"])
-        save(top10,out/f"top10_{h}.csv")
-        save(legacy_top(full,top,legacy_cache),out/f"top10_legacy_{h}.csv")
-        # Require agreement rather than a new weighted average of the ranks.
-        consensus = same.research_rank.le(top) & same.legacy_rank.le(top)
-        consensus &= same.industry_proxy_rank.isna() | same.industry_proxy_rank.le(top)
-        save(same.loc[consensus].sort_values(["group","research_rank","code"]),out/f"consensus_{h}.csv")
-        shortlist = full.loc[full[list(RANK_COLS)].le(top).any(axis=1) | full.pareto.eq(True)]
-        save(shortlist.sort_values(["group","research_rank","code"]),out/f"shortlist_{h}.csv")
-        rejected = pd.DataFrame(missing,columns=["code","group","reason"])
-        # Excluded long-periodic funds stay auditable in every horizon's unranked file.
-        if len(excluded):
-            rejected = pd.concat([rejected,pd.DataFrame(
-                {"code":excluded.code,"group":excluded.group,"reason":LP_REASON})],
-                ignore_index=True)
-        save(rejected,out/f"unranked_{h}.csv")
-        for code in WATCH:
-            hit = full.loc[full.code.eq(code)]
-            why = rejected.loc[rejected.code.eq(code),"reason"]
-            if len(hit):
-                row = hit.iloc[0].drop(labels="_monthly").to_dict()
-                row["status"] = "已排名" if pd.notna(row["research_rank"]) else "同类样本不足"
-            else:
-                row = dict(code=code,status=why.iloc[0] if len(why) else "清单中无代码")
-            watch.append(dict(horizon=h,**row))
-        by_status.append(dict(horizon=h,eligible=len(full),ranked=int(full.research_rank.notna().sum()),
-                              matched_ranked=len(same),rejected=dict(Counter(rejected.reason))))
-        print(f"{h}: eligible={len(full)} matched={len(same)}",flush=True)
-
+def stress_table(catalog, paths, events, end):
+    stress = []
     for row in catalog.itertuples(index=False):
         if row.code not in paths:
             continue
@@ -194,10 +150,164 @@ def current_rank(catalog, paths, events, end, out, top, min_peers, excluded=None
             r = stress_metrics(nav,event,end) or {"recovery_status":"冲击净值覆盖不足"}
             stress.append(dict(code=row.code,name=row.name,group=row.group,event=event.id,label=event.label,
                                baseline=event.baseline,stress_end=event.end,source=event.source,**r))
-    save(pd.DataFrame(stress).reindex(columns=STRESS_COLS),out/"stress_events.csv")
-    save(pd.DataFrame(coverage,columns=["horizon","group","eligible","matched","ranked"]),out/"coverage_by_group.csv")
+    return pd.DataFrame(stress).reindex(columns=STRESS_COLS)
+
+
+def export_rankings(full, out, h, top):
+    full = full.sort_values(["group", "main_rank", "code"], na_position="last")
+    save(full,out/f"ranking_{h}.csv")
+    for label, key in (("", "main"), ("research_", "research"), ("industry_proxy_", "industry_proxy")):
+        col = f"{key}_rank"
+        subset = full.loc[full[col].le(top)].sort_values(["group",col,"code"])
+        save(subset,out/f"top10_{label}{h}.csv")
+    # A stress-only view, independent of period return, full-period drawdown or legacy score.
+    st = full.loc[full.legacy_rank.notna()].sort_values(
+        ["group","worst_stress_drawdown","worst_stress_return","code"],
+        ascending=[True,True,False,True]).copy()
+    st["stress_rank"] = st.groupby("group").cumcount() + 1
+    save(st.loc[st.stress_rank.le(top)],out/f"top10_stress_{h}.csv")
+    no_main = full.loc[full.main_rank.isna(),
+                       ["code","group","main_status","main_stress_count","main_stress_required",
+                        "main_peer_count","main_missing_stress_ids"]]
+    save(no_main,out/f"unranked_main_{h}.csv")
+    return full
+
+
+def coverage_row(h, full):
+    return dict(horizon=h, eligible=len(full), ranked=int(full.main_rank.notna().sum()),
+                research_ranked=int(full.research_rank.notna().sum()),
+                legacy_ranked=int(full.legacy_rank.notna().sum()),
+                main_status=dict(Counter(full.main_status)))
+
+
+def main_group_coverage(h, full, top):
+    for group, g in full.groupby("group", sort=True):
+        yield dict(horizon=h,group=group,eligible=len(g),matched=int(g.stress_count.eq(2).sum()),
+                   ranked=int(g.main_rank.notna().sum()),research_ranked=int(g.research_rank.notna().sum()),
+                   legacy_ranked=int(g.legacy_rank.notna().sum()),
+                   main_top=int(g.main_rank.le(top).sum()),research_top=int(g.research_rank.le(top).sum()),
+                   main_research_overlap=int((g.main_rank.le(top) & g.research_rank.le(top)).sum()))
+
+
+def current_rank(catalog, paths, events, main_events, end, out, top, min_peers, excluded=None):
+    coverage,by_status,watch = [],[],[]
+    excluded = excluded if excluded is not None else catalog.iloc[0:0]
+    stress = stress_table(catalog,paths,events,end)
+    main_stress = main_stress_features(stress,main_events,end)
+    legacy_cache = {}
+    for h in HORIZONS:
+        f, missing = assemble(catalog,paths,end,h,events,stress_cache=legacy_cache)
+        result,matched = [],[]
+        for _,g in f.groupby("group",sort=True):
+            result.append(ranking(g,min_peers))
+            cohort = g[g.stress_count.eq(2)]
+            if len(cohort)>=min_peers:
+                matched.append(ranking(cohort,min_peers))
+        full = pd.concat(result,ignore_index=True) if result else ranking(f,min_peers)
+        same = pd.concat(matched,ignore_index=True) if matched else full.iloc[0:0]
+        full = add_main_ranking(full,main_stress,main_events,end,min_peers)
+        coverage.extend(main_group_coverage(h,full,top))
+        full = export_rankings(full,out,h,top)
+        save(same.sort_values(["group","research_rank","code"]),out/f"matched_{h}.csv")
+        save(legacy_top(full,top,legacy_cache),out/f"top10_legacy_{h}.csv")
+        # Research/legacy/industry agreement on their original shared cohort.
+        consensus = same.research_rank.le(top) & same.legacy_rank.le(top)
+        consensus &= same.industry_proxy_rank.isna() | same.industry_proxy_rank.le(top)
+        save(same.loc[consensus].sort_values(["group","research_rank","code"]),out/f"consensus_{h}.csv")
+        shortlist = full.loc[full[["main_rank", *RANK_COLS]].le(top).any(axis=1)
+                             | full.main_pareto.eq(True) | full.pareto.eq(True)]
+        save(shortlist,out/f"shortlist_{h}.csv")
+        rejected = pd.DataFrame(missing,columns=["code","group","reason"])
+        if len(excluded):
+            rejected = pd.concat([rejected,pd.DataFrame(
+                {"code":excluded.code,"group":excluded.group,"reason":LP_REASON})],
+                ignore_index=True)
+        save(rejected,out/f"unranked_{h}.csv")
+        for code in WATCH:
+            hit = full.loc[full.code.eq(code)]
+            why = rejected.loc[rejected.code.eq(code),"reason"]
+            if len(hit):
+                row = hit.iloc[0].drop(labels="_monthly").to_dict()
+                row["status"] = row["main_status"]
+            else:
+                row = dict(code=code,status=why.iloc[0] if len(why) else "清单中无代码")
+            watch.append(dict(horizon=h,**row))
+        by_status.append(dict(coverage_row(h,full),matched_ranked=len(same),
+                              rejected=dict(Counter(rejected.reason))))
+        print(f"{h}: eligible={len(full)} main_ranked={full.main_rank.notna().sum()} matched={len(same)}",flush=True)
+
+    save(stress,out/"stress_events.csv")
+    save(pd.DataFrame(coverage),out/"coverage_by_group.csv")
     save(pd.DataFrame(watch),out/"watchlist.csv")
     return by_status
+
+
+def method_audit(events, end, top, min_peers):
+    return dict(main_method="historical three-axis Pareto → balance → weakest → code; fixed horizon",
+                main_top=top, main_min_peers=min_peers,
+                main_events=[dict(id=e.id,baseline=e.baseline.date().isoformat(),end=e.end.date().isoformat(),
+                                  families=list(e.families)) for e in events if e.end <= end])
+
+
+def replay_snapshot(source, out, end, events, top, min_peers):
+    """Recompute current main ranks from an immutable, same-date feature/stress export."""
+    if out.resolve() == source.resolve():
+        raise ValueError("replay output must differ from source directory")
+    files = ["audit.json","stress_events.csv",
+             *(f"{prefix}_{h}.csv" for h in HORIZONS for prefix in ("ranking","unranked"))]
+    manifest = {name:hashlib.sha256((source/name).read_bytes()).hexdigest() for name in files}
+    src = json.loads((source/"audit.json").read_text(encoding="utf-8-sig"))
+    if pd.Timestamp(src["asof"]) != end:
+        raise ValueError("snapshot cutoff differs from --asof")
+    stress = pd.read_csv(source/"stress_events.csv",dtype={"code":str},float_precision="round_trip")
+    metrics = main_stress_features(stress,events,end)
+    stress_index = stress.set_index(["code","event"],verify_integrity=True)
+    all_rows = {}
+    for h in HORIZONS:
+        frame = pd.read_csv(source/f"ranking_{h}.csv",dtype={"code":str,"product_id":str},
+                            float_precision="round_trip")
+        rejected = read(source/f"unranked_{h}.csv")
+        if (not pd.to_datetime(frame.end).eq(end).all()
+                or not np.isfinite(frame[["return_for_rank","max_drawdown"]]).all().all()
+                or frame.duplicated(["group","product_key","currency","pricing_basis"]).any()
+                or frame.code.duplicated().any() or rejected.code.duplicated().any()
+                or set(frame.code).intersection(rejected.code)
+                or len(frame)+len(rejected) != src["catalog_share_codes"]):
+            raise ValueError(f"inconsistent cutoff, product identity, or catalog coverage: {h}")
+        for family,g in frame.groupby("scenario_family"):
+            ids = [e.id for e in events if e.end <= end and (not e.families or family in e.families)]
+            i = pd.MultiIndex.from_product([g.code, ids], names=["code","event"])
+            if not i.isin(metrics.index).all():
+                raise ValueError(f"snapshot missing expected event rows: {h}, {family}")
+        all_rows[h] = (add_main_ranking(frame,metrics,events,end,min_peers),rejected)
+    out.mkdir(parents=True,exist_ok=True)
+    coverage,horizons,watch = [],[],[]
+    for h,(full,rejected) in all_rows.items():
+        coverage.extend(main_group_coverage(h,full,top))
+        full = export_rankings(full,out,h,top)
+        horizons.append(dict(coverage_row(h,full),rejected=dict(Counter(rejected.reason))))
+        save(rejected,out/f"unranked_{h}.csv")
+        result = full.loc[full.legacy_rank.le(top)]
+        cache = {(row.code, event): (r.stress_drawdown, r.stress_return)
+                 for row in result.itertuples(index=False) for event in row.stress_ids.split(",")
+                 for r in (stress_index.loc[(row.code,event)],)}
+        save(legacy_top(full,top,cache),out/f"top10_legacy_{h}.csv")
+        for code in WATCH:
+            hit = full.loc[full.code.eq(code)]
+            why = rejected.loc[rejected.code.eq(code),"reason"]
+            row = (hit.iloc[0].to_dict() if len(hit) else dict(code=code))
+            row["status"] = row.get("main_status", why.iloc[0] if len(why) else "清单中无代码")
+            watch.append(dict(horizon=h,**row))
+    save(pd.DataFrame(coverage),out/"coverage_by_group.csv")
+    save(pd.DataFrame(watch),out/"watchlist.csv")
+    cov = {key:src[key] for key in ("asof","catalog_share_codes","valid_nav_paths",
+                                   "exact_asof_paths","explicit_subset","long_periodic_excluded",
+                                   "include_long_periodic")}
+    cov.update(method_audit(events,end,top,min_peers),horizons=horizons,
+               input_mode="published feature/stress snapshot; no NAV refresh or new historical replay",
+               source_snapshot=source.name, source_sha256=manifest, oos_includes_main=False)
+    (out/"audit.json").write_text(json.dumps(cov,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    print(json.dumps(cov,ensure_ascii=False),flush=True)
 
 
 def rollup(summary):
@@ -274,6 +384,7 @@ def main(argv=None):
     p.add_argument("--asof",required=True)
     p.add_argument("--data-dir",type=Path,default=ROOT/"data"/"all_funds")
     p.add_argument("--output",type=Path,default=ROOT/"reports"/"industry_rank")
+    p.add_argument("--replay-snapshot",type=Path,help="rank published features and events at the same cutoff; no NAV or OOS recompute")
     p.add_argument("--fetch",action="store_true",help="resume and extend public data cache before ranking")
     p.add_argument("--workers",type=int,default=12)
     p.add_argument("--codes",help="comma-separated explicitly scoped debug subset")
@@ -292,6 +403,11 @@ def main(argv=None):
     if a.pit_catalog_dir and a.codes:
         p.error("--pit-catalog-dir and --codes cannot be combined")
     end = pd.Timestamp(a.asof).normalize()
+    main_events = read_events(a.shocks)
+    if a.replay_snapshot:
+        if a.fetch or a.codes or a.pit_catalog_dir or a.include_long_periodic:
+            p.error("snapshot replay uses the original universe; cannot combine with fetch, codes, PIT or long-periodic overrides")
+        return replay_snapshot(a.replay_snapshot,a.output,end,main_events,a.top,a.min_peers)
     historical = load_historical_catalogs(a.pit_catalog_dir,end,a.oos_folds,a.oos_months)
     if a.fetch:
         years = 5+math.ceil((a.oos_folds*a.oos_months+1)/12)
@@ -312,7 +428,7 @@ def main(argv=None):
     if not a.include_long_periodic:
         excluded = catalog[catalog.is_long_periodic]
         rankable = catalog[~catalog.is_long_periodic]
-    coverage = current_rank(rankable,paths,events,end,a.output,a.top,a.min_peers,excluded)
+    coverage = current_rank(rankable,paths,events,main_events,end,a.output,a.top,a.min_peers,excluded)
     if len(excluded):
         long_periodic_audit(excluded,paths,events,end,a.output)
     _,recency = recency_audit(catalog,paths,end,a.output)
@@ -340,7 +456,9 @@ def main(argv=None):
            "oos_mode":("dated catalog replay; NAV availability and execution assumptions remain"
                        if historical is not None else
                        "historical replay on supplied snapshot; survivor/current-classification bias possible"),
-           "elapsed_seconds":round(time.monotonic()-start,2)}
+           "elapsed_seconds":round(time.monotonic()-start,2),
+           **method_audit(main_events,end,a.top,a.min_peers),
+           "oos_includes_main":False}
     (a.output/"audit.json").write_text(json.dumps(cov,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(cov,ensure_ascii=False),flush=True)
 

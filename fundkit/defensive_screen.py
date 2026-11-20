@@ -177,9 +177,38 @@ def percentile(s, higher):
 
 
 def pareto(values):
-    # Vectorized dominance comparisons avoid nested Python loops on large groups.
-    return np.array([not ((values >= a).all(axis=1) & (values > a).any(axis=1)).any()
-                     for a in values], dtype=bool)
+    order = np.lexsort(tuple(-values[:, i] for i in reversed(range(values.shape[1]))))
+    front = []
+    marks = np.zeros(len(values), dtype=bool)
+    for k in order:
+        v = values[k]
+        if front:
+            earlier = values[front]
+            if np.any(np.all(earlier >= v, axis=1) & np.any(earlier > v, axis=1)):
+                continue
+        front.append(k)
+        marks[k] = True
+    return marks
+
+
+def balance_ranks(group, return_cols, drawdown_cols):
+    """Original three-axis Pareto/balance/weakest ordering on a complete peer pool."""
+    scores = pd.DataFrame(index=group.index)
+    scores["return_score"] = group[return_cols].apply(percentile, higher=True).mean(axis=1)
+    scores["drawdown_score"] = group[drawdown_cols].apply(percentile, higher=False).mean(axis=1)
+    scores["shock_score"] = pd.concat([
+        percentile(group.worst_shock_return, True), percentile(group.worst_shock_mdd, False),
+        percentile(group.median_shock_mdd, False),
+    ], axis=1).mean(axis=1)
+    scores["pareto"] = pareto(scores[list(AXES)].to_numpy())
+    scores["balance_score"] = scores[list(AXES)].mean(axis=1)
+    scores["weakest_score"] = scores[list(AXES)].min(axis=1)
+    scores["peer_count"] = len(group)
+    scores["code"] = group.code
+    scores = scores.sort_values(["pareto", "balance_score", "weakest_score", "code"],
+                                ascending=[False, False, False, True])
+    scores["peer_rank"] = np.arange(1, len(scores) + 1)
+    return scores
 
 
 def rank_candidates(data, *, shock_count, top, min_peers=3):
@@ -208,21 +237,9 @@ def rank_candidates(data, *, shock_count, top, min_peers=3):
             rows.loc[group.index, "selection_status"] = "同类样本不足"
             continue
         win = TIER_WINDOWS[group.horizon_tier.iloc[0]]
-        scores = pd.DataFrame(index=group.index)
-        scores["return_score"] = pd.concat([percentile(group[f"return_{w}"], True) for w in win], axis=1).mean(axis=1)
-        scores["drawdown_score"] = pd.concat([percentile(group[f"mdd_{w}"], False) for w in win], axis=1).mean(axis=1)
-        scores["shock_score"] = pd.concat([
-            percentile(group.worst_shock_return, True), percentile(group.worst_shock_mdd, False),
-            percentile(group.median_shock_mdd, False),
-        ], axis=1).mean(axis=1)
-        scores["pareto"] = pareto(scores[list(AXES)].to_numpy())
-        scores["balance_score"] = scores[list(AXES)].mean(axis=1)
-        scores["weakest_score"] = scores[list(AXES)].min(axis=1)
-        scores["peer_count"] = len(group)
-        scores["code"] = group.code
-        scores = scores.sort_values(["pareto", "balance_score", "weakest_score", "code"],
-                                    ascending=[False, False, False, True])
-        scores["peer_rank"] = np.arange(1, len(scores) + 1)
+        scores = balance_ranks(group,
+                               [f"return_{w}" for w in win],
+                               [f"mdd_{w}" for w in win])
         scores["selection_status"] = np.where(scores.peer_rank <= top, "入围", "未入围")
         for c in scores.columns.drop("code"):
             if c not in rows:
