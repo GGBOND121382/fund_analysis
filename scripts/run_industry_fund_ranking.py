@@ -199,6 +199,8 @@ def main_group_coverage(h, full, top):
                    ranked=int(g.main_rank.notna().sum()),research_ranked=int(g.research_rank.notna().sum()),
                    legacy_ranked=int(g.legacy_rank.notna().sum()),
                    main_top=int(g.main_rank.le(top).sum()),research_top=int(g.research_rank.le(top).sum()),
+                   global_ranked=int(g.global_rank.notna().sum()),
+                   global_top10=int(g.global_rank.le(top).sum()),
                    main_research_overlap=int((g.main_rank.le(top) & g.research_rank.le(top)).sum()))
 
 
@@ -263,8 +265,10 @@ def method_audit(events, end, top, min_peers):
                 main_events=[dict(id=e.id,baseline=e.baseline.date().isoformat(),end=e.end.date().isoformat(),
                                   families=list(e.families)) for e in events if e.end <= end],
                 global_method="same three-axis Pareto → balance → weakest; percentiles computed once across all asset classes",
+                global_stress_policy="only completed family-neutral market-wide events enter the cross-asset shock axis; family-specific events remain in category diagnostics",
                 global_stress_events=[dict(id=e.id,baseline=e.baseline.date().isoformat(),end=e.end.date().isoformat())
-                                      for e in events if e.end <= end and not e.families])
+                                      for e in events if e.end <= end and not e.families],
+                global_min_common_shocks=2)
 
 
 def replay_snapshot(source, out, end, events, top, min_peers):
