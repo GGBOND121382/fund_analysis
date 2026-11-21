@@ -401,7 +401,10 @@ def add_global_ranking(frame, stress, events, end, min_peers):
     eligible = z.loc[~duplicate & z.global_worst_shock_return.notna()
                      & z.global_worst_shock_mdd.notna()
                      & z.global_median_shock_mdd.notna()
-                     & z.return_for_rank.notna() & z.max_drawdown.notna()]
+                     & z.return_for_rank.notna() & z.max_drawdown.notna()].copy()
+    eligible["worst_shock_return"] = eligible["global_worst_shock_return"]
+    eligible["worst_shock_mdd"] = eligible["global_worst_shock_mdd"]
+    eligible["median_shock_mdd"] = eligible["global_median_shock_mdd"]
     z["global_peer_count"] = len(eligible)
     if len(eligible) >= min_peers:
         scores = balance_ranks(eligible, ["return_for_rank"], ["max_drawdown"])
