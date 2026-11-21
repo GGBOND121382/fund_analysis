@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from fundkit.defensive_screen import Shock, adjusted_asof, market_category, money_index, share_identity
 from fundkit.industry_rank import (HORIZONS, RANK_COLS, NavPath, assemble, compare_forward,
-                                   add_main_ranking, add_global_ranking, effective_group, fold_dates, main_stress_features,
+                                   add_main_ranking, add_global_ranking, effective_group, periodic_classification, fold_dates, main_stress_features,
                                    ranking, stress_metrics)
 from scripts import fetch_all_fund_rank_data as fetch
 
@@ -37,7 +37,26 @@ def optional(path):
     return read(path) if path.is_file() else pd.DataFrame()
 
 
-def load_catalog(path, codes=None):
+def load_periodic_overrides(path=ROOT/"config"/"fund_periodic_overrides.csv"):
+    if not path.is_file():
+        return {}
+    d = pd.read_csv(path,dtype={"code":str},keep_default_na=False)
+    required = {"code","cycle_months","source_url"}
+    if not required.issubset(d.columns):
+        raise ValueError(f"periodic override missing columns: {sorted(required-set(d.columns))}")
+    if d.code.duplicated().any() or not d.code.str.fullmatch(r"\\d{6}").all():
+        raise ValueError("periodic override codes must be unique six-digit strings")
+    if (pd.to_numeric(d.cycle_months,errors="coerce").isna()
+            | (pd.to_numeric(d.cycle_months,errors="coerce") <= 0)).any():
+        raise ValueError("periodic override cycle_months must be positive")
+    if d.source_url.str.strip().eq("").any():
+        raise ValueError("periodic override requires a source_url for every code")
+    return {r.code:{"cycle_months":int(r.cycle_months),"source_url":r.source_url}
+            for r in d.itertuples(index=False)}
+
+
+def load_catalog(path, codes=None, periodic_overrides=None):
+    periodic_overrides = load_periodic_overrides() if periodic_overrides is None else periodic_overrides
     d = pd.read_csv(path, dtype={"code": str, "product_id": str},
                     keep_default_na=False).drop_duplicates("code")
     if codes is not None:
@@ -50,12 +69,18 @@ def load_catalog(path, codes=None):
     for r in d.itertuples(index=False):
         name = str(r.name)
         group,family,currency,basis = market_category(name,r.type)
-        group,periodic = effective_group(name,group,r.type)
+        group,is_long,is_unverified,periodic_status,periodic_months,periodic_source = periodic_classification(
+            name,group,r.type,r.code,periodic_overrides)
         product,share = share_identity(name)
+        reason = ("长封闭定开（≥24月）默认排除排名" if is_long else
+                  "定开运作周期未核实，暂不参与排名" if is_unverified else "")
         rows.append(dict(code=r.code,name=name,fund_type=r.type,group=group,product=product,
                          product_id=getattr(r,"product_id","").strip(),
                          share=share,scenario_family=family,currency=currency,
-                         pricing_basis=basis,is_long_periodic=periodic))
+                         pricing_basis=basis,is_long_periodic=is_long,
+                         is_periodic_unverified=is_unverified,periodic_status=periodic_status,
+                         periodic_months=periodic_months,periodic_source=periodic_source,
+                         periodic_exclusion_reason=reason))
     catalog = pd.DataFrame(rows)
     # Optional product IDs must come from the input catalog. Use a name to
     # inherit an ID only when that name points to a single ID in this cohort.
@@ -237,7 +262,8 @@ def current_rank(catalog, paths, events, main_events, end, out, top, min_peers, 
         rejected = pd.DataFrame(missing,columns=["code","group","reason"])
         if len(excluded):
             rejected = pd.concat([rejected,pd.DataFrame(
-                {"code":excluded.code,"group":excluded.group,"reason":LP_REASON})],
+                {"code":excluded.code,"group":excluded.group,
+                 "reason":excluded.periodic_exclusion_reason})],
                 ignore_index=True)
         save(rejected,out/f"unranked_{h}.csv")
         for code in WATCH:
@@ -454,8 +480,8 @@ def main(argv=None):
     excluded = catalog.iloc[0:0]
     rankable = catalog
     if not a.include_long_periodic:
-        excluded = catalog[catalog.is_long_periodic]
-        rankable = catalog[~catalog.is_long_periodic]
+        excluded = catalog[catalog.is_long_periodic | catalog.is_periodic_unverified]
+        rankable = catalog[~(catalog.is_long_periodic | catalog.is_periodic_unverified)]
     coverage = current_rank(rankable,paths,events,main_events,end,a.output,a.top,a.min_peers,excluded)
     if len(excluded):
         long_periodic_audit(excluded,paths,events,end,a.output)
@@ -472,7 +498,9 @@ def main(argv=None):
     for name,table in (("oos_selections",selected),("oos_folds",summary),("oos_summary",rollup(summary)),("oos_paired_deltas",paired_deltas(summary))):
         save(table,a.output/f"{name}.csv")
     cov = {"asof":a.asof,"catalog_share_codes":len(catalog),"valid_nav_paths":len(paths),
-           "long_periodic_excluded":int(len(excluded)),
+           "long_periodic_excluded":int(excluded.is_long_periodic.sum()),
+           "periodic_unverified_excluded":int(excluded.is_periodic_unverified.sum()),
+           "periodic_overrides":load_periodic_overrides(),
            "include_long_periodic":bool(a.include_long_periodic),
            "nav_recency":recency,
            "nav_audit_share_codes":len(audit),
