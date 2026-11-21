@@ -421,17 +421,25 @@ def paired_deltas(summary):
 
 
 def long_periodic_audit(catalog, paths, events, end, out):
-    """Raw per-horizon metrics for funds excluded from ranking eligibility."""
+    """Audit confirmed long-cycle and unverified periodic bond funds outside rankings."""
     rows = []
     for h in HORIZONS:
         f, missing = assemble(catalog,paths,end,h,events)
         if len(f):
-            rows.append(f.assign(horizon=h,audit_status="已评估（不参与排名）"))
+            f = f.copy()
+            f["horizon"] = h
+            f["audit_status"] = np.where(f.is_long_periodic,
+                "已核验长周期定开，排除排名","定开运作周期未核实，暂不参与排名")
+            rows.append(f)
         for code,group,reason in missing:
-            rows.append(pd.DataFrame([dict(horizon=h,code=code,group=group,audit_status=reason)]))
+            meta = catalog.loc[catalog.code.eq(code)].iloc[0].to_dict()
+            rows.append(pd.DataFrame([dict(meta,horizon=h,code=code,group=group,
+                                           audit_status=reason)]))
     table = pd.concat(rows,ignore_index=True) if rows else pd.DataFrame(
         columns=["horizon","code","group","audit_status"])
-    save(table,out/"long_periodic_audit.csv")
+    save(table,out/"periodic_exclusion_audit.csv")
+    save(table.loc[table.get("is_long_periodic",pd.Series(False,index=table.index)).eq(True)],
+         out/"long_periodic_audit.csv")
     return table
 
 
