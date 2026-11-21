@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/fund-analysis-v1.0-risk-exits-20261111
+      - codex/fund-analysis-all-fund-ranking-20261114
   pull_request:
 
 jobs:
