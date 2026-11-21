@@ -186,6 +186,10 @@ def coverage_row(h, full):
     return dict(horizon=h, eligible=len(full), ranked=int(full.main_rank.notna().sum()),
                 research_ranked=int(full.research_rank.notna().sum()),
                 legacy_ranked=int(full.legacy_rank.notna().sum()),
+                global_ranked=int(full.global_rank.notna().sum()),
+                global_top10=int(full.global_rank.le(10).sum()),
+                global_peer_count=int(full.global_peer_count.max()) if len(full) else 0,
+                global_status=dict(Counter(full.global_status)),
                 main_status=dict(Counter(full.main_status)))
 
 
@@ -224,8 +228,9 @@ def current_rank(catalog, paths, events, main_events, end, out, top, min_peers, 
         consensus = same.research_rank.le(top) & same.legacy_rank.le(top)
         consensus &= same.industry_proxy_rank.isna() | same.industry_proxy_rank.le(top)
         save(same.loc[consensus].sort_values(["group","research_rank","code"]),out/f"consensus_{h}.csv")
-        shortlist = full.loc[full[["main_rank", *RANK_COLS]].le(top).any(axis=1)
-                             | full.main_pareto.eq(True) | full.pareto.eq(True)]
+        shortlist = full.loc[full[["main_rank", "global_rank", *RANK_COLS]].le(top).any(axis=1)
+                             | full.main_pareto.eq(True) | full.global_pareto.eq(True)
+                             | full.pareto.eq(True)]
         save(shortlist,out/f"shortlist_{h}.csv")
         rejected = pd.DataFrame(missing,columns=["code","group","reason"])
         if len(excluded):
