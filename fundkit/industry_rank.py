@@ -19,7 +19,9 @@ METHODS = ("research", "industry_proxy", "legacy", "return_only", "drawdown_only
 RANK_COLS = tuple(f"{m}_rank" for m in METHODS)
 PARETO_AXES = ("return_for_rank", "max_drawdown", "worst_stress_drawdown", "worst_stress_return")
 FEATURE_COLS = ("code", "group", "product", "product_key", "share", "name", "currency", "pricing_basis",
-                "scenario_family", "fund_type", "is_long_periodic", "obs", "start", "end",
+                "scenario_family", "fund_type", "is_long_periodic", "is_periodic_unverified",
+                "periodic_status", "periodic_months", "periodic_source", "periodic_exclusion_reason",
+                "obs", "start", "end",
                 "period_return", "return_for_rank", "max_drawdown", "negative_month_loss",
                 "negative_month_frequency", "negative_month_mean", "worst_stress_drawdown",
                 "worst_stress_return", "stress_count", "stress_ids", "_monthly")
