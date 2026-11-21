@@ -1,0 +1,168 @@
+{
+  "asof": "2026-11-20",
+  "catalog_share_codes": 28346,
+  "valid_nav_paths": 25954,
+  "long_periodic_excluded": 145,
+  "include_long_periodic": false,
+  "nav_recency": {
+    "recent_business_days": [
+      "2026-11-16",
+      "2026-11-17",
+      "2026-11-18",
+      "2026-11-19",
+      "2026-11-20"
+    ],
+    "exact_2026-11-16": 25204,
+    "exact_2026-11-17": 25246,
+    "exact_2026-11-18": 25225,
+    "exact_2026-11-19": 24248,
+    "exact_2026-11-20": 24002,
+    "codes_missing_any_recent_day": 4819
+  },
+  "nav_audit_share_codes": 28346,
+  "valid_current_catalog_paths": 25954,
+  "exact_asof_paths": 24002,
+  "explicit_subset": false,
+  "horizons": [
+    {
+      "horizon": "5y",
+      "eligible": 6464,
+      "ranked": 6422,
+      "research_ranked": 6461,
+      "legacy_ranked": 6422,
+      "main_status": {
+        "主榜同类样本不足": 3,
+        "主榜已排名": 6422,
+        "主榜冲击净值覆盖不足": 39
+      },
+      "matched_ranked": 6422,
+      "rejected": {
+        "缺有效净值缓存": 2344,
+        "低波类别单日涨跌超过3%待核验": 576,
+        "期限起点缺历史": 13414,
+        "缺截止日净值": 1948,
+        "期限中间覆盖不足": 82,
+        "同基金其他份额": 3373,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    },
+    {
+      "horizon": "3y",
+      "eligible": 8873,
+      "ranked": 8811,
+      "research_ranked": 8871,
+      "legacy_ranked": 8811,
+      "main_status": {
+        "主榜已排名": 8811,
+        "主榜同类样本不足": 2,
+        "主榜冲击净值覆盖不足": 60
+      },
+      "matched_ranked": 8811,
+      "rejected": {
+        "缺有效净值缓存": 2344,
+        "低波类别单日涨跌超过3%待核验": 644,
+        "期限起点缺历史": 8231,
+        "缺截止日净值": 1948,
+        "期限中间覆盖不足": 124,
+        "同基金其他份额": 6037,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    },
+    {
+      "horizon": "1y",
+      "eligible": 11712,
+      "ranked": 11661,
+      "research_ranked": 11706,
+      "legacy_ranked": 11661,
+      "main_status": {
+        "主榜同类样本不足": 6,
+        "主榜已排名": 11661,
+        "主榜冲击净值覆盖不足": 45
+      },
+      "matched_ranked": 11661,
+      "rejected": {
+        "缺有效净值缓存": 2344,
+        "低波类别单日涨跌超过3%待核验": 235,
+        "期限起点缺历史": 2149,
+        "缺截止日净值": 1948,
+        "期限中间覆盖不足": 235,
+        "同基金其他份额": 9578,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    },
+    {
+      "horizon": "6m",
+      "eligible": 12119,
+      "ranked": 11932,
+      "research_ranked": 12112,
+      "legacy_ranked": 12080,
+      "main_status": {
+        "主榜已排名": 11932,
+        "主榜冲击净值覆盖不足": 181,
+        "主榜同类样本不足": 6
+      },
+      "matched_ranked": 12080,
+      "rejected": {
+        "缺有效净值缓存": 2344,
+        "低波类别单日涨跌超过3%待核验": 206,
+        "期限起点缺历史": 1358,
+        "缺截止日净值": 1948,
+        "期限中间覆盖不足": 259,
+        "同基金其他份额": 9967,
+        "长封闭定开（≥24月）默认排除排名": 145
+      }
+    }
+  ],
+  "oos_requested_folds": 12,
+  "oos_holding_months": 3,
+  "oos_fold_rows": 7377,
+  "oos_paired_complete_rows": 7308,
+  "oos_mode": "historical replay on supplied snapshot; survivor/current-classification bias possible",
+  "elapsed_seconds": 373.63,
+  "main_method": "historical three-axis Pareto → balance → weakest → code; fixed horizon",
+  "main_top": 10,
+  "main_min_peers": 5,
+  "main_events": [
+    {
+      "id": "gold_20260130",
+      "baseline": "2026-01-29",
+      "end": "2026-02-02",
+      "families": [
+        "commodity"
+      ]
+    },
+    {
+      "id": "equity_20260323",
+      "baseline": "2026-03-20",
+      "end": "2026-03-23",
+      "families": []
+    },
+    {
+      "id": "rates_202606",
+      "baseline": "2026-06-05",
+      "end": "2026-06-11",
+      "families": []
+    },
+    {
+      "id": "credit_20261030",
+      "baseline": "2026-10-29",
+      "end": "2026-11-06",
+      "families": []
+    },
+    {
+      "id": "us_20261105",
+      "baseline": "2026-11-04",
+      "end": "2026-11-06",
+      "families": [
+        "overseas"
+      ]
+    },
+    {
+      "id": "bonds_202611",
+      "baseline": "2026-11-09",
+      "end": "2026-11-12",
+      "families": []
+    }
+  ],
+  "oos_includes_main": false
+}
