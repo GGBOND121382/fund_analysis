@@ -13,6 +13,7 @@ from fundkit.defensive_screen import Shock, balance_ranks
 HORIZONS = {"5y": (60, 1050), "3y": (36, 645), "1y": (12, 215), "6m": (6, 105)}
 LOW_VOL = re.compile("债|固收|绝对收益|货币|FOF-稳健")
 PERIODIC = re.compile(r"(?<!\d)(\d{1,3})\s*(个月|月|年)\s*(?:定期开放|定开|开放|封闭)")
+PERIODIC_ANY = re.compile(r"定期开放|定开|封闭")
 EXTENDED_NOVEMBER = "bonds_202611_through_13"
 METHODS = ("research", "industry_proxy", "legacy", "return_only", "drawdown_only", "preservation")
 RANK_COLS = tuple(f"{m}_rank" for m in METHODS)
@@ -24,13 +25,34 @@ FEATURE_COLS = ("code", "group", "product", "product_key", "share", "name", "cur
                 "worst_stress_return", "stress_count", "stress_ids", "_monthly")
 
 
+def periodic_classification(name, group, fund_type, code="", overrides=None):
+    """Return category, exclusion flags and evidence status for periodic bond funds."""
+    applies = LOW_VOL.search(str(group)) or str(fund_type).startswith("债券")
+    if not applies:
+        return group, False, False, "", None, ""
+    override = (overrides or {}).get(str(code).zfill(6))
+    if override:
+        months = int(override["cycle_months"])
+        status = "合同核验：{}个月".format(months)
+        if months >= 24:
+            return "债券长封闭定开（≥24月）", True, False, status, months, override.get("source_url","")
+        return group, False, False, status, months, override.get("source_url","")
+    matches = list(PERIODIC.finditer(str(name)))
+    if matches:
+        months = max(int(m[1]) * (12 if m[2] == "年" else 1) for m in matches)
+        status = "名称识别：{}个月".format(months)
+        if months >= 24:
+            return "债券长封闭定开（≥24月）", True, False, status, months, ""
+        return group, False, False, status, months, ""
+    if PERIODIC_ANY.search(str(name)):
+        return group, False, True, "名称显示定开但运作周期未核实", None, ""
+    return group, False, False, "非定开或无需核验", None, ""
+
+
 def effective_group(name, group, fund_type):
-    """Separate long closed cycles without treating low liquidity as a penalty."""
-    if LOW_VOL.search(group) or str(fund_type).startswith("债券"):
-        for m in PERIODIC.finditer(name):
-            if int(m[1]) * (12 if m[2] == "年" else 1) >= 24:
-                return "债券长封闭定开（≥24月）", True
-    return group, False
+    """Backward-compatible group helper; ranking uses periodic_classification."""
+    group, is_long, _, _, _, _ = periodic_classification(name, group, fund_type)
+    return group, is_long
 
 
 @lru_cache(maxsize=512)
