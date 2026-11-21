@@ -44,7 +44,7 @@ def load_periodic_overrides(path=ROOT/"config"/"fund_periodic_overrides.csv"):
     required = {"code","cycle_months","source_url"}
     if not required.issubset(d.columns):
         raise ValueError(f"periodic override missing columns: {sorted(required-set(d.columns))}")
-    if d.code.duplicated().any() or not d.code.str.fullmatch(r"\\d{6}").all():
+    if d.code.duplicated().any() or not d.code.str.fullmatch(r"\d{6}").all():
         raise ValueError("periodic override codes must be unique six-digit strings")
     if (pd.to_numeric(d.cycle_months,errors="coerce").isna()
             | (pd.to_numeric(d.cycle_months,errors="coerce") <= 0)).any():
