@@ -10,7 +10,7 @@ import pandas as pd
 
 from fundkit.defensive_screen import Shock, pareto as historical_pareto, share_identity
 from fundkit.industry_rank import (HORIZONS, NavPath, add_main_ranking, add_global_ranking, assemble, compare_forward,
-                                   effective_group, feature, forward, legacy_events, main_stress_features,
+                                   effective_group, periodic_classification, feature, forward, legacy_events, main_stress_features,
                                    pareto, ranking, stress_metrics)
 from scripts.fetch_all_fund_rank_data import get_one
 from scripts.run_industry_fund_ranking import load_catalog, main
@@ -296,6 +296,26 @@ class IndustryRankTest(unittest.TestCase):
             self.assertTrue((f.signal < f.evaluation_end).all())
             self.assertFalse((f.method.eq("legacy") & f.horizon.eq("6m")).any())
             self.assertTrue((f.method.eq("legacy") & f.horizon.eq("3y")).any())
+
+    def test_periodic_contract_override_and_unknown_fail_closed(self):
+        overrides = {"003528":{"cycle_months":66,
+                               "source_url":"https://pdf.dfcfw.com/pdf/H2_AN202604171821282602_1.pdf"}}
+        result = periodic_classification("汇添富长添利定期开放债券A","一级债基",
+                                         "债券型-混合一级","003528",overrides)
+        self.assertEqual(result[0],"债券长封闭定开（≥24月）")
+        self.assertTrue(result[1])
+        self.assertFalse(result[2])
+        self.assertEqual(result[4],66)
+        unknown = periodic_classification("某某定期开放债券A","中长纯债",
+                                          "债券型-长债","999999",{})
+        self.assertFalse(unknown[1])
+        self.assertTrue(unknown[2])
+        self.assertEqual(unknown[4],None)
+        short = periodic_classification("某某6个月定开债券A","中长纯债",
+                                        "债券型-长债","999998",{})
+        self.assertFalse(short[1])
+        self.assertFalse(short[2])
+        self.assertEqual(short[4],6)
 
     def test_long_periodic_excluded_by_default_but_audited(self):
         rows = catalog_rows()+[("000005","戊36个月定开债券A","债券型-长债"),
