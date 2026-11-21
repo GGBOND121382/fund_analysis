@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from fundkit.defensive_screen import Shock, adjusted_asof, market_category, money_index, share_identity
 from fundkit.industry_rank import (HORIZONS, RANK_COLS, NavPath, assemble, compare_forward,
-                                   add_main_ranking, effective_group, fold_dates, main_stress_features,
+                                   add_main_ranking, add_global_ranking, effective_group, fold_dates, main_stress_features,
                                    ranking, stress_metrics)
 from scripts import fetch_all_fund_rank_data as fetch
 
@@ -170,6 +170,15 @@ def export_rankings(full, out, h, top):
                        ["code","group","main_status","main_stress_count","main_stress_required",
                         "main_peer_count","main_missing_stress_ids"]]
     save(no_main,out/f"unranked_main_{h}.csv")
+
+    global_ranked = full.loc[full.global_rank.notna()].sort_values(["global_rank","code"])
+    save(global_ranked,out/f"ranking_global_{h}.csv")
+    save(global_ranked.head(top),out/f"top10_global_{h}.csv")
+    no_global = full.loc[full.global_rank.isna(),
+                         ["code","name","fund_type","group","global_status",
+                          "global_stress_ids","global_stress_count","global_stress_required",
+                          "global_peer_count","global_missing_stress_ids"]]
+    save(no_global,out/f"unranked_global_{h}.csv")
     return full
 
 
@@ -206,6 +215,7 @@ def current_rank(catalog, paths, events, main_events, end, out, top, min_peers, 
         full = pd.concat(result,ignore_index=True) if result else ranking(f,min_peers)
         same = pd.concat(matched,ignore_index=True) if matched else full.iloc[0:0]
         full = add_main_ranking(full,main_stress,main_events,end,min_peers)
+        full = add_global_ranking(full,main_stress,main_events,end,min_peers)
         coverage.extend(main_group_coverage(h,full,top))
         full = export_rankings(full,out,h,top)
         save(same.sort_values(["group","research_rank","code"]),out/f"matched_{h}.csv")
@@ -246,7 +256,10 @@ def method_audit(events, end, top, min_peers):
     return dict(main_method="historical three-axis Pareto → balance → weakest → code; fixed horizon",
                 main_top=top, main_min_peers=min_peers,
                 main_events=[dict(id=e.id,baseline=e.baseline.date().isoformat(),end=e.end.date().isoformat(),
-                                  families=list(e.families)) for e in events if e.end <= end])
+                                  families=list(e.families)) for e in events if e.end <= end],
+                global_method="same three-axis Pareto → balance → weakest; percentiles computed once across all asset classes",
+                global_stress_events=[dict(id=e.id,baseline=e.baseline.date().isoformat(),end=e.end.date().isoformat())
+                                      for e in events if e.end <= end and not e.families])
 
 
 def replay_snapshot(source, out, end, events, top, min_peers):
@@ -279,13 +292,19 @@ def replay_snapshot(source, out, end, events, top, min_peers):
             i = pd.MultiIndex.from_product([g.code, ids], names=["code","event"])
             if not i.isin(metrics.index).all():
                 raise ValueError(f"snapshot missing expected event rows: {h}, {family}")
-        all_rows[h] = (add_main_ranking(frame,metrics,events,end,min_peers),rejected)
+        ranked = add_main_ranking(frame,metrics,events,end,min_peers)
+        ranked = add_global_ranking(ranked,metrics,events,end,min_peers)
+        all_rows[h] = (ranked,rejected)
     out.mkdir(parents=True,exist_ok=True)
     coverage,horizons,watch = [],[],[]
     for h,(full,rejected) in all_rows.items():
         coverage.extend(main_group_coverage(h,full,top))
         full = export_rankings(full,out,h,top)
-        horizons.append(dict(coverage_row(h,full),rejected=dict(Counter(rejected.reason))))
+        horizons.append(dict(coverage_row(h,full),
+                              global_ranked=int(full.global_rank.notna().sum()),
+                              global_top=int(full.global_rank.le(top).sum()),
+                              global_unranked=int(full.global_rank.isna().sum()),
+                              rejected=dict(Counter(rejected.reason))))
         save(rejected,out/f"unranked_{h}.csv")
         result = full.loc[full.legacy_rank.le(top)]
         cache = {(row.code, event): (r.stress_drawdown, r.stress_return)
