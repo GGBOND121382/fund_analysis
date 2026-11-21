@@ -51,7 +51,9 @@ def load_periodic_overrides(path=ROOT/"config"/"fund_periodic_overrides.csv"):
         raise ValueError("periodic override cycle_months must be positive")
     if d.source_url.str.strip().eq("").any():
         raise ValueError("periodic override requires a source_url for every code")
-    return {r.code:{"cycle_months":int(r.cycle_months),"source_url":r.source_url}
+    return {r.code:{"cycle_months":int(r.cycle_months),"source_url":r.source_url,
+                      "source_date":getattr(r,"source_date",""),
+                      "note":getattr(r,"note","")}
             for r in d.itertuples(index=False)}
 
 
