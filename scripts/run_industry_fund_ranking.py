@@ -338,6 +338,19 @@ def replay_snapshot(source, out, end, events, top, min_peers):
                 {"code":[x["code"] for x in periodic_rows],
                  "group":[x["group"] for x in periodic_rows],
                  "reason":[x["audit_status"] for x in periodic_rows]})],ignore_index=True)
+        # Product-level overrides also cover non-representative shares already
+        # present in the snapshot's duplicate-share rejection table.
+        override_codes = set(overrides)
+        for idx,row in rejected.loc[rejected.code.isin(override_codes)].iterrows():
+            override = overrides[row.code]
+            reason = "已核验长周期定开，排除排名"
+            rejected.loc[idx,"reason"] = reason
+            if row.code not in {x["code"] for x in periodic_rows}:
+                periodic_rows.append(dict(code=row.code,name="",fund_type="",group=row.group,
+                    periodic_status="合同核验：{}个月".format(override["cycle_months"]),
+                    periodic_months=override["cycle_months"],periodic_source=override["source_url"],
+                    audit_status=reason+"（同基金其他份额）"))
+                periodic_audits.append(dict(horizon=h,**periodic_rows[-1]))
         if (not pd.to_datetime(frame.end).eq(end).all()
                 or not np.isfinite(frame[["return_for_rank","max_drawdown"]]).all().all()
                 or frame.duplicated(["group","product_key","currency","pricing_basis"]).any()
@@ -383,8 +396,10 @@ def replay_snapshot(source, out, end, events, top, min_peers):
     save(periodic_audit,out/"periodic_exclusion_audit.csv")
     cov = {key:src[key] for key in ("asof","catalog_share_codes","valid_nav_paths",
                                    "exact_asof_paths","explicit_subset","include_long_periodic")}
-    cov["long_periodic_excluded"] = int((periodic_audit.audit_status=="已核验长周期定开，排除排名").sum()) if len(periodic_audit) else 0
-    cov["periodic_unverified_excluded"] = int((periodic_audit.audit_status=="定开运作周期未核实，暂不参与排名").sum()) if len(periodic_audit) else 0
+    cov["long_periodic_excluded"] = int(periodic_audit.loc[
+        periodic_audit.audit_status.str.startswith("已核验长周期定开"),"code"].nunique()) if len(periodic_audit) else 0
+    cov["periodic_unverified_excluded"] = int(periodic_audit.loc[
+        periodic_audit.audit_status.eq("定开运作周期未核实，暂不参与排名"),"code"].nunique()) if len(periodic_audit) else 0
     cov["periodic_overrides"] = load_periodic_overrides()
     cov.update(method_audit(events,end,top,min_peers),horizons=horizons,
                input_mode="published feature/stress snapshot; no NAV refresh or new historical replay",
