@@ -309,12 +309,33 @@ def replay_snapshot(source, out, end, events, top, min_peers):
         raise ValueError("snapshot cutoff differs from --asof")
     stress = pd.read_csv(source/"stress_events.csv",dtype={"code":str},float_precision="round_trip")
     metrics = main_stress_features(stress,events,end)
+    periodic_audits = []
     stress_index = stress.set_index(["code","event"],verify_integrity=True)
     all_rows = {}
     for h in HORIZONS:
         frame = pd.read_csv(source/f"ranking_{h}.csv",dtype={"code":str,"product_id":str},
                             float_precision="round_trip")
         rejected = read(source/f"unranked_{h}.csv")
+        overrides = load_periodic_overrides()
+        periodic_rows, keep = [], []
+        for row in frame.itertuples(index=False):
+            _,is_long,is_unverified,status,months,evidence = periodic_classification(
+                row.name,row.group,row.fund_type,row.code,overrides)
+            if is_long or is_unverified:
+                periodic_rows.append(dict(code=row.code,name=row.name,fund_type=row.fund_type,
+                    group=row.group,periodic_status=status,periodic_months=months,
+                    periodic_source=evidence,
+                    audit_status=("已核验长周期定开，排除排名" if is_long else "定开运作周期未核实，暂不参与排名")))
+            else:
+                keep.append(row.Index if hasattr(row,"Index") else row.code)
+        if periodic_rows:
+            excluded_codes = {x["code"] for x in periodic_rows}
+            periodic_mask = frame.code.isin(excluded_codes)
+            frame = frame.loc[~periodic_mask].copy()
+            rejected = pd.concat([rejected,pd.DataFrame(
+                {"code":[x["code"] for x in periodic_rows],
+                 "group":[x["group"] for x in periodic_rows],
+                 "reason":[x["audit_status"] for x in periodic_rows]})],ignore_index=True)
         if (not pd.to_datetime(frame.end).eq(end).all()
                 or not np.isfinite(frame[["return_for_rank","max_drawdown"]]).all().all()
                 or frame.duplicated(["group","product_key","currency","pricing_basis"]).any()
@@ -322,6 +343,8 @@ def replay_snapshot(source, out, end, events, top, min_peers):
                 or set(frame.code).intersection(rejected.code)
                 or len(frame)+len(rejected) != src["catalog_share_codes"]):
             raise ValueError(f"inconsistent cutoff, product identity, or catalog coverage: {h}")
+        if periodic_rows:
+            periodic_audits.extend([dict(horizon=h,**x) for x in periodic_rows])
         for family,g in frame.groupby("scenario_family"):
             ids = [e.id for e in events if e.end <= end and (not e.families or family in e.families)]
             i = pd.MultiIndex.from_product([g.code, ids], names=["code","event"])
@@ -354,9 +377,13 @@ def replay_snapshot(source, out, end, events, top, min_peers):
             watch.append(dict(horizon=h,**row))
     save(pd.DataFrame(coverage),out/"coverage_by_group.csv")
     save(pd.DataFrame(watch),out/"watchlist.csv")
+    periodic_audit = pd.DataFrame(periodic_audits)
+    save(periodic_audit,out/"periodic_exclusion_audit.csv")
     cov = {key:src[key] for key in ("asof","catalog_share_codes","valid_nav_paths",
-                                   "exact_asof_paths","explicit_subset","long_periodic_excluded",
-                                   "include_long_periodic")}
+                                   "exact_asof_paths","explicit_subset","include_long_periodic")}
+    cov["long_periodic_excluded"] = int((periodic_audit.audit_status=="已核验长周期定开，排除排名").sum()) if len(periodic_audit) else 0
+    cov["periodic_unverified_excluded"] = int((periodic_audit.audit_status=="定开运作周期未核实，暂不参与排名").sum()) if len(periodic_audit) else 0
+    cov["periodic_overrides"] = load_periodic_overrides()
     cov.update(method_audit(events,end,top,min_peers),horizons=horizons,
                input_mode="published feature/stress snapshot; no NAV refresh or new historical replay",
                source_snapshot=source.name, source_sha256=manifest, oos_includes_main=False)
