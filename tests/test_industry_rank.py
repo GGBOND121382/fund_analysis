@@ -319,7 +319,9 @@ class IndustryRankTest(unittest.TestCase):
 
     def test_long_periodic_excluded_by_default_but_audited(self):
         rows = catalog_rows()+[("000005","戊36个月定开债券A","债券型-长债"),
-                               ("000006","己3个月定开债券A","债券型-长债")]
+                               ("000006","己3个月定开债券A","债券型-长债"),
+                               ("003528","汇添富长添利定期开放债券A","债券型-混合一级"),
+                               ("000007","庚定期开放债券A","债券型-长债")]
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
             pd.DataFrame(rows,columns=["code","name","type"]).to_csv(d/"fund_list.csv",index=False)
@@ -333,6 +335,8 @@ class IndustryRankTest(unittest.TestCase):
                   "--min-peers","2","--oos-folds","1"])
             a = pd.read_csv(out/"ranking_6m.csv",dtype={"code":str})
             self.assertNotIn("000005",a.code.tolist())
+            self.assertNotIn("003528",a.code.tolist())
+            self.assertNotIn("000007",a.code.tolist())
             self.assertIn("000006",a.code.tolist())
             u = pd.read_csv(out/"unranked_6m.csv",dtype={"code":str})
             hit = u[u.code.eq("000005")]
@@ -343,8 +347,15 @@ class IndustryRankTest(unittest.TestCase):
             t = pd.read_csv(out/"top10_6m.csv",dtype={"code":str})
             self.assertGreater(len(t),0)
             audit = json.loads((out/"audit.json").read_text(encoding="utf-8"))
-            self.assertEqual(audit["long_periodic_excluded"],1)
+            self.assertEqual(audit["long_periodic_excluded"],2)
+            self.assertEqual(audit["periodic_unverified_excluded"],1)
             self.assertIn("nav_recency",audit)
+            periodic = pd.read_csv(out/"periodic_exclusion_audit.csv",dtype={"code":str})
+            hit = periodic[periodic.code.eq("003528")]
+            self.assertEqual(hit.periodic_months.iloc[0],66)
+            self.assertIn("已核验长周期定开",hit.audit_status.iloc[0])
+            unknown = periodic[periodic.code.eq("000007")]
+            self.assertIn("未核实",unknown.audit_status.iloc[0])
             # Opt-in keeps the previous behaviour.
             out2 = d/"out2"
             main(["--asof","2026-11-12","--data-dir",str(d),"--output",str(out2),
