@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from fundkit.defensive_screen import Shock, pareto as historical_pareto, share_identity
-from fundkit.industry_rank import (HORIZONS, NavPath, add_main_ranking, assemble, compare_forward,
+from fundkit.industry_rank import (HORIZONS, NavPath, add_main_ranking, add_global_ranking, assemble, compare_forward,
                                    effective_group, feature, forward, legacy_events, main_stress_features,
                                    pareto, ranking, stress_metrics)
 from scripts.fetch_all_fund_rank_data import get_one
@@ -64,6 +64,50 @@ class IndustryRankTest(unittest.TestCase):
         self.assertEqual(z.main_missing_stress_ids.iloc[3],"first")
         self.assertEqual(z.main_status.iloc[3],"主榜冲击净值覆盖不足")
         self.assertEqual(z.main_status.iloc[4],"主榜同类样本不足")
+
+    def test_global_ranking_uses_one_cross_asset_pool_and_common_shocks(self):
+        end = pd.Timestamp("2026-11-20")
+        events = [
+            Shock("market_a","market_a",pd.Timestamp("2026-03-20"),pd.Timestamp("2026-03-23")),
+            Shock("market_b","market_b",pd.Timestamp("2026-06-05"),pd.Timestamp("2026-06-11")),
+            Shock("commodity_only","commodity_only",pd.Timestamp("2026-01-29"),
+                  pd.Timestamp("2026-02-02"),families=("commodity",)),
+        ]
+        codes = ["000001","000002","000003","000004","000005","000006"]
+        frame = pd.DataFrame({
+            "code":codes,
+            "name":[f"fund-{c}" for c in codes],
+            "group":["债券"]*3+["股票"]*3,
+            "fund_type":["债券型-长债"]*3+["股票型"]*3,
+            "scenario_family":["domestic"]*3+["commodity"]*3,
+            "product_key":[f"id:{c}" for c in codes],
+            "product":[f"fund-{c}" for c in codes],
+            "share":["A"]*6,
+            "currency":["CNY"]*6,
+            "pricing_basis":["fund_nav"]*6,
+            "obs":[250]*6,
+            "return_for_rank":[.01,.02,.03,.04,.05,.06],
+            "max_drawdown":[.06,.05,.04,.03,.02,.01],
+        })
+        records = []
+        for i,code in enumerate(codes):
+            for j,event in enumerate(events[:2]):
+                records.append((code,event.id,event.baseline,event.end,
+                                .001*(i+j+1),.001*(i+j+1)))
+            if i >= 3:
+                event = events[2]
+                records.append((code,event.id,event.baseline,event.end,.01,.01))
+        raw = pd.DataFrame(records,columns=[
+            "code","event","baseline","stress_end","stress_return","stress_drawdown"])
+        stress = main_stress_features(raw,events,end)
+        ranked = add_global_ranking(frame,stress,events,end,min_peers=5)
+        self.assertEqual(ranked.global_rank.notna().sum(),6)
+        self.assertEqual(ranked.global_peer_count.unique().tolist(),[6])
+        self.assertEqual(sorted(ranked.global_rank.astype(int).tolist()),list(range(1,7)))
+        self.assertTrue(ranked.global_status.eq("全市场已排名").all())
+        self.assertEqual(ranked.global_stress_required.unique().tolist(),[2])
+        self.assertTrue(ranked.global_stress_ids.eq("market_a,market_b").all())
+        self.assertTrue(ranked.global_pareto.notna().all())
 
     def test_fof_parenthesis_share_identity(self):
         pairs = [
@@ -232,10 +276,16 @@ class IndustryRankTest(unittest.TestCase):
             main(["--asof","2026-11-12","--replay-snapshot",str(out),"--output",str(replay),
                   "--min-peers","2"])
             for h in HORIZONS:
-                for label in ("ranking", "top10", "top10_stress", "top10_research", "top10_legacy"):
+                for label in ("ranking", "ranking_global", "top10", "top10_global", "unranked_global",
+                              "top10_stress", "top10_research", "top10_legacy"):
                     left = pd.read_csv(out/f"{label}_{h}.csv",dtype={"code":str})
                     right = pd.read_csv(replay/f"{label}_{h}.csv",dtype={"code":str})
                     pd.testing.assert_frame_equal(left,right)
+                global_top = pd.read_csv(out/f"top10_global_{h}.csv",dtype={"code":str})
+                self.assertLessEqual(len(global_top),10)
+                self.assertTrue(global_top.global_rank.notna().all())
+                self.assertEqual(global_top.global_rank.tolist(),
+                                 sorted(global_top.global_rank.tolist()))
                 t = pd.read_csv(out/f"top10_{h}.csv",dtype={"code":str})
                 self.assertTrue(t.main_rank.notna().all())
             with self.assertRaisesRegex(ValueError,"cutoff"):
