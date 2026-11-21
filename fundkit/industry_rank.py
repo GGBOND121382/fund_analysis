@@ -338,6 +338,79 @@ def add_main_ranking(frame, stress, events, end, min_peers):
     return z
 
 
+GLOBAL_FIELDS = {
+    "return_score": "global_return_score", "drawdown_score": "global_drawdown_score",
+    "shock_score": "global_shock_score", "pareto": "global_pareto",
+    "balance_score": "global_balance_score", "weakest_score": "global_weakest_score",
+    "peer_rank": "global_rank",
+}
+
+
+def add_global_ranking(frame, stress, events, end, min_peers):
+    """Apply the unchanged three-axis Pareto/balance/weakest rule across all asset classes.
+
+    Only completed, family-neutral market shocks enter the cross-asset shock axis.
+    Family-specific shocks remain in the category rankings and stress diagnostics.
+    """
+    z = frame.copy().reset_index(drop=True)
+    z["global_stress_ids"] = ""
+    z["global_stress_count"] = 0
+    z["global_stress_required"] = 0
+    z["global_missing_stress_ids"] = ""
+    z["global_worst_shock_return"] = np.nan
+    z["global_worst_shock_mdd"] = np.nan
+    z["global_median_shock_mdd"] = np.nan
+    for col in GLOBAL_FIELDS.values():
+        z[col] = pd.Series(pd.NA, index=z.index, dtype="boolean") if col == "global_pareto" else np.nan
+    z["global_peer_count"] = 0
+    z["global_status"] = "共同市场冲击不足两轮"
+
+    common = [e for e in events if e.end <= end and not e.families]
+    if len(common) < 2 or z.empty:
+        return z
+
+    ids = [e.id for e in common]
+    index = pd.MultiIndex.from_product([z.code, ids], names=["code", "event"])
+    data = stress.reindex(index)
+    returns = data.stress_return.to_numpy().reshape(len(z), len(ids))
+    draws = data.stress_drawdown.to_numpy().reshape(len(z), len(ids))
+    valid = np.isfinite(returns) & np.isfinite(draws)
+    z["global_stress_ids"] = ",".join(ids)
+    z["global_stress_required"] = len(ids)
+    z["global_stress_count"] = valid.sum(axis=1)
+    z["global_missing_stress_ids"] = [
+        ",".join(event_id for event_id, observed in zip(ids, row) if not observed)
+        for row in valid
+    ]
+    complete = valid.all(axis=1)
+    z["global_status"] = "共同市场冲击覆盖不足"
+    z.loc[complete, "global_status"] = "全市场可比样本不足"
+    z.loc[complete, "global_worst_shock_return"] = returns[complete].min(axis=1)
+    z.loc[complete, "global_worst_shock_mdd"] = draws[complete].max(axis=1)
+    z.loc[complete, "global_median_shock_mdd"] = np.median(draws[complete], axis=1)
+
+    # One product must occupy at most one place in the cross-asset universe.
+    identity = z["product_key"].fillna("").astype(str) if "product_key" in z else z["product"].fillna("").astype(str)
+    identity = identity.where(identity.ne(""), "code:" + z.code.astype(str))
+    z["_global_identity"] = identity
+    z["_global_a_priority"] = ~z.share.fillna("").isin(["", "A"])
+    z = z.sort_values(["_global_a_priority", "obs", "code"],
+                      ascending=[True, False, True]).reset_index(drop=True)
+    duplicate = z.duplicated(["_global_identity", "currency", "pricing_basis"])
+    z.loc[duplicate, "global_status"] = "全市场同产品其他份额"
+    eligible = z.loc[~duplicate & z.global_worst_shock_return.notna()
+                     & z.global_worst_shock_mdd.notna()
+                     & z.global_median_shock_mdd.notna()
+                     & z.return_for_rank.notna() & z.max_drawdown.notna()]
+    z["global_peer_count"] = len(eligible)
+    if len(eligible) >= min_peers:
+        scores = balance_ranks(eligible, ["return_for_rank"], ["max_drawdown"])
+        for source, target in GLOBAL_FIELDS.items():
+            z.loc[scores.index, target] = scores[source]
+        z.loc[scores.index, "global_status"] = "全市场已排名"
+    z = z.drop(columns=["_global_identity", "_global_a_priority"])
+    return z
+
 
 def forward(nav, signal, end):
     # Selection uses NAV through signal; first subsequent observed NAV is
