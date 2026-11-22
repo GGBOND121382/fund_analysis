@@ -106,12 +106,15 @@ def nonoverlapping_pairs(evaluations,primary,baseline,min_folds=5,seed=42):
         risk=np.asarray([r.max_drawdown_primary-r.max_drawdown_baseline for r in accepted])
         means=np.mean(rng.choice(d,(2000,n),replace=True),axis=1)
         low,high=np.quantile(means,[0.025,0.975])
-        # A positive return improvement must be evidenced, and drawdown must
-        # not increase in this experiment. This is not an OOS certification.
-        decision=("RESEARCH_EVIDENCE_POSITIVE" if low>0 and risk.mean()<=0
+        risk_means=np.mean(rng.choice(risk,(2000,n),replace=True),axis=1)
+        risk_high=float(np.quantile(risk_means,.975))
+        # Require an upper confidence bound for risk non-inferiority, not
+        # merely the realized mean sign. Still NAV-only, not execution OOS.
+        decision=("RESEARCH_EVIDENCE_POSITIVE" if low>0 and risk_high<=0
                   else "NOT_PROVEN_BETTER")
         results.append(dict(horizon=horizon,folds=n,decision=decision,
             return_delta=float(np.mean(d)),return_ci_lower=float(low),
-            return_ci_upper=float(high),mdd_delta=float(np.mean(risk))))
+            return_ci_upper=float(high),mdd_delta=float(np.mean(risk)),
+            mdd_ci_upper=risk_high))
     return pd.DataFrame(results,columns=["horizon","folds","decision","return_delta",
-                     "return_ci_lower","return_ci_upper","mdd_delta"])
+                     "return_ci_lower","return_ci_upper","mdd_delta","mdd_ci_upper"])

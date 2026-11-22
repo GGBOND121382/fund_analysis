@@ -43,10 +43,10 @@ python scripts/fetch_fund_trade_status.py --output data/evidence/purchase_202611
 ### 交易状态 `--liquidity-evidence`
 
 ```csv
-code,known_at,source_url,subscription_status,redemption_status,next_exit,lock_until,total_fee_rate,max_subscription_amount
+code,known_at,source_url,subscription_status,redemption_status,next_exit,lock_until,total_fee_rate,max_subscription_amount,contract_source_url,contract_known_at
 ```
 
-状态只能为 `OPEN/LIMITED/PAUSED/CLOSED/UNKNOWN`。`next_exit` 是该投资者在该拟持有期限内可以退出的已核验日期，不是简单基金开放日。交易费用为买卖和价差合计的小数比例，额度以实际申购金额相同币种表示。记录矛盾时 `CONFLICT`，超过7天 `STALE`（适用于现时状态，历史回放需用当时快照）。
+状态只能为 `OPEN/LIMITED/PAUSED/CLOSED/UNKNOWN`。要发放 `buyable_now` 预检标记，必须同时提供 `contract_source_url` 和不晚于评价日的 `contract_known_at`，以及资金限额、完整交易费率、可执行退出日；仅有销售平台状态会保留 `STATUS_SOURCE_OBSERVED` 但买入预检为否。`next_exit` 是该投资者在该拟持有期限内可以退出的已核验日期，不是简单基金开放日。交易费用为买卖和价差合计的小数比例，额度以实际申购金额相同币种表示。记录矛盾时 `CONFLICT`，超过7天 `STALE`（适用于现时状态，历史回放需用当时快照）。
 
 ### 估值与风险 `--valuation-evidence`
 
@@ -63,6 +63,10 @@ code,known_at,trained_through,source_url,model_id,forecast_mu_annual,decision_mo
 ```
 
 `forecast_mu_annual` 为预期年化收益率小数，`trained_through` 不得晚于 `known_at`，且预测持有期限要与 `--decision-months` 一致。经验贝叶斯只是候选模型，未在历史前推证明其优越性前不可直接宣布最优。
+
+### 可复现的 M0/M1 类别基准预测（未通过 OOS）
+
+使用 `--data-dir data/all_funds --benchmark-history data/evidence/category_benchmark_history.csv` 生成截止日可知的 M0（历史类别基准）和 M1（同类经验贝叶斯收缩）预测，按5y/3y/1y/6m分别估计。基准CSV字段：`group,date,nav,known_at,source_url`，`nav` 必须是同类可比较的总回报价格序列，`known_at` 为该条价格实际已知时间；不能把最新版基准回填到过去。输出 `model_diagnostics_{h}.csv` 包含训练截止日、月度样本数、同类先验和收缩分量。这是实验预测候选模型，不能在没有独立前推验证时直接升版。
 
 ### 启用实验分数（不是已证实榜）
 

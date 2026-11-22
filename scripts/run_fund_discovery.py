@@ -185,7 +185,7 @@ def analyze_horizon(frame, liquidity, valuation, forecasts, asof, months, cash_o
     stats={"feature_rows":int(len(original)),
            "forecast_supplied":int(original.forecast_status.eq("EVIDENCE_SUPPLIED_UNVALIDATED").sum()),
            "economic_risk_evidence":int(original.economic_risk_verified.sum()),
-           "trading_evidence":int(original.liquidity_status.eq("VERIFIED").sum()),
+           "trading_evidence":int(original.liquidity_status.eq("STATUS_SOURCE_OBSERVED").sum()),
            "experimentally_scored":count,
            "opportunity_positive":int((original.score_annual>0).sum()),
            "investable_precheck_only":int(len(investable)),
