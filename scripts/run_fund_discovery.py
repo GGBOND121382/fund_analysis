@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
 from fundkit.fund_master import (product_review_hint, read_timestamped_evidence,
                                  resolve_liquidity)
 from fundkit.pricing_audit import audit_valuation
-from fundkit.return_models import resolve_forecasts
+from fundkit.return_models import resolve_forecasts, fit_category_forecasts
 from fundkit.opportunity_rank import (OpportunityInput, BUDGETS,
                                       stationary_bootstrap,cash_paths,
                                       optimize_opportunity)
@@ -202,6 +202,8 @@ def main(argv=None):
     p.add_argument("--liquidity-evidence",type=Path)
     p.add_argument("--valuation-evidence",type=Path)
     p.add_argument("--forecast-evidence",type=Path)
+    p.add_argument("--benchmark-history",type=Path,
+                   help="dated group,date,nav,known_at,source_url observations for EB M1")
     p.add_argument("--cash-rate-annual",type=float)
     p.add_argument("--cash-source",help="point-in-time public cash-yield/benchmark source URL")
     p.add_argument("--cash-known-at")
@@ -235,6 +237,9 @@ def main(argv=None):
     if a.data_dir is not None:
         catalog=load_catalog(a.data_dir/"fund_list.csv")
         path_cache,path_audit=load_paths(catalog,a.data_dir,asof)
+    if a.benchmark_history and path_cache is None:
+        p.error("--benchmark-history requires --data-dir and full NAV paths")
+    benchmark=(pd.read_csv(a.benchmark_history) if a.benchmark_history else None)
     a.output.mkdir(parents=True,exist_ok=True)
     results={}
     for h in HORIZONS:
@@ -242,7 +247,17 @@ def main(argv=None):
                raw_fund_rows(catalog,path_cache,asof,h))
         codes=frame.code.astype(str).str.zfill(6).unique().tolist()
         liq=resolve_liquidity(codes,liquid_evidence,asof,a.decision_months)
-        fc=resolve_forecasts(codes,forecast_evidence,asof,a.decision_months)
+        forecasts_for_h=forecast_evidence
+        if benchmark is not None:
+            # This is an UNVALIDATED candidate forecast; the source records
+            # and every training date are checked against the formation date.
+            model=fit_category_forecasts(frame.loc[frame.group.notna()],
+                path_cache,benchmark,asof,HORIZONS[h][0],a.decision_months)
+            model.to_csv(a.output/f"model_diagnostics_{h}.csv",
+                         index=False,encoding="utf-8-sig")
+            if len(model):
+                forecasts_for_h=pd.concat([model,forecast_evidence],ignore_index=True)
+        fc=resolve_forecasts(codes,forecasts_for_h,asof,a.decision_months)
         research,investable,sensitivity,stats=analyze_horizon(
             frame,liq,valuation_evidence,fc,asof,a.decision_months,
             cash_ok,a,path_cache)
@@ -258,7 +273,8 @@ def main(argv=None):
                 a.output/f"budget_{int(100*budget)}pct_{h}.csv",index=False,encoding="utf-8-sig")
         results[h]=stats
     conditions={"trade": bool(a.liquidity_evidence), "valuation": bool(a.valuation_evidence),
-                "forecast": bool(a.forecast_evidence),
+                "forecast": bool(a.forecast_evidence) or bool(a.benchmark_history),
+                "benchmark_history":bool(a.benchmark_history),
                 "cash":cash_ok,"nav_paths":a.data_dir is not None,
                 "asof_historical_catalog":False,
                 "independent_oos_validation":False}
