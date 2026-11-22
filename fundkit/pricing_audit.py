@@ -30,7 +30,7 @@ def audit_valuation(frame: pd.DataFrame, evidence: pd.DataFrame):
     # User-supplied economic risk needs a verifiable source, finite positive range,
     # and compatible pricing method. Unknown and amortized-cost NAV cannot certify risk.
     risk_evidence = (d.source_url.fillna("").astype(str).str.len().gt(0)
-                     & d.economic_mdd_upper.between(0,1,inclusive="both")
+                     & d.economic_mdd_upper.gt(0) & d.economic_mdd_upper.lt(1)
                      & d.pricing_method.ne("unknown"))
     d["economic_risk_verified"] = risk_evidence
     mdd = pd.to_numeric(d.get("max_drawdown",pd.Series(np.nan,index=d.index)),errors="coerce")
@@ -44,6 +44,8 @@ def audit_valuation(frame: pd.DataFrame, evidence: pd.DataFrame):
         default="NONE")
     d["risk_quality"] = np.where(d.economic_risk_verified,
                                  "ECONOMIC_RISK_EVIDENCE", "RISK_UNVERIFIED")
+    # Zero is never a certified economic risk upper bound for an investment fund.
+    # This verifies presence and format of evidence, not source authenticity or OOS.
     # Never translate observed NAV MDD=0 into an economic risk upper bound of 0.
     return d
 
