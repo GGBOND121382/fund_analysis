@@ -177,6 +177,43 @@ class FundDiscoveryContractsTest(unittest.TestCase):
         np.testing.assert_array_equal(a,b)
         self.assertTrue(np.all(a[:,0]==1))
 
+    def test_scored_investable_path_requires_complete_evidence(self):
+        from fundkit.industry_rank import NavPath
+        from scripts.run_fund_discovery import analyze_horizon
+        frame=pd.DataFrame([dict(code="000001",name="普通基金A",group="中长纯债",
+            feature_status="HISTORICAL_FEATURE_AVAILABLE",period_return=.05,
+            max_drawdown=.01,return_for_rank=.05)])
+        liq=resolve_liquidity(["000001"],pd.DataFrame([dict(
+            code="000001",known_at=pd.Timestamp("2026-11-20"),
+            source_url="https://example.com/trade",
+            subscription_status="OPEN",redemption_status="OPEN",
+            next_exit="2027-02-01",lock_until="",
+            total_fee_rate=.003,max_subscription_amount=5000,
+            contract_source_url="https://example.com/contract.pdf",
+            contract_known_at=pd.Timestamp("2026-11-19")
+        )]),"2026-11-20")
+        valuation=pd.DataFrame([dict(code="000001",known_at="2026-11-19",
+            source_url="https://example.com/risk",
+            pricing_method="market_value",economic_mdd_upper=.03)])
+        forecast=pd.DataFrame([dict(code="000001",forecast_mu_annual=.08,
+            forecast_source="https://example.com/model",forecast_known_at="2026-11-19",
+            forecast_model="TEST_ONLY",forecast_status="EVIDENCE_SUPPLIED_UNVALIDATED")])
+        days=pd.bdate_range("2025-11-20","2026-11-20")
+        paths={"000001":NavPath(days,np.exp(np.arange(len(days))*.0003))}
+        args=SimpleNamespace(cash_rate_annual=.015,scenarios=40,block_length=5,
+                             seed=42,grid_points=41,order_amount=1000)
+        research,investable,_,stats=analyze_horizon(
+            frame,liq,valuation,forecast,pd.Timestamp("2026-11-20"),6,True,args,paths)
+        self.assertEqual(stats["experimentally_scored"],1)
+        self.assertEqual(len(investable),1)
+        self.assertGreater(research.score_annual.iloc[0],0)
+        self.assertEqual(research.score_class.iloc[0],"EXPERIMENTAL_NOT_OOS_VERIFIED")
+        valuation.loc[0,"economic_mdd_upper"]=np.nan
+        research,investable,_,stats=analyze_horizon(
+            frame,liq,valuation,forecast,pd.Timestamp("2026-11-20"),6,True,args,paths)
+        self.assertFalse(research.score_annual.notna().any())
+        self.assertEqual(len(investable),0)
+
     def test_snapshot_without_evidence_does_not_publish_fake_top10(self):
         with tempfile.TemporaryDirectory() as tmp:
             base=Path(tmp); source=base/"snapshot"; out=base/"output"
