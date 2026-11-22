@@ -11,7 +11,7 @@ import pandas as pd
 from fundkit.fund_master import (product_review_hint,read_timestamped_evidence,
                                  resolve_liquidity)
 from fundkit.pricing_audit import audit_valuation
-from fundkit.return_models import empirical_bayes_alpha, resolve_forecasts
+from fundkit.return_models import empirical_bayes_alpha, resolve_forecasts, fit_category_forecasts
 from fundkit.opportunity_rank import (OpportunityInput,buy_hold_wealth,
     cash_paths,max_drawdown,optimize_opportunity,risk_upper,stationary_bootstrap)
 from scripts.run_fund_discovery import main
@@ -63,11 +63,17 @@ class FundDiscoveryContractsTest(unittest.TestCase):
                  total_fee_rate=0.005,max_subscription_amount=10000,
                  next_exit="2027-12-20",lock_until="")
         bad=resolve_liquidity(["000001"],pd.DataFrame([row]),"2026-11-20",6)
-        self.assertTrue(bad.buyable_now.iloc[0])
+        self.assertFalse(bad.buyable_now.iloc[0])
         self.assertFalse(bad.executable_horizon.iloc[0])
         row["next_exit"]="2027-01-20"
+        # Distributor open status alone is NOT a verified exit right.
+        unverified=resolve_liquidity(["000001"],pd.DataFrame([row]),"2026-11-20",6)
+        self.assertFalse(unverified.executable_horizon.iloc[0])
+        row["contract_source_url"]="https://example.com/fund-contract.pdf"
+        row["contract_known_at"]=pd.Timestamp("2026-11-19")
         good=resolve_liquidity(["000001"],pd.DataFrame([row]),"2026-11-20",6)
         self.assertTrue(good.executable_horizon.iloc[0])
+        self.assertTrue(good.buyable_now.iloc[0])
 
     def test_valuation_unknown_and_amortized_not_zero_economic_risk(self):
         frame=pd.DataFrame([dict(code="007680",period_return=.02,max_drawdown=0),
@@ -82,6 +88,39 @@ class FundDiscoveryContractsTest(unittest.TestCase):
         self.assertEqual(d.loc[d.code.eq("007680"),"valuation_warning"].iloc[0],
                          "AMORTIZED_COST_NAV_NOT_MARKET_RISK")
         self.assertFalse(d.loc[d.code.eq("007680"),"economic_risk_verified"].iloc[0])
+
+    def test_zero_economic_risk_with_source_is_not_verified(self):
+        f=pd.DataFrame([dict(code="007680",period_return=.05,max_drawdown=0)])
+        evidence=pd.DataFrame([dict(code="007680",pricing_method="amortized_cost",
+                       economic_mdd_upper=0.,source_url="https://example.com/report",
+                       known_at="2026-11-19")])
+        d=audit_valuation(f,evidence)
+        self.assertFalse(d.economic_risk_verified.iloc[0])
+
+    def test_train_only_eb_forecast_does_not_use_future_benchmark_or_nav(self):
+        from fundkit.industry_rank import NavPath
+        dates=pd.bdate_range("2024-01-01","2026-12-31")
+        n=len(dates)
+        benchmark=pd.DataFrame(dict(group="中长纯债",date=dates,
+            nav=np.exp(np.arange(n)*.00012),
+            known_at=[str(min(x,pd.Timestamp("2026-11-20")).date()) for x in dates],
+            source_url="https://example.com/benchmark-history"))
+        paths={}
+        fund_rows=[]
+        for i in range(6):
+            code=str(i+1).zfill(6)
+            path=np.exp(np.arange(n)*(.00010+i*.000006))
+            paths[code]=NavPath(dates,path)
+            fund_rows.append(dict(code=code,group="中长纯债"))
+        rows=pd.DataFrame(fund_rows)
+        model1=fit_category_forecasts(rows,paths,benchmark,"2026-11-20",12)
+        self.assertEqual(len(model1),6)
+        self.assertTrue(np.isfinite(model1.forecast_mu_annual).all())
+        self.assertTrue(model1.trained_through.le("2026-11-20").all())
+        future=benchmark.loc[benchmark.date.gt("2026-11-20")].index
+        benchmark.loc[future,"nav"]*=100
+        model2=fit_category_forecasts(rows,paths,benchmark,"2026-11-20",12)
+        pd.testing.assert_frame_equal(model1,model2)
 
     def test_forecast_requires_horizon_and_training_cutoff(self):
         data=pd.DataFrame([dict(code="000001",known_at="2026-11-20",
