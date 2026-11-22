@@ -10,7 +10,7 @@ import pandas as pd
 TRADE_STATES = {"OPEN", "LIMITED", "PAUSED", "CLOSED", "UNKNOWN"}
 VALID_PRICING = {"market_value", "amortized_cost", "mixed", "unknown"}
 # This is an audit trigger, not a classifier of liquidity or contractual cycles.
-CONTRACT_REVIEW_HINT = re.compile(r"定开|定期|封闭|持有期|滚动持有|\\d+个月|三年债券")
+CONTRACT_REVIEW_HINT = re.compile(r"定开|定期|封闭|持有期|滚动持有|\d+个月|三年债券")
 
 
 def product_review_hint(name: str) -> bool:
