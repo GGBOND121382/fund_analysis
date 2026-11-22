@@ -22,3 +22,30 @@ jobs:
         run: python -m compileall -q fundkit tests scripts main.py
       - name: Unit tests
         run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Run full four-horizon discovery audit against published data
+        run: >-
+          python scripts/run_fund_discovery.py
+          --asof 2026-11-20
+          --snapshot reports/all_funds/industry_rank_20261120
+          --output artifacts/fund_discovery_20261120
+      - name: Verify historical snapshot cannot fabricate investment rank
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=Path("artifacts/fund_discovery_20261120")
+          audit=json.loads((d/"audit.json").read_text(encoding="utf-8"))
+          assert audit["oos_acceptance"]=="EVIDENCE_INSUFFICIENT"
+          assert not audit["certified_investable_ranking"]
+          assert len(audit["horizons"])==4
+          for h,stats in audit["horizons"].items():
+              assert stats["feature_rows"]>0, h
+              assert stats["experimentally_scored"]==0, h
+              assert (d/f"research_{h}.csv").exists()
+          PY
+      - name: Preserve discovery diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: fund-discovery-20261120-diagnostic
+          path: artifacts/fund_discovery_20261120
+          retention-days: 30
