@@ -53,20 +53,25 @@ def resolve_liquidity(codes, evidence: pd.DataFrame, asof, decision_months=6, ma
                  buyable_now=False, executable_horizon=False)
     rows = []
     data = evidence.copy()
-    for col in ("subscription_status", "redemption_status", "next_exit", "lock_until",
-                "total_fee_rate", "max_subscription_amount"):
+    for col in ("code","known_at","source_url","subscription_status", "redemption_status",
+                "next_exit", "lock_until", "total_fee_rate", "max_subscription_amount"):
         if col not in data:
-            data[col] = ""
+            data[col] = pd.Series(dtype=object)
     if len(data):
         data = data.loc[pd.to_datetime(data.known_at) <= cutoff]
+    # Group once: a full-fund catalog cannot spend O(N^2) scanning the
+    # complete evidence table separately for every share code.
+    by_code = {str(code): g.sort_values("known_at")
+               for code,g in data.groupby("code",sort=False)}
     for code in codes:
         code = str(code)
         result = dict(code=code, **empty)
-        matching = data.loc[data.code.eq(code)].sort_values("known_at")
-        if matching.empty:
+        matching = by_code.get(code)
+        if matching is None or matching.empty:
             rows.append(result)
             continue
         latest = matching.iloc[-1]
+
         latest_time = pd.Timestamp(latest.known_at)
         if (cutoff-latest_time).total_seconds() > max_age_days*86400:
             result.update(liquidity_status="STALE", liquidity_source=str(latest.source_url),
