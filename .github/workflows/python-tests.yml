@@ -42,6 +42,14 @@ jobs:
               assert stats["feature_rows"]>0, h
               assert stats["experimentally_scored"]==0, h
               assert (d/f"research_{h}.csv").exists()
+          import pandas as pd
+          r=pd.read_csv(d/"research_1y.csv",dtype={"code":str})
+          for code in ("007589","008693","007680","008338"):
+              hit=r.loc[r.code.eq(code)]
+              assert len(hit)==1, code
+              assert bool(hit.contract_review_hint.iloc[0]), code
+              assert hit.score_annual.isna().all(), code
+              assert hit.buyable_now.eq(False).all(), code
           PY
       - name: Preserve discovery diagnostics
         uses: actions/upload-artifact@v4
