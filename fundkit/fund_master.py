@@ -54,7 +54,8 @@ def resolve_liquidity(codes, evidence: pd.DataFrame, asof, decision_months=6, ma
     rows = []
     data = evidence.copy()
     for col in ("code","known_at","source_url","subscription_status", "redemption_status",
-                "next_exit", "lock_until", "total_fee_rate", "max_subscription_amount"):
+                "next_exit", "lock_until", "total_fee_rate", "max_subscription_amount",
+                "contract_source_url", "contract_known_at"):
         if col not in data:
             data[col] = pd.Series(dtype=object)
     if len(data):
@@ -103,14 +104,19 @@ def resolve_liquidity(codes, evidence: pd.DataFrame, asof, decision_months=6, ma
         buy = sub in ("OPEN", "LIMITED")
         exits = redeem == "OPEN" and pd.notna(next_exit) and next_exit <= end
         exits = exits and (pd.isna(lock_until) or lock_until <= end)
-        executable = bool(buy and exits and pd.notna(fee) and fee >= 0
+        contract_source=str(latest.contract_source_url).strip()
+        contract_time=pd.to_datetime(latest.contract_known_at,errors="coerce")
+        contract_evidence=bool(contract_source and contract_source.lower() not in ("nan","none")
+                               and pd.notna(contract_time) and contract_time<=cutoff)
+        executable = bool(buy and exits and contract_evidence
+                          and pd.notna(fee) and fee >= 0
                           and pd.notna(maximum) and maximum > 0)
         result.update(subscription_status=sub, redemption_status=redeem,
                       next_exit=str(next_exit.date()) if pd.notna(next_exit) else "",
                       lock_until=str(lock_until.date()) if pd.notna(lock_until) else "",
                       total_fee_rate=fee, max_subscription_amount=maximum,
                       liquidity_source=str(latest.source_url),liquidity_known_at=latest_time.isoformat(),
-                      liquidity_status="VERIFIED", buyable_now=bool(buy),
-                      executable_horizon=executable)
+                      liquidity_status="STATUS_SOURCE_OBSERVED",
+                      buyable_now=executable, executable_horizon=executable)
         rows.append(result)
     return pd.DataFrame(rows, columns=columns)
