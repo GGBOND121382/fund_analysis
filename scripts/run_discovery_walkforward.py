@@ -242,8 +242,18 @@ def main(argv=None):
         metrics=validation.groupby(["formation_date","method"])["cash_excess"].mean().reset_index()
         piv=metrics.pivot(index="formation_date",columns="method",values="cash_excess")
         common=piv.dropna(subset=list(candidates)) if set(candidates).issubset(piv.columns) else pd.DataFrame()
-        if len(common)>=a.min_test_folds:
-            chosen=max(candidates,key=lambda m:(common[m].mean(),-candidates.index(m)))
+        # A dense monthly validation series is NOT dozens of independent
+        # six-month labels; nonoverlap before comparing and freezing models.
+        nonoverlap=[]
+        previous_end=pd.Timestamp.min
+        for formed,row in common.sort_index().iterrows():
+            if formed>=previous_end:
+                nonoverlap.append(row)
+                previous_end=formed+pd.DateOffset(months=a.decision_months)
+        if len(nonoverlap)>=a.min_test_folds:
+            independent=pd.DataFrame(nonoverlap)
+            chosen=max(candidates,key=lambda m:(independent[m].mean(),
+                                                 -candidates.index(m)))
     test=result.loc[result.split.eq("test")] if len(result) else pd.DataFrame()
     comparisons=[]
     if chosen is not None and len(test):
