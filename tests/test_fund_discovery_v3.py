@@ -11,6 +11,7 @@ from fundkit.discovery_scoring_v3 import (windowed_values, nav_mean_uncertainty,
 from fundkit.pricing_audit import audit_valuation, duration_stress_loss
 from fundkit.return_models import resolve_forecasts
 from fundkit.fund_master import resolve_liquidity
+from fundkit.opportunity_rank import OpportunityInput,optimize_opportunity,risk_upper,cash_paths
 from scripts.run_fund_discovery import analyze_horizon
 
 
@@ -85,6 +86,37 @@ class FundDiscoveryV3Test(unittest.TestCase):
         self.assertEqual(stats["historical_return_candidates"],1)
         self.assertEqual(stats["experimentally_scored"],0)
         self.assertTrue(investable.empty)
+
+    def test_monotone_risk_search_equals_exhaustive_grid(self):
+        rng=np.random.default_rng(7)
+        f=np.concatenate([np.ones((36,1)),
+              np.exp(np.cumsum(rng.normal(.0001,.009,size=(36,36)),axis=1))],axis=1)
+        c=cash_paths(.02,steps=36,scenarios=36)
+        setting=OpportunityInput(.12,.02,.004,.03,decision_months=6,
+                                 grid_points=71)
+        fast=optimize_opportunity(f,c,setting)
+        weights=np.linspace(0,1,71)
+        risks=[risk_upper(f,c,float(w),.004,.03) for w in weights]
+        self.assertTrue(np.all(np.diff(risks)>=-1e-10))
+        for result in fast:
+            feasible=np.flatnonzero(np.asarray(risks)<=result["budget"]+1e-12)
+            self.assertTrue(len(feasible)>0)
+            self.assertAlmostEqual(result["weight"],weights[feasible[-1]])
+
+    def test_falling_cash_uses_general_grid_not_false_monotonicity(self):
+        rng=np.random.default_rng(11)
+        f=np.concatenate([np.ones((16,1)),
+             np.exp(np.cumsum(rng.normal(0,.01,size=(16,9)),axis=1))],axis=1)
+        c=np.tile(np.array([1.,.99,1.01,1.03,.98,1.02,1.03,1.01,1.05,1.03]),(16,1))
+        setting=OpportunityInput(.11,-.005,.001,.02,decision_months=3,
+                                 grid_points=31)
+        got=optimize_opportunity(f,c,setting,budgets=(.04,))
+        risks=[risk_upper(f,c,w,.001,.02) for w in np.linspace(0,1,31)]
+        feasible=np.flatnonzero(np.asarray(risks)<=.04+1e-12)
+        if len(feasible):
+            self.assertAlmostEqual(got[0]["weight"],np.linspace(0,1,31)[feasible[-1]])
+        else:
+            self.assertEqual(got[0]["status"],"CASH_BASELINE_OVER_BUDGET")
 
     def test_not_validated_forecast_never_promoted_by_historical_win(self):
         d=pd.DataFrame([dict(code="000001",name="示例",group="中长纯债",
