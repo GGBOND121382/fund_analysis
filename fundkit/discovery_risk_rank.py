@@ -31,6 +31,12 @@ THEMES = ("银行", "证券", "半导体", "芯片", "医药", "光伏", "煤炭
 def _monthly(values, dates):
     s = pd.Series(values, index=pd.DatetimeIndex(dates))
     a = s.resample("ME").last().dropna()
+    # An unfinished last calendar month is NOT a complete monthly return.
+    # Compare only completed month-end observations within each lookback.
+    last_obs=s.index[-1]
+    last_business_month_end=pd.offsets.BDay().rollback(last_obs.to_period("M").end_time.normalize())
+    if last_obs<last_business_month_end:
+        a=a.iloc[:-1]
     vals = a.to_numpy(dtype=float)
     if len(vals) < 5 or np.any(vals <= 0):
         raise ValueError("at least 5 complete monthly points required")
@@ -166,7 +172,9 @@ def _rank_diversified(rows, max_results=10):
     seen_products=set()
     seen_themes=set()
     for r in rows.itertuples(index=False):
-        key=str(r.product_key) if pd.notna(r.product_key) else str(r.product)
+        key=str(getattr(r,"product_key",r.code))
+        if key in ("", "nan", "None"):
+            key=str(getattr(r,"product",r.code))
         if key in seen_products:
             continue
         theme=str(r.exposure_bucket)
@@ -286,7 +294,6 @@ def rank_historical_risk_adjusted(frame, paths, asof, horizon, *,
                 d.at[idx,f"risk_weight_{int(B*100)}pct"]=weight
                 d.at[idx,f"risk_score_{int(B*100)}pct"]=score
             d.at[idx,"risk_adjusted_score"]=d.at[idx,"risk_score_4pct"]
-            d.at[idx,"risk_weight_4pct"]=d.at[idx,"risk_weight_4pct"]
             d.at[idx,"risk_adjusted_status"]="NAV_RISK_ADJUSTED_RESEARCH_ONLY"
         except (ValueError,OverflowError,IndexError,FloatingPointError):
             d.at[idx,"risk_adjusted_status"]="RISK_SIMULATION_FAILED"
