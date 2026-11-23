@@ -31,6 +31,7 @@ from fundkit.pricing_audit import audit_valuation
 from fundkit.return_models import resolve_forecasts, fit_category_forecasts
 from fundkit.discovery_scoring_v3 import (descriptive_research, windowed_values,
                                           joint_forecast_paths)
+from fundkit.discovery_risk_rank import rank_historical_risk_adjusted
 from fundkit.opportunity_rank import (OpportunityInput, BUDGETS,
                                       stationary_bootstrap,cash_paths,
                                       optimize_opportunity)
@@ -242,11 +243,16 @@ def main(argv=None):
     p.add_argument("--decision-months",type=int,choices=[3,6,12],default=6)
     p.add_argument("--order-amount",type=float,help="required investment amount, same currency as limits")
     p.add_argument("--scenarios",type=int,default=256)
+    p.add_argument("--risk-research-scenarios",type=int,default=256,
+                   help="monthly bootstrap paths per share for historical NAV risk ranking")
+    p.add_argument("--risk-research-top",type=int,default=10,
+                   help="number of exposure-diversified historical risk-adjusted funds")
     p.add_argument("--block-length",type=int,default=10)
     p.add_argument("--grid-points",type=int,default=101)
     p.add_argument("--seed",type=int,default=42)
     a=p.parse_args(argv)
-    if a.scenarios<32 or a.grid_points<2 or a.block_length<1:
+    if (a.scenarios<32 or a.grid_points<2 or a.block_length<1
+            or a.risk_research_scenarios<16 or a.risk_research_top<1):
         p.error("invalid simulation settings")
     if a.order_amount is not None and a.order_amount <= 0:
         p.error("order amount must be positive")
@@ -294,6 +300,21 @@ def main(argv=None):
         research,investable,sensitivity,stats=analyze_horizon(
             frame,liq,valuation_evidence,fc,asof,a.decision_months,
             cash_ok,a,path_cache,lookback=h)
+        if path_cache is not None:
+            # Main current-date discovery: no future prediction or fees required.
+            research,diverse,raw_risk,risk_audit=rank_historical_risk_adjusted(
+                research,path_cache,asof,h,scenarios=a.risk_research_scenarios,
+                future_months=a.decision_months,seed=a.seed,
+                top=a.risk_research_top)
+            diverse.to_csv(a.output/f"top10_risk_adjusted_{h}.csv",
+                           index=False,encoding="utf-8-sig")
+            raw_risk.to_csv(a.output/f"top10_risk_adjusted_raw_{h}.csv",
+                            index=False,encoding="utf-8-sig")
+            stats["risk_research"]=risk_audit
+            if not len(diverse):
+                raise ValueError(f"{h}: risk-adjusted research returned zero candidates with full NAV cache")
+        else:
+            stats["risk_research"]={"status":"FULL_NAV_CACHE_REQUIRED"}
         research.to_csv(a.output/f"research_{h}.csv",index=False,encoding="utf-8-sig")
         # Backward-looking discovery diagnostics remain available even without
         # any contract/fee/forecast. This is NOT an expected-value Top10.
