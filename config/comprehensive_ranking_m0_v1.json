@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "model_id": "M0_FULL_MARKET_WEIGHTED_RANK_V1",
+  "asof": "2026-11-20",
+  "horizons_months": {
+    "5y": 60,
+    "3y": 36,
+    "1y": 12,
+    "6m": 6
+  },
+  "weights": {
+    "annualized_return": 0.4,
+    "max_drawdown": 0.35,
+    "shock_resilience": 0.15,
+    "monthly_downside": 0.1
+  },
+  "shock": {
+    "baseline": "2026-10-29",
+    "end": "2026-11-13",
+    "subweights": {
+      "period_return": 0.5,
+      "period_max_drawdown": 0.5
+    },
+    "pit_required": true
+  },
+  "percentile": {
+    "scope": "all_comparable_full_market_funds_per_horizon",
+    "method": "ascending_average_rank",
+    "ties": "average",
+    "n_singleton_score": 50,
+    "missing": "unscored"
+  },
+  "scoring": {
+    "risk_smoothing_review_mdd_lte": 0.0002,
+    "smoothing_requires_positive_return": true,
+    "pareto_affects_ranking": false,
+    "empirical_bayes_affects_m0": false,
+    "bootstrap_affects_m0": false,
+    "risk_budget_affects_m0": false
+  },
+  "ranking": {
+    "sort": [
+      "score_desc",
+      "code_asc"
+    ],
+    "top": 10,
+    "exclude_only_confirmed_untradeable_from_research": true,
+    "unknown_trading_status": "retain_as_UNKNOWN",
+    "different_index_identifiers_are_not_equivalent": true
+  },
+  "contracts": {
+    "full_catalog_one_to_one_audit": true,
+    "tradeable_top_requires_point_in_time_evidence": true,
+    "missing_inputs_never_zero_risk": true
+  },
+  "reference_spec": "docs/FUND_RANKING_KIMICODE_FINAL_SPEC_20261124.md"
+}
