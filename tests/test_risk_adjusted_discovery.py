@@ -11,7 +11,7 @@ import pandas as pd
 
 from fundkit.industry_rank import NavPath
 from fundkit.discovery_risk_rank import (maximum_weight_for_budget,
-    monthly_stationary_paths,rank_historical_risk_adjusted,theme_bucket)
+    monthly_stationary_paths,rank_historical_risk_adjusted,theme_bucket,_monthly)
 from fundkit.pricing_audit import audit_valuation
 
 
@@ -40,6 +40,38 @@ class RiskAdjustedDiscoveryTest(unittest.TestCase):
         self.assertLess(b,.1)
         self.assertLess(np.expm1(np.log1p(b*.2)),
                         np.expm1(np.log1p(a*.2)))
+
+    def test_partial_calendar_months_are_not_risk_sample_observations(self):
+        dates=pd.bdate_range("2026-05-20","2026-11-20")
+        values=np.ones(len(dates))
+        for i,date in enumerate(dates):
+            values[i]=1.0 + .015*(date.month-5)
+        returns=_monthly(values,dates)
+        # June-July, July-August, August-September, September-October.
+        # The May20-May29 fragment and unfinished November are not
+        # independent complete-month returns.
+        self.assertEqual(len(returns),4)
+        self.assertTrue(np.isfinite(returns).all())
+
+    def test_contract_review_does_not_erase_all_market_research_score(self):
+        dates=pd.bdate_range("2025-11-01","2026-11-20")
+        rng=np.random.default_rng(42)
+        nav=NavPath(dates,np.exp(np.cumsum(.00015+rng.normal(0,.003,len(dates)))))
+        frame=audit_valuation(pd.DataFrame([dict(
+            code="007589",name="某42个月定期债券",group="中长纯债",
+            product="p1",product_key="p1",
+            feature_status="HISTORICAL_FEATURE_AVAILABLE",
+            period_return=.03,max_drawdown=.02,contract_review_hint=True,
+            is_long_periodic=True,is_periodic_unverified=False
+        )]),pd.DataFrame())
+        research,main,raw,audit=rank_historical_risk_adjusted(
+            frame,{"007589":nav},"2026-11-20","6m",scenarios=32)
+        self.assertTrue(research.risk_adjusted_score.notna().iloc[0])
+        self.assertTrue(research.contract_review_pending.iloc[0])
+        self.assertEqual(research.risk_adjusted_status.iloc[0],
+                         "CONTRACT_REVIEW_REQUIRED")
+        self.assertTrue(main.empty)
+        self.assertTrue(raw.empty)
 
     def test_bootstrap_is_deterministic(self):
         x=np.array([.02,-.03,.05,-.01,.02,-.04])
