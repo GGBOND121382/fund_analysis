@@ -29,6 +29,8 @@ from fundkit.fund_master import (product_review_hint, read_timestamped_evidence,
                                  resolve_liquidity)
 from fundkit.pricing_audit import audit_valuation
 from fundkit.return_models import resolve_forecasts, fit_category_forecasts
+from fundkit.discovery_scoring_v3 import (descriptive_research, windowed_values,
+                                          joint_forecast_paths)
 from fundkit.opportunity_rank import (OpportunityInput, BUDGETS,
                                       stationary_bootstrap,cash_paths,
                                       optimize_opportunity)
@@ -94,13 +96,19 @@ def code_seed(code,seed):
 
 
 def analyze_horizon(frame, liquidity, valuation, forecasts, asof, months, cash_ok,
-                    args, paths):
+                    args, paths, lookback="6m"):
     original=frame.copy()
     original["code"]=original.code.astype(str).str.zfill(6)
     original["contract_review_hint"]=original.get("name",pd.Series("",index=original.index)).fillna("").map(product_review_hint)
     original=original.merge(liquidity,on="code",how="left",validate="one_to_one")
     original=audit_valuation(original,valuation)
     original=original.merge(forecasts,on="code",how="left",validate="one_to_one")
+    original=descriptive_research(original,asof,lookback)
+    original["nav_proxy_score_annual"]=np.nan
+    original["nav_proxy_weight"]=np.nan
+    original["fee_evidence_status"]=np.where(
+        pd.to_numeric(original.total_fee_rate,errors="coerce").ge(0),
+        "TOTAL_FEE_RECORDED","TOTAL_FEE_UNKNOWN")
     original["opportunity_status"]="EVIDENCE_INSUFFICIENT"
     original["opportunity_rank"]=np.nan
     original["score_annual"]=np.nan
@@ -113,46 +121,67 @@ def analyze_horizon(frame, liquidity, valuation, forecasts, asof, months, cash_o
     count=0
     for idx,row in original.iterrows():
         code=row.code
-        reason=None
         if row.feature_status!="HISTORICAL_FEATURE_AVAILABLE":
-            reason="NO_COMPARABLE_HISTORICAL_FEATURE"
-        elif not cash_ok:
-            reason="CASH_FORECAST_MISSING"
-        elif row.forecast_status!="EVIDENCE_SUPPLIED_UNVALIDATED":
-            reason="FORECAST_MISSING"
-        elif not bool(row.economic_risk_verified):
-            reason="ECONOMIC_RISK_UNVERIFIED"
-        elif not np.isfinite(row.total_fee_rate) or row.total_fee_rate<0:
-            reason="TRADING_COST_UNVERIFIED"
-        elif paths is None or code not in paths:
-            reason="DAILY_NAV_PATH_MISSING"
-        if reason:
-            original.at[idx,"opportunity_status"]=reason
+            original.at[idx,"opportunity_status"]="NO_COMPARABLE_HISTORICAL_FEATURE"
             continue
-        # A forecast not above cash cannot produce positive value for w>0
-        # with nonnegative costs. Keep this as a valid zero-score candidate.
-        if row.forecast_mu_annual <= args.cash_rate_annual:
-            estimates=[dict(budget=float(b),weight=0.,risk_upper=0.,
-                           opportunity_score_annual=0.,status="NO_POSITIVE_EXCESS") for b in BUDGETS]
-        else:
-            nav=paths[code]
-            nav_values=nav.value[nav.dates<=pd.Timestamp(asof)]
-            try:
-                fund=stationary_bootstrap(nav_values,steps=21*months,
-                     scenarios=args.scenarios,block_length=args.block_length,
-                     seed=code_seed(code,args.seed))
-                cash=cash_paths(args.cash_rate_annual,steps=21*months,
-                                scenarios=args.scenarios)
-                setting=OpportunityInput(
-                    forecast_annual=float(row.forecast_mu_annual),
-                    cash_annual=float(args.cash_rate_annual),
-                    fee_rate_roundtrip=float(row.total_fee_rate),
-                    economic_shock_loss=float(row.economic_mdd_upper),
-                    decision_months=months,grid_points=args.grid_points)
-                estimates=optimize_opportunity(fund,cash,setting)
-            except (ValueError,FloatingPointError,OverflowError) as exc:
-                original.at[idx,"opportunity_status"]="PATH_RISK_MODEL_FAILED"
-                continue
+        if not cash_ok:
+            original.at[idx,"opportunity_status"]="CASH_FORECAST_MISSING"
+            continue
+        if row.forecast_status!="EVIDENCE_SUPPLIED_UNVALIDATED":
+            original.at[idx,"opportunity_status"]="FORECAST_MISSING"
+            continue
+        if paths is None or code not in paths:
+            original.at[idx,"opportunity_status"]="DAILY_NAV_PATH_MISSING"
+            continue
+        # Explicit historical window h is independent of future H.
+        # All score-generating fund paths share the calibrated forecast mean,
+        # estimation uncertainty and historical residual distribution.
+        try:
+            values=windowed_values(paths[code],asof,lookback)
+            seed=code_seed(code+":"+lookback,args.seed)
+            forecast_se=getattr(row,"forecast_se_annual",np.nan)
+            forecast_se=(None if pd.isna(forecast_se) else float(forecast_se))
+            fund=joint_forecast_paths(values,float(row.forecast_mu_annual),
+                steps=21*months,scenarios=args.scenarios,
+                block_length=args.block_length,seed=seed,
+                forecast_se_annual=forecast_se)
+            cash=cash_paths(args.cash_rate_annual,steps=21*months,
+                            scenarios=args.scenarios)
+        except (ValueError,TypeError,OverflowError,FloatingPointError):
+            original.at[idx,"opportunity_status"]="PATH_RISK_MODEL_FAILED"
+            continue
+        has_risk=bool(row.economic_risk_verified) and pd.notna(row.economic_mdd_upper)
+        fee=pd.to_numeric(pd.Series([row.total_fee_rate]),errors="coerce").iloc[0]
+        has_fee=bool(np.isfinite(fee) and 0<=fee<1)
+        if not has_risk or not has_fee:
+            # Research-only proxy cannot become a certified economic-risk score.
+            # In particular, appraisal-smoothed or unknown-priced NAV cannot
+            # exploit a tiny reported drawdown to win the ranking.
+            if (row.pricing_method=="market_value" and
+                    not bool(row.zero_or_tiny_nav_mdd)):
+                proxy=OpportunityInput(float(row.forecast_mu_annual),
+                     float(args.cash_rate_annual),0.,0.,decision_months=months,
+                     grid_points=args.grid_points)
+                estimates_proxy=optimize_opportunity(fund,cash,proxy)
+                chosen=next(x for x in estimates_proxy if abs(x["budget"]-.04)<1e-9)
+                original.at[idx,"nav_proxy_score_annual"]=chosen["opportunity_score_annual"]
+                original.at[idx,"nav_proxy_weight"]=chosen["weight"]
+                original.at[idx,"opportunity_status"]="NAV_ONLY_GROSS_RESEARCH_PROXY"
+            else:
+                original.at[idx,"opportunity_status"]=(
+                    "ECONOMIC_RISK_UNVERIFIED" if not has_risk else
+                    "TRADING_COST_UNVERIFIED")
+            continue
+        setting=OpportunityInput(forecast_annual=float(row.forecast_mu_annual),
+            cash_annual=float(args.cash_rate_annual),
+            fee_rate_roundtrip=float(fee),
+            economic_shock_loss=float(row.economic_mdd_upper),
+            decision_months=months,grid_points=args.grid_points)
+        try:
+            estimates=optimize_opportunity(fund,cash,setting)
+        except (ValueError,TypeError,OverflowError,FloatingPointError):
+            original.at[idx,"opportunity_status"]="SCENARIO_OPTIMIZATION_FAILED"
+            continue
         for e in estimates:
             budgets[e["budget"]].append(dict(code=code,**e))
         score=[x for x in estimates if abs(x["budget"]-0.04)<1e-9][0]
@@ -186,6 +215,9 @@ def analyze_horizon(frame, liquidity, valuation, forecasts, asof, months, cash_o
            "forecast_supplied":int(original.forecast_status.eq("EVIDENCE_SUPPLIED_UNVALIDATED").sum()),
            "economic_risk_evidence":int(original.economic_risk_verified.sum()),
            "trading_evidence":int(original.liquidity_status.eq("STATUS_SOURCE_OBSERVED").sum()),
+           "historical_return_candidates":int(original.historical_return_cagr.notna().sum()),
+           "historical_smoothing_review":int(original.risk_comparability.eq("NAV_SMOOTHING_REVIEW").sum()),
+           "nav_only_proxy_scored":int(original.nav_proxy_score_annual.notna().sum()),
            "experimentally_scored":count,
            "opportunity_positive":int((original.score_annual>0).sum()),
            "investable_precheck_only":int(len(investable)),
@@ -260,8 +292,17 @@ def main(argv=None):
         fc=resolve_forecasts(codes,forecasts_for_h,asof,a.decision_months)
         research,investable,sensitivity,stats=analyze_horizon(
             frame,liq,valuation_evidence,fc,asof,a.decision_months,
-            cash_ok,a,path_cache)
+            cash_ok,a,path_cache,lookback=h)
         research.to_csv(a.output/f"research_{h}.csv",index=False,encoding="utf-8-sig")
+        # Backward-looking discovery diagnostics remain available even without
+        # any contract/fee/forecast. This is NOT an expected-value Top10.
+        historical=research.loc[research.historical_return_cagr.notna()].sort_values(
+            ["historical_return_cagr","code"],ascending=[False,True])
+        historical.head(10).to_csv(
+            a.output/f"top10_historical_return_DIAGNOSTIC_{h}.csv",
+            index=False,encoding="utf-8-sig")
+        historical.loc[historical.risk_comparability.eq("NAV_SMOOTHING_REVIEW")].head(100).to_csv(
+            a.output/f"smoothing_review_{h}.csv",index=False,encoding="utf-8-sig")
         investable.to_csv(a.output/f"investable_{h}.csv",index=False,encoding="utf-8-sig")
         # Output provisional model ranking only if backed by ALL inputs.
         provisional=research.loc[research.score_annual.gt(0)].sort_values(
