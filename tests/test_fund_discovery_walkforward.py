@@ -80,7 +80,11 @@ class FundWalkForwardTest(unittest.TestCase):
             self.assertFalse(a.empty)
             pd.testing.assert_frame_equal(a,b)
             self.assertTrue(set(a.method).issuperset({"HIST_RETURN_ONLY",
-                "M0_CATEGORY_BASELINE","M1_EB_FORECAST"}))
+                "M0_CATEGORY_BASELINE","M1_EB_FORECAST","M1_NAV_RISK_PROXY"}))
+            # A 4%-risk-budget model cannot be compared with unscaled
+            # 100%-fund historical-return baselines.
+            self.assertTrue(a.weight.between(0,1).all())
+            self.assertTrue(a.groupby("code").weight.nunique().le(1).all())
             realized=realized_signals(a,paths,cash,t+pd.DateOffset(months=6))
             self.assertFalse(realized.empty)
             self.assertTrue(realized.evaluation_status.eq("NAV_ONLY_NO_FEES").all())
