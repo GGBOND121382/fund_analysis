@@ -196,6 +196,7 @@ class FundDiscoveryContractsTest(unittest.TestCase):
             source_url="https://example.com/risk",
             pricing_method="market_value",risk_model="BOND_DURATION_STRESS_v1",
             risk_input_source_url="https://example.com/holdings-and-shocks",
+            risk_input_known_at="2026-11-18",
             modified_duration=3.,rate_shock_bp=100.,spread_duration=0.,
             spread_shock_bp=0.,convexity=0.,default_loss=0.)])
         forecast=pd.DataFrame([dict(code="000001",forecast_mu_annual=.08,

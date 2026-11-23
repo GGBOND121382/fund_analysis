@@ -56,6 +56,7 @@ class FundDiscoveryV3Test(unittest.TestCase):
             pricing_method="amortized_cost",source_url="https://example.com/valuation",
             risk_model="BOND_DURATION_STRESS_v1",
             risk_input_source_url="https://example.com/exposures",
+            risk_input_known_at="2026-11-18",
             economic_mdd_upper=.00001,modified_duration=3.,rate_shock_bp=100.,
             spread_duration=2.,spread_shock_bp=50.,convexity=0.,default_loss=0.)])
         d=audit_valuation(frame,e)
