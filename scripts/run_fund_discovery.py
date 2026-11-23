@@ -289,7 +289,8 @@ def main(argv=None):
                          index=False,encoding="utf-8-sig")
             if len(model):
                 forecasts_for_h=pd.concat([model,forecast_evidence],ignore_index=True)
-        fc=resolve_forecasts(codes,forecasts_for_h,asof,a.decision_months)
+        fc=resolve_forecasts(codes,forecasts_for_h,asof,a.decision_months,
+                             lookback_horizon=h)
         research,investable,sensitivity,stats=analyze_horizon(
             frame,liq,valuation_evidence,fc,asof,a.decision_months,
             cash_ok,a,path_cache,lookback=h)
