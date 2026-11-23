@@ -1,0 +1,135 @@
+{
+  "model_id": "M0_FULL_MARKET_WEIGHTED_RANK_V1",
+  "asof": "2026-11-20",
+  "weights": {
+    "annualized_return": 0.4,
+    "max_drawdown": 0.35,
+    "shock_resilience": 0.15,
+    "monthly_downside": 0.1
+  },
+  "shock": {
+    "start": "2026-10-29",
+    "end": "2026-11-13"
+  },
+  "git_sha": "a91f4173a8b38891aea7be9efb31fd41ad13173f",
+  "catalog_codes": 28346,
+  "horizons": {
+    "5y": {
+      "horizon": "5y",
+      "catalog_codes": 28346,
+      "audit_total": 28346,
+      "conservation_ok": true,
+      "status_counts": {
+        "期限起点缺历史": 13473,
+        "SCORED": 9473,
+        "缺有效净值缓存": 2392,
+        "缺截止日净值": 1952,
+        "低波类别单日涨跌超过3%待核验": 576,
+        "SMOOTHING_REVIEW": 351,
+        "期限中间覆盖不足": 97,
+        "事件期缺数据": 32
+      },
+      "scored_candidates": 9473,
+      "smoothing_review": 351,
+      "trade_status_counts": {
+        "PLATFORM_SPECIFIC": 28344,
+        "CONFIRMED_BLOCKED": 2
+      },
+      "channel_snapshot": "purchase_channel_status.csv",
+      "channel_known_at": "未知",
+      "research_board_rows": 10,
+      "diversified_board_rows": 10,
+      "verified_tradeable_board_rows": 0,
+      "verified_tradeable_reason": "no point-in-time contract+fee evidence at asof; board intentionally empty",
+      "elapsed_seconds": 4.64
+    },
+    "3y": {
+      "horizon": "3y",
+      "catalog_codes": 28346,
+      "audit_total": 28346,
+      "conservation_ok": true,
+      "status_counts": {
+        "SCORED": 14375,
+        "期限起点缺历史": 8269,
+        "缺有效净值缓存": 2392,
+        "缺截止日净值": 1952,
+        "低波类别单日涨跌超过3%待核验": 644,
+        "SMOOTHING_REVIEW": 514,
+        "期限中间覆盖不足": 144,
+        "事件期缺数据": 56
+      },
+      "scored_candidates": 14375,
+      "smoothing_review": 514,
+      "trade_status_counts": {
+        "PLATFORM_SPECIFIC": 28344,
+        "CONFIRMED_BLOCKED": 2
+      },
+      "channel_snapshot": "purchase_channel_status.csv",
+      "channel_known_at": "未知",
+      "research_board_rows": 10,
+      "diversified_board_rows": 10,
+      "verified_tradeable_board_rows": 0,
+      "verified_tradeable_reason": "no point-in-time contract+fee evidence at asof; board intentionally empty",
+      "elapsed_seconds": 5.88
+    },
+    "1y": {
+      "horizon": "1y",
+      "catalog_codes": 28346,
+      "audit_total": 28346,
+      "conservation_ok": true,
+      "status_counts": {
+        "SCORED": 20540,
+        "缺有效净值缓存": 2392,
+        "期限起点缺历史": 2156,
+        "缺截止日净值": 1952,
+        "SMOOTHING_REVIEW": 770,
+        "期限中间覆盖不足": 266,
+        "低波类别单日涨跌超过3%待核验": 235,
+        "事件期缺数据": 35
+      },
+      "scored_candidates": 20540,
+      "smoothing_review": 770,
+      "trade_status_counts": {
+        "PLATFORM_SPECIFIC": 28344,
+        "CONFIRMED_BLOCKED": 2
+      },
+      "channel_snapshot": "purchase_channel_status.csv",
+      "channel_known_at": "未知",
+      "research_board_rows": 10,
+      "diversified_board_rows": 10,
+      "verified_tradeable_board_rows": 0,
+      "verified_tradeable_reason": "no point-in-time contract+fee evidence at asof; board intentionally empty",
+      "elapsed_seconds": 7.19
+    },
+    "6m": {
+      "horizon": "6m",
+      "catalog_codes": 28346,
+      "audit_total": 28346,
+      "conservation_ok": true,
+      "status_counts": {
+        "SCORED": 21298,
+        "缺有效净值缓存": 2392,
+        "缺截止日净值": 1952,
+        "期限起点缺历史": 1365,
+        "SMOOTHING_REVIEW": 835,
+        "期限中间覆盖不足": 280,
+        "低波类别单日涨跌超过3%待核验": 206,
+        "事件期缺数据": 18
+      },
+      "scored_candidates": 21298,
+      "smoothing_review": 835,
+      "trade_status_counts": {
+        "PLATFORM_SPECIFIC": 28344,
+        "CONFIRMED_BLOCKED": 2
+      },
+      "channel_snapshot": "purchase_channel_status.csv",
+      "channel_known_at": "未知",
+      "research_board_rows": 10,
+      "diversified_board_rows": 10,
+      "verified_tradeable_board_rows": 0,
+      "verified_tradeable_reason": "no point-in-time contract+fee evidence at asof; board intentionally empty",
+      "elapsed_seconds": 7.5
+    }
+  },
+  "elapsed_seconds": 191.31
+}

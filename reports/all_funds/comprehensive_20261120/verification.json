@@ -1,0 +1,306 @@
+{
+  "recompute": {
+    "5y": {
+      "recomputed_codes": 21,
+      "max_abs_metric_diff": 9.8879238130678e-17
+    },
+    "3y": {
+      "recomputed_codes": 20,
+      "max_abs_metric_diff": 9.71445146547012e-17
+    },
+    "1y": {
+      "recomputed_codes": 19,
+      "max_abs_metric_diff": 9.020562075079397e-17
+    },
+    "6m": {
+      "recomputed_codes": 21,
+      "max_abs_metric_diff": 1.1102230246251565e-16
+    }
+  },
+  "quality": {
+    "5y": {
+      "scored_shares": 9473,
+      "scored_fund_level": 6250,
+      "top10_R_median": 0.0381274744493226,
+      "top10_D_median": 0.008287441517681151,
+      "top10_L_median": 0.00068991841625045,
+      "top10_Aret_median": -0.00142642055360125,
+      "top20_D_max": 0.012664489957455,
+      "top50_D_max": 0.01375046142488,
+      "high_mdd_cases": [
+        {
+          "code": "166005",
+          "name": "中欧价值发现混合A",
+          "R": 0.0623,
+          "D": 0.314,
+          "rank": 2526
+        },
+        {
+          "code": "001882",
+          "name": "中欧价值发现混合E",
+          "R": 0.0623,
+          "D": 0.314,
+          "rank": 2529
+        },
+        {
+          "code": "011570",
+          "name": "鹏华鑫远价值一年持有期混合A",
+          "R": 0.0425,
+          "D": 0.3024,
+          "rank": 2570
+        },
+        {
+          "code": "004232",
+          "name": "中欧价值发现混合C",
+          "R": 0.0538,
+          "D": 0.3283,
+          "rank": 2619
+        },
+        {
+          "code": "162209",
+          "name": "宏利市值优选混合A",
+          "R": 0.0419,
+          "D": 0.3339,
+          "rank": 2628
+        }
+      ],
+      "zero_mdd_leaked_into_scored": 3,
+      "overlap": {
+        "vs_pure_return_top10": 0,
+        "vs_industry_research_top10": 9,
+        "v4_budget_board_rows": 0
+      },
+      "weight_sensitivity": {
+        "annualized_return+5pp": {
+          "top10_overlap": 9,
+          "spearman": 0.9996
+        },
+        "max_drawdown+5pp": {
+          "top10_overlap": 8,
+          "spearman": 0.9998
+        },
+        "shock_resilience+5pp": {
+          "top10_overlap": 6,
+          "spearman": 0.9994
+        },
+        "monthly_downside+5pp": {
+          "top10_overlap": 9,
+          "spearman": 0.9997
+        }
+      }
+    },
+    "3y": {
+      "scored_shares": 14375,
+      "scored_fund_level": 8592,
+      "top10_R_median": 0.0431876522941906,
+      "top10_D_median": 0.0061514220069547,
+      "top10_L_median": 0.00043652004501685,
+      "top10_Aret_median": -0.0007747344649454,
+      "top20_D_max": 0.1235591244657425,
+      "top50_D_max": 0.1534775288175105,
+      "high_mdd_cases": [
+        {
+          "code": "007343",
+          "name": "嘉实科技创新混合",
+          "R": 0.41,
+          "D": 0.3182,
+          "rank": 4361
+        },
+        {
+          "code": "016502",
+          "name": "永赢新兴消费智选混合发起A",
+          "R": 0.0903,
+          "D": 0.3,
+          "rank": 4570
+        },
+        {
+          "code": "016503",
+          "name": "永赢新兴消费智选混合发起C",
+          "R": 0.0862,
+          "D": 0.3021,
+          "rank": 4774
+        },
+        {
+          "code": "952004",
+          "name": "国泰海通君得明混合A",
+          "R": 0.1961,
+          "D": 0.3086,
+          "rank": 4780
+        },
+        {
+          "code": "519172",
+          "name": "浦银睿智精选混合A",
+          "R": 0.2566,
+          "D": 0.3352,
+          "rank": 4869
+        }
+      ],
+      "zero_mdd_leaked_into_scored": 6,
+      "overlap": {
+        "vs_pure_return_top10": 0,
+        "vs_industry_research_top10": 4,
+        "v4_budget_board_rows": 0
+      },
+      "weight_sensitivity": {
+        "annualized_return+5pp": {
+          "top10_overlap": 7,
+          "spearman": 0.9975
+        },
+        "max_drawdown+5pp": {
+          "top10_overlap": 9,
+          "spearman": 0.9986
+        },
+        "shock_resilience+5pp": {
+          "top10_overlap": 9,
+          "spearman": 0.9989
+        },
+        "monthly_downside+5pp": {
+          "top10_overlap": 9,
+          "spearman": 0.9984
+        }
+      }
+    },
+    "1y": {
+      "scored_shares": 20540,
+      "scored_fund_level": 11335,
+      "top10_R_median": 0.03788245108256705,
+      "top10_D_median": 0.0005406540437749,
+      "top10_L_median": 0.0,
+      "top10_Aret_median": 0.0011535692451424499,
+      "top20_D_max": 0.0019675356615839,
+      "top50_D_max": 0.0026034653020915,
+      "high_mdd_cases": [
+        {
+          "code": "007343",
+          "name": "嘉实科技创新混合",
+          "R": 0.6613,
+          "D": 0.3182,
+          "rank": 7225
+        },
+        {
+          "code": "519778",
+          "name": "交银经济新动力混合A",
+          "R": 0.0918,
+          "D": 0.3075,
+          "rank": 7332
+        },
+        {
+          "code": "014096",
+          "name": "交银经济新动力混合C",
+          "R": 0.0852,
+          "D": 0.3089,
+          "rank": 7384
+        },
+        {
+          "code": "023397",
+          "name": "尚正研究睿选混合发起A",
+          "R": 0.3351,
+          "D": 0.3047,
+          "rank": 7395
+        },
+        {
+          "code": "506001",
+          "name": "万家科创板2年定开混合",
+          "R": 0.2601,
+          "D": 0.3071,
+          "rank": 7402
+        }
+      ],
+      "zero_mdd_leaked_into_scored": 12,
+      "overlap": {
+        "vs_pure_return_top10": 0,
+        "vs_industry_research_top10": 4,
+        "v4_budget_board_rows": 0
+      },
+      "weight_sensitivity": {
+        "annualized_return+5pp": {
+          "top10_overlap": 9,
+          "spearman": 0.9996
+        },
+        "max_drawdown+5pp": {
+          "top10_overlap": 10,
+          "spearman": 0.9998
+        },
+        "shock_resilience+5pp": {
+          "top10_overlap": 9,
+          "spearman": 0.9996
+        },
+        "monthly_downside+5pp": {
+          "top10_overlap": 10,
+          "spearman": 0.9997
+        }
+      }
+    },
+    "6m": {
+      "scored_shares": 21298,
+      "scored_fund_level": 11724,
+      "top10_R_median": 0.04362524966747425,
+      "top10_D_median": 0.0006726723622784,
+      "top10_L_median": 0.0,
+      "top10_Aret_median": 0.0015870197762659,
+      "top20_D_max": 0.0019675356615839,
+      "top50_D_max": 0.0023870568473168,
+      "high_mdd_cases": [
+        {
+          "code": "007343",
+          "name": "嘉实科技创新混合",
+          "R": -0.0382,
+          "D": 0.3182,
+          "rank": 11218
+        },
+        {
+          "code": "519172",
+          "name": "浦银睿智精选混合A",
+          "R": -0.164,
+          "D": 0.3352,
+          "rank": 12539
+        },
+        {
+          "code": "519173",
+          "name": "浦银睿智精选混合C",
+          "R": -0.1702,
+          "D": 0.3367,
+          "rank": 12612
+        },
+        {
+          "code": "003053",
+          "name": "嘉实文体娱乐股票A",
+          "R": -0.136,
+          "D": 0.3391,
+          "rank": 12624
+        },
+        {
+          "code": "003054",
+          "name": "嘉实文体娱乐股票C",
+          "R": -0.1399,
+          "D": 0.3391,
+          "rank": 12668
+        }
+      ],
+      "zero_mdd_leaked_into_scored": 17,
+      "overlap": {
+        "vs_pure_return_top10": 0,
+        "vs_industry_research_top10": 4,
+        "v4_budget_board_rows": 0
+      },
+      "weight_sensitivity": {
+        "annualized_return+5pp": {
+          "top10_overlap": 10,
+          "spearman": 0.9999
+        },
+        "max_drawdown+5pp": {
+          "top10_overlap": 10,
+          "spearman": 0.9999
+        },
+        "shock_resilience+5pp": {
+          "top10_overlap": 10,
+          "spearman": 0.9997
+        },
+        "monthly_downside+5pp": {
+          "top10_overlap": 10,
+          "spearman": 0.9999
+        }
+      }
+    }
+  }
+}
