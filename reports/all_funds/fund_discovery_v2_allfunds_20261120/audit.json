@@ -1,0 +1,88 @@
+{
+  "asof": "2026-11-20",
+  "source_snapshot": "reports/all_funds/industry_rank_20261120",
+  "data_mode": "full_local_nav_catalog",
+  "experiment_only": true,
+  "certified_investable_ranking": false,
+  "oos_acceptance": "EVIDENCE_INSUFFICIENT",
+  "explanation": "No pretrained model / economic-risk verification or independent PIT OOS has been inferred from NAV alone",
+  "assumption_fields": {
+    "trade": false,
+    "valuation": false,
+    "forecast": false,
+    "benchmark_history": false,
+    "cash": false,
+    "nav_paths": true,
+    "asof_historical_catalog": false,
+    "independent_oos_validation": false
+  },
+  "decision_months": 6,
+  "comparison_budgets": [
+    0.01,
+    0.02,
+    0.04,
+    0.08
+  ],
+  "seed": 42,
+  "block_length": 10,
+  "scenarios": 256,
+  "grid_points": 101,
+  "cash_rate": null,
+  "cash_source": "",
+  "cash_known_at": "",
+  "full_snapshot_exclusions_retained_for_audit": 0,
+  "horizons": {
+    "5y": {
+      "feature_rows": 28346,
+      "forecast_supplied": 0,
+      "economic_risk_evidence": 0,
+      "trading_evidence": 0,
+      "experimentally_scored": 0,
+      "opportunity_positive": 0,
+      "investable_precheck_only": 0,
+      "status_counts": {
+        "CASH_FORECAST_MISSING": 6481,
+        "NO_COMPARABLE_HISTORICAL_FEATURE": 21865
+      }
+    },
+    "3y": {
+      "feature_rows": 28346,
+      "forecast_supplied": 0,
+      "economic_risk_evidence": 0,
+      "trading_evidence": 0,
+      "experimentally_scored": 0,
+      "opportunity_positive": 0,
+      "investable_precheck_only": 0,
+      "status_counts": {
+        "CASH_FORECAST_MISSING": 8903,
+        "NO_COMPARABLE_HISTORICAL_FEATURE": 19443
+      }
+    },
+    "1y": {
+      "feature_rows": 28346,
+      "forecast_supplied": 0,
+      "economic_risk_evidence": 0,
+      "trading_evidence": 0,
+      "experimentally_scored": 0,
+      "opportunity_positive": 0,
+      "investable_precheck_only": 0,
+      "status_counts": {
+        "CASH_FORECAST_MISSING": 11758,
+        "NO_COMPARABLE_HISTORICAL_FEATURE": 16588
+      }
+    },
+    "6m": {
+      "feature_rows": 28346,
+      "forecast_supplied": 0,
+      "economic_risk_evidence": 0,
+      "trading_evidence": 0,
+      "experimentally_scored": 0,
+      "opportunity_positive": 0,
+      "investable_precheck_only": 0,
+      "status_counts": {
+        "CASH_FORECAST_MISSING": 12173,
+        "NO_COMPARABLE_HISTORICAL_FEATURE": 16173
+      }
+    }
+  }
+}
