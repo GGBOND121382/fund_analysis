@@ -41,8 +41,17 @@ jobs:
           for h,stats in audit["horizons"].items():
               assert stats["feature_rows"]>0, h
               assert stats["experimentally_scored"]==0, h
+              assert stats["historical_return_candidates"]>0, h
               assert (d/f"research_{h}.csv").exists()
+              assert (d/f"top10_historical_return_DIAGNOSTIC_{h}.csv").exists()
           import pandas as pd
+          for h in ("5y","3y","1y","6m"):
+              hist=pd.read_csv(d/f"top10_historical_return_DIAGNOSTIC_{h}.csv")
+              assert 0 < len(hist) <= 10
+              assert hist.historical_return_cagr.notna().all()
+              assert hist.descriptive_research_status.eq("NAV_HISTORY_ONLY").all()
+              assert (hist.risk_comparability!="REPRODUCIBLE_ECONOMIC_RISK").all()
+              assert pd.read_csv(d/f"top10_experimental_{h}.csv").empty
           r=pd.read_csv(d/"research_1y.csv",dtype={"code":str})
           for code in ("007589","008693","007680","008338"):
               hit=r.loc[r.code.eq(code)]
