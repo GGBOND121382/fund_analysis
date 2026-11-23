@@ -15,7 +15,7 @@ STRESS_MODEL = "BOND_DURATION_STRESS_v1"
 NUMERIC = ("modified_duration","rate_shock_bp","spread_duration",
            "spread_shock_bp","convexity","default_loss")
 NEEDED = {"code","known_at","source_url","pricing_method","risk_model",
-          "risk_input_source_url",*NUMERIC}
+          "risk_input_source_url","risk_input_known_at",*NUMERIC}
 OUTPUT_COLS=("pricing_method","economic_mdd_upper","economic_risk_verified",
              "valuation_warning","zero_or_tiny_nav_mdd","risk_quality",
              "risk_evidence_status","source_url","known_at","risk_model")
@@ -67,7 +67,7 @@ def audit_valuation(frame: pd.DataFrame, evidence: pd.DataFrame):
             if col not in e:
                 e[col]=np.nan
         used=["code","pricing_method","source_url","known_at","risk_model",
-              "risk_input_source_url","shadow_price_source_url","economic_mdd_upper",
+              "risk_input_source_url","risk_input_known_at","shadow_price_source_url","economic_mdd_upper",
               *NUMERIC]
         # Code-level evidence must be point-in-time filtered before this call.
         d=d.merge(e[used],on="code",how="left",validate="many_to_one",
@@ -75,7 +75,8 @@ def audit_valuation(frame: pd.DataFrame, evidence: pd.DataFrame):
     else:
         d["pricing_method"],d["economic_mdd_upper"]="unknown",np.nan
         d["source_url"],d["known_at"],d["risk_model"]="","",""
-        for col in (*NUMERIC,"risk_input_source_url","shadow_price_source_url"):
+        for col in (*NUMERIC,"risk_input_source_url","risk_input_known_at",
+                    "shadow_price_source_url"):
             d[col]=np.nan
     d["pricing_method"]=d.pricing_method.fillna("unknown").replace("","unknown")
     if not d.pricing_method.isin(VALID_PRICING).all():
@@ -84,10 +85,14 @@ def audit_valuation(frame: pd.DataFrame, evidence: pd.DataFrame):
     d["risk_evidence_status"]="SOURCE_ONLY_NO_REPRODUCIBLE_RISK"
     d["economic_risk_verified"]=False
     d["economic_mdd_upper"]=np.nan
+    source_when=pd.to_datetime(d.get("known_at"),utc=True,errors="coerce")
+    exposure_when=pd.to_datetime(d["risk_input_known_at"],utc=True,errors="coerce")
     candidate=(d.risk_model.eq(STRESS_MODEL) &
                d.pricing_method.ne("unknown") &
                d.source_url.fillna("").astype(str).str.strip().ne("") &
-               d.risk_input_source_url.fillna("").astype(str).str.strip().ne(""))
+               d.risk_input_source_url.fillna("").astype(str).str.strip().ne("") &
+               exposure_when.notna() & source_when.notna() &
+               exposure_when.le(source_when))
     # Amortized NAV is acceptable only if independent bond risk exposures
     # can be stress-valued; the reported NAV itself supplies no risk guarantee.
     for idx in d.index[candidate]:
