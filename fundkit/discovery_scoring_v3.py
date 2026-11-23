@@ -98,6 +98,9 @@ def descriptive_research(frame, asof, horizon):
     d["descriptive_research_status"]="HISTORY_UNAVAILABLE"
     d["risk_comparability"]="NOT_ASSESSED"
     eligible=d.feature_status.eq("HISTORICAL_FEATURE_AVAILABLE")
+    if not {"start","end","period_return","max_drawdown"}.issubset(d.columns):
+        d.loc[eligible,"descriptive_research_status"]="HISTORICAL_DATES_MISSING"
+        return d
     if not eligible.any():
         return d
     x=d.loc[eligible]
