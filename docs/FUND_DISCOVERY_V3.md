@@ -77,9 +77,9 @@ scenario_loss = max(0, modified_duration * rate_shock_bp/10000
 
 - 对每个形成日 t，**必须**提供当时基金目录 `historical-catalogs/YYYY-MM-DD.csv`，其中每行 `code,name,type,known_at,source_url`，所有记录 known_at<=t；拒绝缺失目录、未来时间、重复代码；
 - 仅以 t 可见的基准价格 `group,date,nav,known_at,source_url` 与历史基金NAV拟合 M0/M1；仅以当时现金总回报序列 `date,nav,known_at,source_url` 计算现金历史替代基线；
-- 自动生成 `HIST_RETURN_ONLY`、`M0_CATEGORY_BASELINE`、`M1_EB_FORECAST`、`M1_NAV_RISK_PROXY` 候选，四个方法在**可共同比较的同一份额候选池**上进行比较；
+- 自动生成 `HIST_RETURN_ONLY`、`M0_CATEGORY_BASELINE`、`M1_EB_FORECAST`、`M1_NAV_RISK_PROXY` 候选，四个方法在**可共同比较的同一份额候选池、同一NAV代理风险预算仓位**下进行比较。其对照检验的是选股/选基排序质量而非不同的仓位配置算法；这些共用仓位来自M1的NAV风险代理，因此不能声称是独立于新模型的完全外部风险评估；
 - 在选择完成之后才能读取持有期后半段的真实NAV作为研究标签。无真实费用、发行时交易资格或经济风险源，**结果只能叫NAV研究评价**；
-- 验证期仅使用评价终点在 `validation-end` 之前的样本，先在验证期选定固定方法，再要求 `test-start > validation-end+H` 实现持有期隔离；测试期只评价冻结的方法，使用非重叠同日期配对区间估计；
+- 验证期仅使用评价终点在 `validation-end` 之前的样本，并先剔除持有期标签重叠的验证窗口，再在验证期选定固定方法（包括M1_NAV_RISK_PROXY），然后要求 `test-start > validation-end+H` 实现持有期隔离；测试期只评价冻结的方法，使用非重叠同日期配对区间估计；
 - 对当下实际历史档案不完整的情形，状态为 `EVIDENCE_INSUFFICIENT`，永不把今天全部存活基金当成历史总体，`oos_certified=false`。
 
 **限制**：这还不是已验证可执行交易回测；亦无法自动修复历史已清盘基金缺失、评级源历史回填等数据问题。模型在未来表现是否更好，必须用上述回测实际评价。
