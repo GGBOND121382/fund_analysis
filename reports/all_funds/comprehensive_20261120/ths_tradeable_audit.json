@@ -1,0 +1,48 @@
+{
+ "source": "https://fund.10jqka.com.cn/data/client/myfund/{}",
+ "evidence_time": "2026-11-24T02:38:02+08:00",
+ "note": "同花顺爱基金渠道交易状态，晚于榜单 asof=2026-11-20，仅作当前可交易性过滤，不回填历史榜",
+ "rule": "buy==\"1\" and sgstat in {开放,限制大额}",
+ "periods": {
+  "5y": {
+   "candidates_checked": 200,
+   "ths_tradeable": 175,
+   "excluded": 25,
+   "excluded_reasons": {
+    "同花顺暂不支持交易": 24,
+    "产品停售/暂停申购": 1
+   },
+   "errors": 0
+  },
+  "3y": {
+   "candidates_checked": 200,
+   "ths_tradeable": 182,
+   "excluded": 18,
+   "excluded_reasons": {
+    "同花顺暂不支持交易": 17,
+    "产品停售/暂停申购": 1
+   },
+   "errors": 0
+  },
+  "1y": {
+   "candidates_checked": 200,
+   "ths_tradeable": 161,
+   "excluded": 39,
+   "excluded_reasons": {
+    "同花顺暂不支持交易": 37,
+    "产品停售/暂停申购": 2
+   },
+   "errors": 0
+  },
+  "6m": {
+   "candidates_checked": 200,
+   "ths_tradeable": 150,
+   "excluded": 50,
+   "excluded_reasons": {
+    "同花顺暂不支持交易": 47,
+    "产品停售/暂停申购": 3
+   },
+   "errors": 0
+  }
+ }
+}

@@ -72,6 +72,7 @@ def main():
         excl = dedup[~dedup["tradeable"]].reset_index(drop=True)
         trad.insert(0, "rank", range(1, len(trad) + 1))
         trad.head(args.top).to_csv(inp / f"top10_channel_tradeable_{period}.csv", index=False)
+        trad.to_csv(inp / f"top_candidates_channel_tradeable_{period}.csv", index=False)
         excl.to_csv(inp / f"excluded_untradeable_{period}.csv", index=False)
         summary[period] = {
             "scored_fund_level": int(len(dedup)),
