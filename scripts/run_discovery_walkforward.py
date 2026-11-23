@@ -99,6 +99,7 @@ def fold_signals(catalog, paths, benchmark, cash, valuation, t, h, H,
     frame,_=assemble(catalog,paths,t,h,[])
     if frame.empty:
         return pd.DataFrame()
+    frame["feature_status"]="HISTORICAL_FEATURE_AVAILABLE"
     assessed=audit_valuation(frame,valuation)
     d=descriptive_research(assessed,t,h)
     models=fit_category_forecasts(frame,paths,benchmark,t,HORIZONS[h][0],H)
