@@ -125,7 +125,7 @@ def fit_category_forecasts(fund_rows, nav_paths, benchmark_history, asof, lookba
         return pd.DataFrame(columns=["code","known_at","trained_through","source_url",
                     "model_id","forecast_mu_annual","decision_months",
                     "prior_alpha","between_std","se_alpha","month_pairs",
-                    "lookback_horizon","forecast_se_annual"])
+                    "lookback_horizon","forecast_se_annual","bench_log"])
     d=pd.DataFrame(details)
     result=[]
     for group,g in d.groupby("group"):
@@ -141,7 +141,8 @@ def fit_category_forecasts(fund_rows, nav_paths, benchmark_history, asof, lookba
             predicted=float(np.expm1(row.bench_log+alpha))
             result.append(dict(code=row.code,known_at=str(t.date()),trained_through=row.trained_through,
                     source_url=row.source_url,model_id="EB_CLASS_BENCHMARK_UNVALIDATED_v1",
-                    forecast_mu_annual=predicted,decision_months=int(decision_months),
+                    forecast_mu_annual=predicted,bench_log=float(row.bench_log),
+                    decision_months=int(decision_months),
                     lookback_horizon=({6:"6m",12:"1y",36:"3y",60:"5y"}.get(int(lookback_months),
                                      f"{int(lookback_months)}m")),
                     forecast_se_annual=float(row.se_alpha+row.benchmark_se),
