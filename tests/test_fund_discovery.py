@@ -194,7 +194,10 @@ class FundDiscoveryContractsTest(unittest.TestCase):
         )]),"2026-11-20")
         valuation=pd.DataFrame([dict(code="000001",known_at="2026-11-19",
             source_url="https://example.com/risk",
-            pricing_method="market_value",economic_mdd_upper=.03)])
+            pricing_method="market_value",risk_model="BOND_DURATION_STRESS_v1",
+            risk_input_source_url="https://example.com/holdings-and-shocks",
+            modified_duration=3.,rate_shock_bp=100.,spread_duration=0.,
+            spread_shock_bp=0.,convexity=0.,default_loss=0.)])
         forecast=pd.DataFrame([dict(code="000001",forecast_mu_annual=.08,
             forecast_source="https://example.com/model",forecast_known_at="2026-11-19",
             forecast_model="TEST_ONLY",forecast_status="EVIDENCE_SUPPLIED_UNVALIDATED")])
@@ -208,7 +211,7 @@ class FundDiscoveryContractsTest(unittest.TestCase):
         self.assertEqual(len(investable),1)
         self.assertGreater(research.score_annual.iloc[0],0)
         self.assertEqual(research.score_class.iloc[0],"EXPERIMENTAL_NOT_OOS_VERIFIED")
-        valuation.loc[0,"economic_mdd_upper"]=np.nan
+        valuation.loc[0,"risk_input_source_url"]=""
         research,investable,_,stats=analyze_horizon(
             frame,liq,valuation,forecast,pd.Timestamp("2026-11-20"),6,True,args,paths)
         self.assertFalse(research.score_annual.notna().any())
