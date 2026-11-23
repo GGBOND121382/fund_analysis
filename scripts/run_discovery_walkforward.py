@@ -205,6 +205,21 @@ def main(argv=None):
     val_end,test_start=pd.Timestamp(a.validation_end),pd.Timestamp(a.test_start)
     if test_start <= val_end+pd.DateOffset(months=a.decision_months):
         p.error("test split must be purged by more than the prediction horizon")
+    # Fail-closed preflight for missing evidence files: explicit
+    # EVIDENCE_INSUFFICIENT audit, never a traceback or fabricated history.
+    # A missing catalog directory is still rejected per formation date by
+    # date_catalog (tested behavior), so it is not preflighted here.
+    missing=[str(x) for x in (a.dates,a.benchmark_history,a.cash_nav) if not x.is_file()]
+    if a.valuation_evidence is not None and not a.valuation_evidence.is_file():
+        missing.append(str(a.valuation_evidence))
+    if missing:
+        a.output.mkdir(parents=True,exist_ok=True)
+        gate={"research_status":"EVIDENCE_INSUFFICIENT","oos_certified":False,
+              "missing_inputs":missing,
+              "note":"PIT walk-forward requires dated catalogs, benchmark and cash "
+                     "history; missing inputs are reported, never fabricated"}
+        (a.output/"audit.json").write_text(json.dumps(gate,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+        p.exit(2,json.dumps(gate,ensure_ascii=False)+"\n")
     periods=pd.read_csv(a.dates)
     if "formation_date" not in periods:
         p.error("formation dates CSV needs formation_date")

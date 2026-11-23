@@ -14,6 +14,21 @@ from scripts.run_industry_fund_ranking import load_catalog
 
 
 class FundWalkForwardTest(unittest.TestCase):
+    def test_missing_inputs_produce_evidence_gate_not_traceback(self):
+        import json as _json
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)
+            with self.assertRaises(SystemExit) as ctx:
+                wf_main(["--dates",str(p/"dates.csv"),"--historical-catalogs",str(p/"archive"),
+                   "--benchmark-history",str(p/"bench.csv"),"--cash-nav",str(p/"cash.csv"),
+                   "--data-dir",str(p/"data"),"--output",str(p/"out"),
+                   "--validation-end","2025-01-01","--test-start","2026-01-02"])
+            self.assertEqual(ctx.exception.code,2)
+            gate=_json.loads((p/"out"/"audit.json").read_text(encoding="utf-8"))
+            self.assertEqual(gate["research_status"],"EVIDENCE_INSUFFICIENT")
+            self.assertFalse(gate["oos_certified"])
+            self.assertIn(str(p/"dates.csv"),gate["missing_inputs"])
+
     def test_no_historical_catalog_snapshots_cannot_reuse_current_universe(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)

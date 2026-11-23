@@ -1,0 +1,10 @@
+{
+  "research_status": "EVIDENCE_INSUFFICIENT",
+  "oos_certified": false,
+  "missing_inputs": [
+    "data/evidence/formation_dates.csv",
+    "data/evidence/category_benchmark_history.csv",
+    "data/evidence/cash_total_return_history.csv"
+  ],
+  "note": "PIT walk-forward requires dated catalogs, benchmark and cash history; missing inputs are reported, never fabricated"
+}
