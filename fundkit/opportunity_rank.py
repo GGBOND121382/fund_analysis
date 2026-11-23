@@ -142,33 +142,38 @@ def optimize_opportunity(fund_gross,cash_gross,setting: OpportunityInput,
     rows=[]
     for budget in b:
         zero_risk=risk_at(0)
-        if zero_risk>budget+1e-12:
-            rows.append(dict(budget=float(budget),
-                   opportunity_score_annual=float("nan"),weight=float("nan"),
-                   risk_upper=zero_risk,status="CASH_BASELINE_OVER_BUDGET"))
-            continue
-        if slope<=0:
-            rows.append(dict(budget=float(budget),opportunity_score_annual=0.,
-                   weight=0.,risk_upper=zero_risk,status="NO_POSITIVE_EXCESS"))
-            continue
         if cash_nondecreasing:
-            # Highest feasible grid weight by binary search. One risk
-            # calculation is memoized across 1%, 2%, 4% and 8% budgets.
-            lo,hi=0,len(weights)
-            while lo+1<hi:
-                mid=(lo+hi)//2
-                if risk_at(mid)<=budget+1e-12:
-                    lo=mid
-                else:
-                    hi=mid
-            j=lo
+            # Cash is non-decreasing, hence w=0 is always feasible. For all
+            # scenario peak-trough intervals, MDD is monotone in w.
+            if slope<=0:
+                j=0
+            else:
+                lo,hi=0,len(weights)
+                while lo+1<hi:
+                    mid=(lo+hi)//2
+                    if risk_at(mid)<=budget+1e-12:
+                        lo=mid
+                    else:
+                        hi=mid
+                j=lo
         else:
-            # No unjustified monotonicity assumption when cash itself falls.
+            # A falling cash baseline CAN be hedged by a fund. Even when
+            # w=0 is infeasible, intermediate weights may be feasible.
+            # Never reject the budget just by examining zero-weight risk.
             feasible=[j for j in range(len(weights))
                       if risk_at(j)<=budget+1e-12]
-            j=max(feasible) if feasible else 0
+            if not feasible:
+                rows.append(dict(budget=float(budget),
+                       opportunity_score_annual=float("nan"),
+                       weight=float("nan"),risk_upper=float("nan"),
+                       status="NO_FEASIBLE_WEIGHT"))
+                continue
+            j=(max(feasible) if slope>0 else min(feasible))
+        achieved=float(weights[j]*slope)
         rows.append(dict(budget=float(budget),
-                 opportunity_score_annual=float(weights[j]*slope),
+                 opportunity_score_annual=achieved,
                  weight=float(weights[j]),risk_upper=float(risk_at(j)),
-                 status="MODEL_SCORE_UNVALIDATED"))
+                 status=("MODEL_SCORE_UNVALIDATED" if achieved>0 else
+                         "NO_POSITIVE_EXCESS" if j==0 else
+                         "RISK_HEDGE_REQUIRED_NONPOSITIVE_EXCESS")))
     return rows
