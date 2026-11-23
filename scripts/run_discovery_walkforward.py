@@ -149,8 +149,10 @@ def fold_signals(catalog, paths, benchmark, cash, valuation, t, h, H,
         for code,r in subset.set_index("code").iterrows():
             rows.append(dict(formation_date=t,code=code,horizon=h,
                  method=method,selection_value=float(r[method]),
-                 weight=(float(r.proxy_weight) if method=="M1_NAV_RISK_PROXY"
-                         else 1.),historical_cagr=r.historical_return_cagr,
+                 # A common risk-budget sizing rule for ALL selection
+                 # methods prevents unfairly comparing B=4% risk-scaled
+                 # discovery against unconstrained 100%-fund baselines.
+                 weight=float(r.proxy_weight),historical_cagr=r.historical_return_cagr,
                  valuation_status=r.risk_quality,
                  decision_months=H,model_status="NAV_RESEARCH_NOT_EXECUTABLE"))
     return pd.DataFrame(rows)
@@ -236,7 +238,8 @@ def main(argv=None):
     result.to_csv(a.output/"historical_folds.csv",index=False,encoding="utf-8-sig")
     # Freeze method choice BEFORE looking at test labels; no re-tuning on test.
     validation=result.loc[result.split.eq("validation")] if len(result) else pd.DataFrame()
-    candidates=("M1_EB_FORECAST","M0_CATEGORY_BASELINE","HIST_RETURN_ONLY")
+    candidates=("M1_NAV_RISK_PROXY","M1_EB_FORECAST",
+                "M0_CATEGORY_BASELINE","HIST_RETURN_ONLY")
     chosen=None
     if len(validation):
         metrics=validation.groupby(["formation_date","method"])["cash_excess"].mean().reset_index()
