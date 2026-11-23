@@ -37,6 +37,12 @@ def _monthly(values, dates):
     last_business_month_end=pd.offsets.BDay().rollback(last_obs.to_period("M").end_time.normalize())
     if last_obs<last_business_month_end:
         a=a.iloc[:-1]
+    # The first month must also be complete: a 6-month window beginning
+    # on the 20th cannot treat its 10 remaining trading days as one month.
+    first_obs=s.index[0]
+    first_business_month_day=pd.offsets.BDay().rollforward(first_obs.to_period("M").start_time.normalize())
+    if first_obs>first_business_month_day:
+        a=a.iloc[1:]
     vals = a.to_numpy(dtype=float)
     if len(vals) < 5 or np.any(vals <= 0):
         raise ValueError("at least 5 complete monthly points required")
@@ -211,6 +217,7 @@ def rank_historical_risk_adjusted(frame, paths, asof, horizon, *,
     d["risk_adjusted_status"]="NO_COMPLETE_HISTORY"
     d["risk_adjusted_score"]=np.nan
     d["risk_adjusted_rank"]=np.nan
+    d["all_research_risk_rank"]=np.nan
     d["risk_weight_4pct"]=np.nan
     d["risk_budget_4pct"]=.04
     d["risk_standalone_mdd"]=pd.to_numeric(d.max_drawdown,errors="coerce")
@@ -222,6 +229,11 @@ def rank_historical_risk_adjusted(frame, paths, asof, horizon, *,
     d["lower_quartile_log_cagr"]=np.nan
     d["peer_count"]=0
     d["exposure_bucket"]=[theme_bucket(r.name,r.group) for r in d.itertuples()]
+    d["contract_review_pending"]=(
+        d.get("is_long_periodic",pd.Series(False,index=d.index)).fillna(False).astype(bool)
+        |d.get("is_periodic_unverified",pd.Series(False,index=d.index)).fillna(False).astype(bool)
+        |d.get("contract_review_hint",pd.Series(False,index=d.index)).fillna(False).astype(bool)
+    )
     for b in budgets:
         d[f"risk_weight_{int(b*100)}pct"]=np.nan
         d[f"risk_score_{int(b*100)}pct"]=np.nan
@@ -236,13 +248,9 @@ def rank_historical_risk_adjusted(frame, paths, asof, horizon, *,
         if bool(row.get("zero_or_tiny_nav_mdd", False)):
             d.at[idx,"risk_adjusted_status"]="NAV_SMOOTHING_REVIEW"
             continue
-        # Any contractual holding restrictions require verification before
-        # being compared as a liquid fund. Research row is retained.
-        if (bool(row.get("is_long_periodic", False)) or
-                bool(row.get("is_periodic_unverified", False)) or
-                bool(row.get("contract_review_hint", False))):
-            d.at[idx,"risk_adjusted_status"]="CONTRACT_REVIEW_REQUIRED"
-            continue
+        # Name/periodic hints NEVER suppress the calculation on a fund with
+        # comparable NAV. They restrict the *main screened shortlist* until
+        # contract and investor-specific lock-ups can be verified.
         try:
             v, dates = _date_window(nav,asof,horizon)
             monthly = _monthly(v,dates)
@@ -294,19 +302,27 @@ def rank_historical_risk_adjusted(frame, paths, asof, horizon, *,
                 d.at[idx,f"risk_weight_{int(B*100)}pct"]=weight
                 d.at[idx,f"risk_score_{int(B*100)}pct"]=score
             d.at[idx,"risk_adjusted_score"]=d.at[idx,"risk_score_4pct"]
-            d.at[idx,"risk_adjusted_status"]="NAV_RISK_ADJUSTED_RESEARCH_ONLY"
+            d.at[idx,"risk_adjusted_status"]=(
+                "CONTRACT_REVIEW_REQUIRED" if bool(row["contract_review_pending"])
+                else "NAV_RISK_ADJUSTED_RESEARCH_ONLY")
         except (ValueError,OverflowError,IndexError,FloatingPointError):
             d.at[idx,"risk_adjusted_status"]="RISK_SIMULATION_FAILED"
-    positive=d.loc[(d.risk_adjusted_status=="NAV_RISK_ADJUSTED_RESEARCH_ONLY")
-                   &d.risk_adjusted_score.gt(0)].copy()
-    positive=positive.sort_values(["risk_adjusted_score","code"],
-                                   ascending=[False,True])
-    d.loc[positive.index,"risk_adjusted_rank"]=np.arange(1,len(positive)+1)
-    raw=positive.head(top)
-    div=_rank_diversified(positive,max_results=top)
-    audit={"ranked":int(len(positive)),
+    scored=d.loc[d.risk_adjusted_score.gt(0)].copy()
+    scored=scored.sort_values(["risk_adjusted_score","code"],
+                              ascending=[False,True])
+    d.loc[scored.index,"all_research_risk_rank"]=np.arange(1,len(scored)+1)
+    # Main shortlist excludes unverified contractual constraints but keeps
+    # their FULL calculated score/rank in research_*.csv.  This is not a
+    # declaration of verified purchasability for the remaining candidates.
+    eligible=scored.loc[~scored.contract_review_pending].copy()
+    d.loc[eligible.index,"risk_adjusted_rank"]=np.arange(1,len(eligible)+1)
+    raw=eligible.head(top)
+    div=_rank_diversified(eligible,max_results=top)
+    audit={"ranked":int(len(eligible)),
+           "scored_all_research":int(len(scored)),
+           "contract_review_scored":int(scored.contract_review_pending.sum()),
            "total":int(len(d)),
-           "not_ranked":int(len(d)-len(positive)),
+           "not_ranked":int(len(d)-len(eligible)),
            "statuses":d.risk_adjusted_status.value_counts().to_dict(),
            "budget_reference":.04,
            "cash_proxy_return":0.,
