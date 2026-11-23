@@ -9,6 +9,7 @@ No official contract/valuation/execution evidence => never certified OOS.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -59,10 +60,10 @@ def cash_formation_rate(cash, t, lookback_months=6):
     end=available.iloc[-1]
     begin=t-pd.DateOffset(months=lookback_months)
     prior=available.loc[available.date<=begin]
-    if prior.empty or (t-end.date).days>7 or (begin-prior.iloc[-1].date).days>10:
+    if prior.empty or (t-end["date"]).days>7 or (begin-prior.iloc[-1]["date"]).days>10:
         raise ValueError("cash benchmark formation endpoints unavailable")
     left=prior.iloc[-1]
-    years=(end.date-left.date).days/365.2425
+    years=(end["date"]-left["date"]).days/365.2425
     if years<=0:
         raise ValueError("invalid cash rate window")
     return float((end.nav/left.nav)**(1/years)-1)
@@ -122,7 +123,7 @@ def fold_signals(catalog, paths, benchmark, cash, valuation, t, h, H,
             continue
         try:
             vals=windowed_values(paths[row.code],t,h)
-            key=hash((row.code,h)) & 0xffffffff
+            key=int(hashlib.sha256(f"{row.code}:{h}".encode()).hexdigest()[:8],16)
             f=joint_forecast_paths(vals,row.forecast_mu_annual,
                  steps=21*H,scenarios=scenarios,seed=(seed+key)%2**32,
                  forecast_se_annual=row.forecast_se_annual)
@@ -141,6 +142,8 @@ def fold_signals(catalog, paths, benchmark, cash, valuation, t, h, H,
         subset=joined.loc[joined[method].notna()].copy()
         if method != "M1_NAV_RISK_PROXY":
             subset=subset.loc[subset["M1_NAV_RISK_PROXY"].notna()]
+        else:
+            subset=subset.loc[subset[method].gt(0)]
         subset=subset.sort_values([method,"code"],ascending=[False,True]).head(top)
         for code,r in subset.set_index("code").iterrows():
             rows.append(dict(formation_date=t,code=code,horizon=h,
