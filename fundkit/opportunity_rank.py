@@ -121,24 +121,54 @@ def optimize_opportunity(fund_gross,cash_gross,setting: OpportunityInput,
     if b.ndim!=1 or not len(b) or not np.isfinite(b).all() or np.any((b<=0)|(b>=1)):
         raise ValueError("risk budgets invalid")
     weights=np.linspace(0.,1.,setting.grid_points)
-    risk=np.array([risk_upper(f,c,float(w),setting.fee_rate_roundtrip,
-                   setting.economic_shock_loss,setting.risk_quantile)
-                   for w in weights],dtype=float)
     excess=float(setting.forecast_annual-setting.cash_annual)
     annual_fee=float(setting.fee_rate_roundtrip)*12/setting.decision_months
-    # Positive score is only attainable when incremental return exceeds cost.
-    score=weights*(excess-annual_fee)
+    slope=excess-annual_fee
+    cache={}
+    def risk_at(j):
+        j=int(j)
+        if j not in cache:
+            cache[j]=risk_upper(f,c,float(weights[j]),
+                setting.fee_rate_roundtrip,setting.economic_shock_loss,
+                setting.risk_quantile)
+        return cache[j]
+
+    # If cash paths are non-decreasing, fixed initial buy-and-hold wealth
+    # has non-decreasing worst drawdown in fund weight (for any peak/trough
+    # interval yielding a positive drawdown, the return ratio decreases in w).
+    # Quantile and scenario maximum preserve this order. This is NOT assumed
+    # for falling cash, changing weights, or other rebalancing rules.
+    cash_nondecreasing=bool(np.all(np.diff(c,axis=1)>=-1e-13))
     rows=[]
     for budget in b:
-        valid=(risk<=budget+1e-12)&(score>0)
-        if not np.any(valid):
-            rows.append(dict(budget=float(budget),opportunity_score_annual=0.,
-                             weight=0.,risk_upper=0.,status="NO_POSITIVE_EXCESS"))
+        zero_risk=risk_at(0)
+        if zero_risk>budget+1e-12:
+            rows.append(dict(budget=float(budget),
+                   opportunity_score_annual=float("nan"),weight=float("nan"),
+                   risk_upper=zero_risk,status="CASH_BASELINE_OVER_BUDGET"))
             continue
-        candidates=np.flatnonzero(valid)
-        j=candidates[np.argmax(score[candidates])]
+        if slope<=0:
+            rows.append(dict(budget=float(budget),opportunity_score_annual=0.,
+                   weight=0.,risk_upper=zero_risk,status="NO_POSITIVE_EXCESS"))
+            continue
+        if cash_nondecreasing:
+            # Highest feasible grid weight by binary search. One risk
+            # calculation is memoized across 1%, 2%, 4% and 8% budgets.
+            lo,hi=0,len(weights)
+            while lo+1<hi:
+                mid=(lo+hi)//2
+                if risk_at(mid)<=budget+1e-12:
+                    lo=mid
+                else:
+                    hi=mid
+            j=lo
+        else:
+            # No unjustified monotonicity assumption when cash itself falls.
+            feasible=[j for j in range(len(weights))
+                      if risk_at(j)<=budget+1e-12]
+            j=max(feasible) if feasible else 0
         rows.append(dict(budget=float(budget),
-                    opportunity_score_annual=float(score[j]),
-                    weight=float(weights[j]),risk_upper=float(risk[j]),
-                    status="MODEL_SCORE_UNVALIDATED"))
+                 opportunity_score_annual=float(weights[j]*slope),
+                 weight=float(weights[j]),risk_upper=float(risk_at(j)),
+                 status="MODEL_SCORE_UNVALIDATED"))
     return rows
