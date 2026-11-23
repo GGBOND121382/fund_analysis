@@ -100,39 +100,45 @@ def risk_upper(fund_gross,cash_gross,w,fee,economic_shock_loss,quantile=0.95):
 
 def optimize_opportunity(fund_gross,cash_gross,setting: OpportunityInput,
                          budgets=BUDGETS):
-    """Grid-certified optimum under an explicit budget and scenario family.
+    """Grid optimum conditional on one coherent joint-scenario family.
 
-    Returns model-conditional valuations. Does NOT claim OOS verified forecasts.
+    Risk is computed ONCE at each candidate weight and reused across budgets.
+    Wealth paths include costs once; mean forecast enters the stated objective.
+    A finite grid yields a grid optimum, not a continuous global certificate.
     """
-    f,c = np.asarray(fund_gross,dtype=float),np.asarray(cash_gross,dtype=float)
-    if f.shape != c.shape or f.ndim != 2 or f.shape[1]<2:
+    f,c=np.asarray(fund_gross,dtype=float),np.asarray(cash_gross,dtype=float)
+    if f.shape!=c.shape or f.ndim!=2 or f.shape[1]<2:
         raise ValueError("invalid pathwise scenarios")
-    numeric = [setting.forecast_annual, setting.cash_annual,
-               setting.fee_rate_roundtrip,setting.economic_shock_loss]
-    if not np.isfinite(numeric).all() or setting.decision_months < 1:
-        raise ValueError("missing predictive, cost or economic-risk evidence")
-    if not 0<=setting.fee_rate_roundtrip<1 or not 0<=setting.economic_shock_loss<1:
-        raise ValueError("invalid fee or risk evidence")
-    if setting.grid_points<2:
-        raise ValueError("grid_points must be at least two")
-    r = []
-    gross_excess = setting.forecast_annual-setting.cash_annual
-    annual_fee = setting.fee_rate_roundtrip*12/setting.decision_months
-    # Costs not subtracted twice: optimization is on the annualized increment,
-    # while cost is also included in risk path at entry.
-    for budget in budgets:
-        if not 0<budget<1:
-            raise ValueError("budget out of range")
-        best = dict(budget=float(budget),opportunity_score_annual=0.0,
-                    weight=0.0,risk_upper=0.0,status="NO_POSITIVE_EXCESS")
-        for w in np.linspace(0.,1.,setting.grid_points):
-            risk = risk_upper(f,c,float(w),setting.fee_rate_roundtrip,
-                              setting.economic_shock_loss,setting.risk_quantile)
-            if risk>budget+1e-12:
-                continue
-            score=float(w)*(gross_excess-annual_fee)
-            if score>best["opportunity_score_annual"]+1e-12:
-                best.update(opportunity_score_annual=score,weight=float(w),
-                            risk_upper=risk,status="MODEL_SCORE_UNVALIDATED")
-        r.append(best)
-    return r
+    vals=[setting.forecast_annual,setting.cash_annual,
+          setting.fee_rate_roundtrip,setting.economic_shock_loss]
+    if not np.isfinite(vals).all() or setting.decision_months<1:
+        raise ValueError("invalid forecast or economic-risk inputs")
+    if not (0<=setting.fee_rate_roundtrip<1
+            and 0<=setting.economic_shock_loss<1
+            and 0<setting.risk_quantile<1 and setting.grid_points>=2):
+        raise ValueError("invalid scenario/fee/model parameters")
+    b=np.asarray(tuple(budgets),dtype=float)
+    if b.ndim!=1 or not len(b) or not np.isfinite(b).all() or np.any((b<=0)|(b>=1)):
+        raise ValueError("risk budgets invalid")
+    weights=np.linspace(0.,1.,setting.grid_points)
+    risk=np.array([risk_upper(f,c,float(w),setting.fee_rate_roundtrip,
+                   setting.economic_shock_loss,setting.risk_quantile)
+                   for w in weights],dtype=float)
+    excess=float(setting.forecast_annual-setting.cash_annual)
+    annual_fee=float(setting.fee_rate_roundtrip)*12/setting.decision_months
+    # Positive score is only attainable when incremental return exceeds cost.
+    score=weights*(excess-annual_fee)
+    rows=[]
+    for budget in b:
+        valid=(risk<=budget+1e-12)&(score>0)
+        if not np.any(valid):
+            rows.append(dict(budget=float(budget),opportunity_score_annual=0.,
+                             weight=0.,risk_upper=0.,status="NO_POSITIVE_EXCESS"))
+            continue
+        candidates=np.flatnonzero(valid)
+        j=candidates[np.argmax(score[candidates])]
+        rows.append(dict(budget=float(budget),
+                    opportunity_score_annual=float(score[j]),
+                    weight=float(weights[j]),risk_upper=float(risk[j]),
+                    status="MODEL_SCORE_UNVALIDATED"))
+    return rows
