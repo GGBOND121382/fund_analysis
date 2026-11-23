@@ -13,10 +13,10 @@ def empirical_bayes_alpha(alpha_hat, se_alpha, prior, between_std):
     return float(prior) if den == 0 else (tau*tau*a+s*s*float(prior))/den
 
 
-def resolve_forecasts(codes, evidence, asof, decision_months):
+def resolve_forecasts(codes, evidence, asof, decision_months, lookback_horizon=None):
     """Requires known-at, training cutoff and exact decision horizon."""
-    columns=["code","forecast_mu_annual","forecast_source","forecast_known_at",
-             "forecast_model","forecast_status"]
+    columns=["code","forecast_mu_annual","forecast_se_annual","forecast_source",
+             "forecast_known_at","forecast_model","forecast_status"]
     out=[]
     asof=pd.Timestamp(asof)
     f=evidence.copy()
@@ -32,20 +32,32 @@ def resolve_forecasts(codes, evidence, asof, decision_months):
             raise ValueError("forecast known_at or trained_through invalid")
         f["decision_months"]=pd.to_numeric(f.decision_months,errors="coerce")
         f["forecast_mu_annual"]=pd.to_numeric(f.forecast_mu_annual,errors="coerce")
+        if lookback_horizon is not None:
+            # Never reuse a six-month trained forecast as a five-year model.
+            # External forecast files require explicit historical window.
+            f=(f.loc[f.lookback_horizon.eq(lookback_horizon)] if
+               "lookback_horizon" in f.columns else f.iloc[:0])
         f=f[(f.known_at<=asof)&(f.trained_through<=f.known_at)
             &(f.decision_months.eq(decision_months))
             &f.source_url.astype(str).str.strip().ne("")
             &np.isfinite(f.forecast_mu_annual)]
+        if "forecast_se_annual" not in f.columns:
+            f["forecast_se_annual"]=np.nan
+        f["forecast_se_annual"]=pd.to_numeric(f.forecast_se_annual,errors="coerce")
         f=f.sort_values("known_at").drop_duplicates("code", keep="last").set_index("code")
     for code in codes:
         code=str(code)
         if len(f) and code in f.index:
             r=f.loc[code]
             out.append(dict(code=code,forecast_mu_annual=float(r.forecast_mu_annual),
+                            forecast_se_annual=(float(r.forecast_se_annual)
+                               if np.isfinite(r.forecast_se_annual) and r.forecast_se_annual>=0
+                               else np.nan),
                             forecast_source=str(r.source_url),forecast_known_at=str(r.known_at),
                             forecast_model=str(r.model_id),forecast_status="EVIDENCE_SUPPLIED_UNVALIDATED"))
         else:
-            out.append(dict(code=code,forecast_mu_annual=np.nan,forecast_source="",
+            out.append(dict(code=code,forecast_mu_annual=np.nan,
+                            forecast_se_annual=np.nan,forecast_source="",
                             forecast_known_at="",forecast_model="",
                             forecast_status="FORECAST_MISSING"))
     return pd.DataFrame(out,columns=columns)
@@ -103,14 +115,17 @@ def fit_category_forecasts(fund_rows, nav_paths, benchmark_history, asof, lookba
         a=float(12*np.mean(excess))
         se=float(12*np.std(excess,ddof=1)/np.sqrt(len(excess)))
         bench_log=float(12*np.mean(base))
+        base_se=float(12*np.std(base,ddof=1)/np.sqrt(len(base)))
         details.append(dict(code=row.code,group=row.group,alpha_hat=a,se_alpha=se,
-                            bench_log=bench_log,month_pairs=len(excess),
+                            bench_log=bench_log,benchmark_se=base_se,
+                            month_pairs=len(excess),
                             trained_through=str(z.index[-1].date()),
                             source_url=b.loc[b.group.eq(row.group),"source_url"].iloc[-1]))
     if not details:
         return pd.DataFrame(columns=["code","known_at","trained_through","source_url",
                     "model_id","forecast_mu_annual","decision_months",
-                    "prior_alpha","between_std","se_alpha","month_pairs"])
+                    "prior_alpha","between_std","se_alpha","month_pairs",
+                    "lookback_horizon","forecast_se_annual"])
     d=pd.DataFrame(details)
     result=[]
     for group,g in d.groupby("group"):
@@ -127,6 +142,9 @@ def fit_category_forecasts(fund_rows, nav_paths, benchmark_history, asof, lookba
             result.append(dict(code=row.code,known_at=str(t.date()),trained_through=row.trained_through,
                     source_url=row.source_url,model_id="EB_CLASS_BENCHMARK_UNVALIDATED_v1",
                     forecast_mu_annual=predicted,decision_months=int(decision_months),
+                    lookback_horizon=({6:"6m",12:"1y",36:"3y",60:"5y"}.get(int(lookback_months),
+                                     f"{int(lookback_months)}m")),
+                    forecast_se_annual=float(row.se_alpha+row.benchmark_se),
                     prior_alpha=prior,between_std=float(np.sqrt(tau2)),
                     se_alpha=row.se_alpha,month_pairs=row.month_pairs))
     return pd.DataFrame(result)
