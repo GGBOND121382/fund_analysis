@@ -1,0 +1,43 @@
+{
+  "git_sha": "cc86200",
+  "veto_quantile": 10.0,
+  "evidence": "reports/all_funds/models_20261120/OOS_REPORT.md",
+  "periods": {
+    "5y": {
+      "period": "5y",
+      "channel_tradeable": 176,
+      "locked": 25,
+      "veto_tail": 0,
+      "tail_missing": 0,
+      "tail_flagged": 20,
+      "final": 151
+    },
+    "3y": {
+      "period": "3y",
+      "channel_tradeable": 184,
+      "locked": 32,
+      "veto_tail": 0,
+      "tail_missing": 0,
+      "tail_flagged": 17,
+      "final": 152
+    },
+    "1y": {
+      "period": "1y",
+      "channel_tradeable": 164,
+      "locked": 59,
+      "veto_tail": 0,
+      "tail_missing": 0,
+      "tail_flagged": 14,
+      "final": 105
+    },
+    "6m": {
+      "period": "6m",
+      "channel_tradeable": 151,
+      "locked": 52,
+      "veto_tail": 0,
+      "tail_missing": 0,
+      "tail_flagged": 13,
+      "final": 99
+    }
+  }
+}
