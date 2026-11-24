@@ -81,7 +81,7 @@ def fold_features(catalog, paths, t, low_vol_re):
             "observed_log_cagr": float(np.log1p(ret) / years),
             "annual_se": float(np.std(mlog, ddof=1) * np.sqrt(12.0) / np.sqrt(len(mlog))),
             "L_daily": float(np.sqrt(252.0 / len(dr) * np.sum(np.minimum(dr, 0.0) ** 2))),
-            "_nav": nav, "_i": i, "_j": j})
+            "nav_obj": nav, "nav_i": i, "nav_j": j})
     return pd.DataFrame(rows)
 
 
@@ -90,7 +90,7 @@ def score_fold(df, seed):
     d["mu_lower"] = np.exp(d["eb_log_cagr"] - EB_Z * d["eb_se"]) - 1.0
     d95 = {}
     for r in d.itertuples(index=False):
-        v = r._nav.value[r._i: r._j + 1]
+        v = r.nav_obj.value[r.nav_i: r.nav_j + 1]
         try:
             w = stationary_bootstrap(v, steps=BOOT_STEPS, scenarios=BOOT_SCENARIOS,
                                      block_length=10, seed=seed)
