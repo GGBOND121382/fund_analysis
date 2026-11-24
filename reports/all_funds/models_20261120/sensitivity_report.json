@@ -1,0 +1,138 @@
+{
+ "5y": {
+  "block5_s2000_seed42": {
+   "label": "区块长度5",
+   "d95_corr": 0.9982460789237689,
+   "d95_median_abs_diff": 0.0028673550495413036,
+   "score_spearman": 0.9995576254854344,
+   "top10_overlap": 9,
+   "n": 9473
+  },
+  "block20_s2000_seed42": {
+   "label": "区块长度20",
+   "d95_corr": 0.9985913513349538,
+   "d95_median_abs_diff": 0.003040576426783098,
+   "score_spearman": 0.99966895803418,
+   "top10_overlap": 9,
+   "n": 9473
+  },
+  "block10_s5000_seed42": {
+   "label": "情景数5000",
+   "d95_corr": 0.9997392215272056,
+   "d95_median_abs_diff": 0.0013238322485560061,
+   "score_spearman": 0.9999285618643968,
+   "top10_overlap": 10,
+   "n": 9473
+  },
+  "block10_s2000_seed7": {
+   "label": "随机种子7",
+   "d95_corr": 0.9996490845850826,
+   "d95_median_abs_diff": 0.001825490700169602,
+   "score_spearman": 0.9999008925804382,
+   "top10_overlap": 10,
+   "n": 9473
+  }
+ },
+ "3y": {
+  "block5_s2000_seed42": {
+   "label": "区块长度5",
+   "d95_corr": 0.998949198078793,
+   "d95_median_abs_diff": 0.003478317421329702,
+   "score_spearman": 0.9997635130586431,
+   "top10_overlap": 9,
+   "n": 14375
+  },
+  "block20_s2000_seed42": {
+   "label": "区块长度20",
+   "d95_corr": 0.9985438298123362,
+   "d95_median_abs_diff": 0.00424507972222099,
+   "score_spearman": 0.9996749535694396,
+   "top10_overlap": 8,
+   "n": 14375
+  },
+  "block10_s5000_seed42": {
+   "label": "情景数5000",
+   "d95_corr": 0.99977657199006,
+   "d95_median_abs_diff": 0.0011925289527462968,
+   "score_spearman": 0.9999483321592391,
+   "top10_overlap": 9,
+   "n": 14375
+  },
+  "block10_s2000_seed7": {
+   "label": "随机种子7",
+   "d95_corr": 0.9994872376811808,
+   "d95_median_abs_diff": 0.0017077595136556004,
+   "score_spearman": 0.9999138495859827,
+   "top10_overlap": 9,
+   "n": 14375
+  }
+ },
+ "1y": {
+  "block5_s2000_seed42": {
+   "label": "区块长度5",
+   "d95_corr": 0.9990897025629468,
+   "d95_median_abs_diff": 0.0028170838142542454,
+   "score_spearman": 0.9998357206112047,
+   "top10_overlap": 10,
+   "n": 20540
+  },
+  "block20_s2000_seed42": {
+   "label": "区块长度20",
+   "d95_corr": 0.9989583637650857,
+   "d95_median_abs_diff": 0.0035768627361797978,
+   "score_spearman": 0.9998642075272411,
+   "top10_overlap": 10,
+   "n": 20540
+  },
+  "block10_s5000_seed42": {
+   "label": "情景数5000",
+   "d95_corr": 0.9998176897103433,
+   "d95_median_abs_diff": 0.0019294066890310005,
+   "score_spearman": 0.9999692782258401,
+   "top10_overlap": 10,
+   "n": 20540
+  },
+  "block10_s2000_seed7": {
+   "label": "随机种子7",
+   "d95_corr": 0.9997351472528611,
+   "d95_median_abs_diff": 0.0017410608406374373,
+   "score_spearman": 0.9999592513232438,
+   "top10_overlap": 10,
+   "n": 20540
+  }
+ },
+ "6m": {
+  "block5_s2000_seed42": {
+   "label": "区块长度5",
+   "d95_corr": 0.9995209505121043,
+   "d95_median_abs_diff": 0.006260630164363942,
+   "score_spearman": 0.9999369905505308,
+   "top10_overlap": 9,
+   "n": 21298
+  },
+  "block20_s2000_seed42": {
+   "label": "区块长度20",
+   "d95_corr": 0.9995512300349181,
+   "d95_median_abs_diff": 0.007253830588324579,
+   "score_spearman": 0.9999470378860019,
+   "top10_overlap": 9,
+   "n": 21298
+  },
+  "block10_s5000_seed42": {
+   "label": "情景数5000",
+   "d95_corr": 0.9999002396479206,
+   "d95_median_abs_diff": 0.0022299244107076427,
+   "score_spearman": 0.9999868683175408,
+   "top10_overlap": 9,
+   "n": 21298
+  },
+  "block10_s2000_seed7": {
+   "label": "随机种子7",
+   "d95_corr": 0.9999096251587434,
+   "d95_median_abs_diff": 0.0012501390400988018,
+   "score_spearman": 0.9999854725200721,
+   "top10_overlap": 9,
+   "n": 21298
+  }
+ }
+}

@@ -1,0 +1,28 @@
+{
+ "model": "M1",
+ "horizon": "1y",
+ "asof": "2026-11-20",
+ "git_sha": "f0921bde0a2c43f1bfee90e9e7c58da40651ca2a",
+ "weights": {
+  "return": 0.4,
+  "drawdown": 0.35,
+  "shock": 0.15,
+  "downside": 0.1
+ },
+ "coverage": {
+  "candidates_m0": 20540,
+  "m1_scored": 20540,
+  "m2_scored": 20540,
+  "m3_scored": 20540,
+  "eb_missing": 0,
+  "d95_missing": 0,
+  "l_daily_missing": 0
+ },
+ "m1_note": "原始收益EB研究版：类内peer median先验，非基准调整（本地无类别基准PIT净值）",
+ "bootstrap": {
+  "scenarios": 2000,
+  "block": 5,
+  "seed": 42,
+  "steps": 126
+ }
+}

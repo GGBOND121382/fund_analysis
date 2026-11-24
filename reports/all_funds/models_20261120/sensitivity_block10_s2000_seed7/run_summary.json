@@ -1,0 +1,54 @@
+{
+ "asof": "2026-11-20",
+ "git_sha": "f0921bde0a2c43f1bfee90e9e7c58da40651ca2a",
+ "weights": {
+  "return": 0.4,
+  "drawdown": 0.35,
+  "shock": 0.15,
+  "downside": 0.1
+ },
+ "bootstrap": {
+  "scenarios": 2000,
+  "block": 10,
+  "seed": 7,
+  "steps": 126
+ },
+ "periods": {
+  "5y": {
+   "candidates_m0": 9473,
+   "m1_scored": 9473,
+   "m2_scored": 9473,
+   "m3_scored": 9473,
+   "eb_missing": 0,
+   "d95_missing": 0,
+   "l_daily_missing": 0
+  },
+  "3y": {
+   "candidates_m0": 14375,
+   "m1_scored": 14375,
+   "m2_scored": 14375,
+   "m3_scored": 14375,
+   "eb_missing": 0,
+   "d95_missing": 0,
+   "l_daily_missing": 0
+  },
+  "1y": {
+   "candidates_m0": 20540,
+   "m1_scored": 20540,
+   "m2_scored": 20540,
+   "m3_scored": 20540,
+   "eb_missing": 0,
+   "d95_missing": 0,
+   "l_daily_missing": 0
+  },
+  "6m": {
+   "candidates_m0": 21298,
+   "m1_scored": 21298,
+   "m2_scored": 21298,
+   "m3_scored": 21298,
+   "eb_missing": 0,
+   "d95_missing": 0,
+   "l_daily_missing": 0
+  }
+ }
+}
