@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_industry_fund_ranking import load_catalog, load_paths  # noqa: E402
 from fundkit.industry_rank import NavPath, window_dates  # noqa: E402
 from fundkit.opportunity_rank import stationary_bootstrap, max_drawdown  # noqa: E402
-from rank_models_m123 import eb_posteriors, pct, BOOT_STEPS, EB_Z  # noqa: E402
+from rank_models_m123 import eb_posteriors, pct, BOOT_STEPS, EB_Z, annual_log_mean_se  # noqa: E402
 
 W3 = {"return": 0.40 / 0.85, "drawdown": 0.35 / 0.85, "downside": 0.10 / 0.85}
 SMOOTH_MDD = 0.0002
@@ -72,14 +72,13 @@ def fold_features(catalog, paths, t, low_vol_re):
             continue
         years = (nav.days[j] - nav.days[i]) / 365.2425
         dr = v[1:] / v[:-1] - 1
-        mlog = np.log1p(monthly)
         rows.append({
             "code": row.code, "name": row.name, "group": row.group,
             "product_key": row.product_key,
             "period_return": ret, "annualized_return": (1 + ret) ** (1 / years) - 1,
             "D": mdd, "L": float(np.sqrt(np.mean(np.minimum(monthly, 0.0) ** 2))),
             "observed_log_cagr": float(np.log1p(ret) / years),
-            "annual_se": float(np.std(mlog, ddof=1) * np.sqrt(12.0) / np.sqrt(len(mlog))),
+            "annual_se": annual_log_mean_se(monthly),
             "L_daily": float(np.sqrt(252.0 / len(dr) * np.sum(np.minimum(dr, 0.0) ** 2))),
             "nav_obj": nav, "nav_i": i, "nav_j": j})
     return pd.DataFrame(rows)
