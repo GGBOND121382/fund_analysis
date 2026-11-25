@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from scripts.rank_models_m123 import BOOT_STEPS, eb_posteriors, pct
+from scripts.rank_models_m123 import BOOT_STEPS, eb_posteriors, pct, annual_log_mean_se
 from fundkit.opportunity_rank import max_drawdown, stationary_bootstrap
 
 
@@ -51,6 +51,24 @@ class TestEmpiricalBayes(unittest.TestCase):
                            "annual_se": [0.02, 0.02, 0.02]})
         d = eb_posteriors(df.dropna(subset=["observed_log_cagr"]))
         self.assertEqual(len(d), 2)
+
+
+class TestAnnualizedMeanSE(unittest.TestCase):
+    def test_monthly_se_for_annualized_log_mean(self):
+        # 12 months of deterministic log returns; scale the mean by 12,
+        # not the sample standard deviation by sqrt(12).
+        monthly_log_returns = np.tile([0.02, -0.02], 6)
+        r = np.expm1(monthly_log_returns)
+        expected = 12.0 * np.std(monthly_log_returns, ddof=1) / np.sqrt(12)
+        self.assertAlmostEqual(annual_log_mean_se(r), expected, places=12)
+        legacy = np.std(monthly_log_returns, ddof=1) * np.sqrt(12) / np.sqrt(12)
+        self.assertAlmostEqual(annual_log_mean_se(r) / legacy, np.sqrt(12), places=12)
+
+    def test_invalid_monthly_inputs_fail(self):
+        with self.assertRaises(ValueError):
+            annual_log_mean_se([0.01])
+        with self.assertRaises(ValueError):
+            annual_log_mean_se([0.01, -1.0])
 
 
 class TestBootstrapD95(unittest.TestCase):
