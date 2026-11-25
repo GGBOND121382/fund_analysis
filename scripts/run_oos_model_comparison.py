@@ -111,31 +111,61 @@ def score_fold(df, seed):
 
 
 def future_perf(paths, codes, t, hold_months):
-    end = t + pd.DateOffset(months=hold_months)
-    rets, series = [], []
-    for c in codes:
-        nav = paths.get(c)
-        if nav is None:
-            continue
-        i, j = nav.right(t), nav.right(end)
-        if i < 0 or j < 0 or j <= i or nav.days[j] - nav.day(end) > 10:
-            continue
-        v = nav.value[i:j + 1]
-        rets.append(v[-1] / v[0] - 1)
-        series.append(v / v[0])
-    if not series:
-        return None
-    min_len = min(len(s) for s in series)
-    port = np.mean([s[:min_len] for s in series], axis=0) * (1 - ROUNDTRIP_FEE)
-    mdd = float(np.max(1 - port / np.maximum.accumulate(port)))
-    dr = port[1:] / port[:-1] - 1
-    downside = dr[dr < 0]
-    ann = port[-1] ** (365.2425 / ((end - t).days)) - 1
-    sharpe = float(np.mean(dr) / np.std(dr) * np.sqrt(252)) if np.std(dr) > 0 else np.nan
-    sortino = float(np.mean(dr) / np.std(downside) * np.sqrt(252)) if len(downside) > 1 else np.nan
-    return {"net_return": float(port[-1] - 1), "annualized": float(ann), "mdd": mdd,
-            "sharpe": sharpe, "sortino": sortino, "n_funds": len(series)}
+    """PIT buy-and-hold equal-weight TOP10, with calendar-aligned NAV paths.
 
+    Funds must all cover the same formation/exit window. No positional
+    averaging, silent fund removal, implicit price forward-fill or truncation.
+    Fees are a 10bp *roundtrip*, split equally between entry and exit.
+    """
+    end = t + pd.DateOffset(months=hold_months)
+    if len(codes) != 10 or len(set(codes)) != 10:
+        return None
+    series = {}
+    for code in codes:
+        nav = paths.get(code)
+        if nav is None:
+            return None
+        i, j = nav.right(t), nav.right(end)
+        if i < 0 or j <= i:
+            return None
+        if nav.day(t) - nav.days[i] > 10 or nav.day(end) - nav.days[j] > 10:
+            return None
+        dates = nav.dates[i:j + 1]
+        if np.any(np.diff(nav.days[i:j + 1]) > 10):
+            return None
+        series[code] = pd.Series(nav.value[i:j + 1], index=dates)
+    # Common observation calendar is essential: equal array positions need not
+    # correspond to the same date for different funds.
+    aligned = pd.concat(series, axis=1, join="inner").sort_index()
+    if len(aligned) < 60:
+        return None
+    if (pd.Timestamp(t) - aligned.index[0]).days > 10 or \
+            (pd.Timestamp(end) - aligned.index[-1]).days > 10:
+        return None
+    if np.any(np.diff(aligned.index.values.astype("datetime64[D]").astype("int64")) > 10):
+        return None
+    gross = aligned.div(aligned.iloc[0]).to_numpy(dtype=float)
+    entry_fee = ROUNDTRIP_FEE / 2.0
+    exit_fee = ROUNDTRIP_FEE - entry_fee
+    # Initial capital is 1. Starting investment is reduced by entry fee;
+    # exiting the fund incurs the remaining half on the terminal observation.
+    port = np.mean(gross, axis=1) * (1.0 - entry_fee)
+    port[-1] *= 1.0 - exit_fee
+    wealth = np.r_[1.0, port]
+    mdd = float(np.max(1.0 - wealth / np.maximum.accumulate(wealth)))
+    dr = wealth[1:] / wealth[:-1] - 1.0
+    # Zero hurdle for both ratios; report it explicitly, not a risk-free Sharpe.
+    daily_downside = float(np.sqrt(np.mean(np.minimum(dr, 0.0) ** 2)))
+    sd = float(np.std(dr, ddof=1)) if len(dr) > 1 else np.nan
+    ann = float(wealth[-1] ** (365.2425 / ((end - t).days)) - 1.0)
+    sharpe = float(np.mean(dr) / sd * np.sqrt(252.0)) if sd > 0 else np.nan
+    sortino = (float(np.mean(dr) / daily_downside * np.sqrt(252.0))
+               if daily_downside > 0 else np.nan)
+    return {"net_return": float(wealth[-1] - 1.0), "annualized": ann,
+            "mdd": mdd, "sharpe": sharpe, "sortino": sortino,
+            "n_funds": len(codes), "start_date": str(aligned.index[0].date()),
+            "end_date": str(aligned.index[-1].date()),
+            "risk_ratio_hurdle": "zero_daily_return"}
 
 def main():
     ap = argparse.ArgumentParser()
@@ -201,7 +231,8 @@ def main():
               "boot_scenarios": BOOT_SCENARIOS, "seed": args.seed,
               "limitations": ["M0 degraded to 3-factor (no SA) - shock window not PIT-definable",
                               "current catalog only: survivorship bias on absolute levels",
-                              "fees approximated at 10bp roundtrip, not PIT verified"],
+                              "fees approximated at 10bp roundtrip, not PIT verified",
+                              "OOS return requires all 10 funds to have aligned full-horizon NAV"],
               "folds": folds, "summary_vs_M0": summary}
     with open(out / "oos_result.json", "w") as f:
         json.dump(result, f, ensure_ascii=False, indent=1, default=str)
