@@ -37,14 +37,45 @@ class OOSAccounting(unittest.TestCase):
         self.assertAlmostEqual(perf["net_return"], expected, places=12)
         self.assertEqual(perf["n_funds"], 10)
 
+    def test_market_holiday_is_not_a_data_hole(self):
+        # A day on which NO fund reports (market-wide closure) must not reject.
+        paths, dates = self.make_paths()
+        closed = dates[20]
+        for i, p in paths.items():
+            keep = p.days != NavPath.day(closed)
+            paths[i] = NavPath(p.dates[keep], p.value[keep])
+        all_days = np.array(sorted({int(d) for p in paths.values()
+                                    for d in p.days}), dtype=np.int64)
+        perf = future_perf(paths, list(paths), dates[0], 7,
+                           market_days=all_days)
+        self.assertIn("net_return", perf)
+
+    def test_fund_specific_hole_is_rejected(self):
+        # A day on which other funds DID report is a market day; one fund
+        # missing it is a data hole and must be rejected, not tolerated.
+        paths, dates = self.make_paths(missing_middle=True)
+        all_days = np.array(sorted({int(d) for i, p in paths.items()
+                                    if i != "000002" for d in p.days}),
+                            dtype=np.int64)
+        rej = future_perf(paths, list(paths), dates[0], 7,
+                          market_days=all_days)
+        self.assertEqual(rej["status"], "REJECTED")
+        self.assertEqual(rej["fund"], "000002")
+        self.assertTrue(rej["reason"].startswith("missing_market_day"))
+
     def test_stale_horizon_is_not_silently_used(self):
         paths, dates = self.make_paths(stale_end=True)
-        self.assertIsNone(future_perf(paths, list(paths), dates[0], 7))
+        rej = future_perf(paths, list(paths), dates[0], 7)
+        self.assertEqual(rej["status"], "REJECTED")
+        self.assertEqual(rej["fund"], "000003")
+        self.assertIn("reason", rej)
 
     def test_missing_fund_is_not_silently_removed(self):
         paths, dates = self.make_paths()
         paths.pop("000002")
-        self.assertIsNone(future_perf(paths, [f"{i:06d}" for i in range(10)], dates[0], 7))
+        rej = future_perf(paths, [f"{i:06d}" for i in range(10)], dates[0], 7)
+        self.assertEqual(rej["status"], "REJECTED")
+        self.assertEqual(rej["fund"], "000002")
 
 
 class PortfolioRiskAccounting(unittest.TestCase):

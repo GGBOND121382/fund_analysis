@@ -36,6 +36,7 @@ FORMATION_DATES = ["2023-05-19", "2023-11-20", "2024-05-20", "2024-11-20",
                    "2025-05-20", "2025-11-20", "2026-05-20"]
 HOLD_MONTHS = 6
 BOOT_SCENARIOS = 500
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def truncate(nav: NavPath, t: pd.Timestamp) -> NavPath | None:
@@ -110,40 +111,56 @@ def score_fold(df, seed):
     return d
 
 
-def future_perf(paths, codes, t, hold_months):
+def future_perf(paths, codes, t, hold_months, names=None, market_days=None):
     """PIT buy-and-hold equal-weight TOP10, with calendar-aligned NAV paths.
 
     Funds must all cover the same formation/exit window. No positional
     averaging, silent fund removal, implicit price forward-fill or truncation.
     Fees are a 10bp *roundtrip*, split equally between entry and exit.
+    Gaps are judged against the market calendar (union of all funds' NAV
+    dates): a market-wide holiday is NOT a data hole; a fund missing a day
+    on which the market traded IS. On rejection returns
+    {"status": "REJECTED", "reason": ..., "fund": ...} so a fold failure is
+    never silent.
     """
+    def reject(reason, fund=None):
+        name = (names or {}).get(fund) if fund else None
+        return {"status": "REJECTED", "reason": reason,
+                "fund": fund, "fund_name": name}
+
     end = t + pd.DateOffset(months=hold_months)
     if len(codes) != 10 or len(set(codes)) != 10:
-        return None
+        return reject("TOP10 list short or duplicated", None)
     series = {}
     for code in codes:
         nav = paths.get(code)
         if nav is None:
-            return None
+            return reject("nav_path_missing", code)
         i, j = nav.right(t), nav.right(end)
         if i < 0 or j <= i:
-            return None
+            return reject("no_nav_spanning_formation_exit", code)
         if nav.day(t) - nav.days[i] > 10 or nav.day(end) - nav.days[j] > 10:
-            return None
-        dates = nav.dates[i:j + 1]
-        if np.any(np.diff(nav.days[i:j + 1]) > 10):
-            return None
-        series[code] = pd.Series(nav.value[i:j + 1], index=dates)
+            return reject("formation_or_exit_nav_gap_gt_10d", code)
+        if market_days is not None:
+            have = set(nav.days[i:j + 1].tolist())
+            missing = [int(d) for d in market_days if int(d) not in have]
+            if missing:
+                d0 = pd.Timestamp(np.datetime64(int(missing[0]), "D"))
+                return reject(f"missing_market_day:{d0.date()}", code)
+        elif np.any(np.diff(nav.days[i:j + 1]) > 10):
+            return reject("interior_nav_gap_gt_10d", code)
+        series[code] = pd.Series(nav.value[i:j + 1], index=nav.dates[i:j + 1])
     # Common observation calendar is essential: equal array positions need not
     # correspond to the same date for different funds.
     aligned = pd.concat(series, axis=1, join="inner").sort_index()
     if len(aligned) < 60:
-        return None
+        return reject("aligned_calendar_lt_60_days")
     if (pd.Timestamp(t) - aligned.index[0]).days > 10 or \
             (pd.Timestamp(end) - aligned.index[-1]).days > 10:
-        return None
-    if np.any(np.diff(aligned.index.values.astype("datetime64[D]").astype("int64")) > 10):
-        return None
+        return reject("aligned_window_edge_gt_10d")
+    if market_days is None and \
+            np.any(np.diff(aligned.index.values.astype("datetime64[D]").astype("int64")) > 10):
+        return reject("aligned_interior_gap_gt_10d")
     gross = aligned.div(aligned.iloc[0]).to_numpy(dtype=float)
     entry_fee = ROUNDTRIP_FEE / 2.0
     exit_fee = ROUNDTRIP_FEE - entry_fee
@@ -182,6 +199,10 @@ def main():
     low_vol_re = re.compile("债|固收|绝对收益|货币|FOF-稳健")
     catalog = load_catalog(Path(args.data_dir) / "fund_list.csv")
     paths, _ = load_paths(catalog, Path(args.data_dir), asof)
+    fac = pd.read_csv(ROOT / "data" / "factors" / "daily.csv",
+                      parse_dates=["date"])
+    trading_days = pd.DatetimeIndex(
+        fac.loc[fac.csi300_price_index.notna(), "date"])
     sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
 
     folds = []
@@ -189,6 +210,14 @@ def main():
         t = pd.Timestamp(t_str)
         if t + pd.DateOffset(months=HOLD_MONTHS) > asof:
             continue
+        # 市场日历：沪深交易所真实交易日（factors 中沪深300有行情的日期）。
+        # 不用全体基金净值日期并集——QDII/货币等周末披露会污染并集，
+        # 导致"周六缺失"误判为数据洞；也不用纯日历日阈值——节假日误判。
+        end = t + pd.DateOffset(months=HOLD_MONTHS)
+        mdmask = (trading_days >= t) & (trading_days <= end)
+        market_days = np.array(sorted(
+            trading_days[mdmask].values.astype("datetime64[D]").astype("int64")),
+            dtype=np.int64)
         df = fold_features(catalog, paths, t, low_vol_re)
         if df.empty:
             print(t_str, "empty fold")
@@ -198,12 +227,16 @@ def main():
         for model in ("S_M0", "S_M1", "S_M2", "S_M3"):
             top = d.dropna(subset=[model]).sort_values(model, ascending=False)
             top = top.drop_duplicates("product_key").head(10)
-            perf = future_perf(paths, top["code"].tolist(), t, HOLD_MONTHS)
+            perf = future_perf(paths, top["code"].tolist(), t, HOLD_MONTHS,
+                               names=dict(zip(top["code"], top["name"])),
+                               market_days=market_days)
             row[model] = perf
             top[["code", "name", model]].to_csv(out / f"fold_{t_str}_{model}.csv", index=False)
         folds.append(row)
         print(t_str, "candidates:", row["candidates"],
-              {m[2:]: round(f["net_return"] * 100, 2) for m, f in row.items()
+              {m[2:]: (round(f["net_return"] * 100, 2) if "net_return" in f
+                       else f"REJECTED:{f['reason']}")
+               for m, f in row.items()
                if m.startswith("S_") and f}, flush=True)
 
     # 汇总：配对差 + 小样本 t 置信区间
@@ -211,9 +244,10 @@ def main():
     for model in ("S_M1", "S_M2", "S_M3"):
         dr, dm = [], []
         for f in folds:
-            if f.get(model) and f.get("S_M0"):
-                dr.append(f[model]["net_return"] - f["S_M0"]["net_return"])
-                dm.append(f[model]["mdd"] - f["S_M0"]["mdd"])
+            fm, f0 = f.get(model) or {}, f.get("S_M0") or {}
+            if "net_return" in fm and "net_return" in f0:
+                dr.append(fm["net_return"] - f0["net_return"])
+                dm.append(fm["mdd"] - f0["mdd"])
         n = len(dr)
         if n >= 2:
             from scipy import stats as sst
