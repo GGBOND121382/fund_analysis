@@ -1,5 +1,5 @@
 {
-  "git_sha": "cc86200",
+  "git_sha": "5fafed0",
   "veto_quantile": 10.0,
   "evidence": "reports/all_funds/models_20261120/OOS_REPORT.md",
   "periods": {

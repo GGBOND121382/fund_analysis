@@ -1,0 +1,11 @@
+{
+ "git_sha": "5fafed0ca83e887ee9eb6580d590885323a12c48",
+ "folds": [
+  "2025-11-20",
+  "2026-05-20"
+ ],
+ "hold_months": 6,
+ "fee": 0.001,
+ "nav_codes_loaded": 50,
+ "load_issues": []
+}

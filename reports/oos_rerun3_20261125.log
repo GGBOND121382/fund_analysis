@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/root/fund_analysis/scripts/run_oos_model_comparison.py", line 276, in <module>
+    main()
+  File "/root/fund_analysis/scripts/run_oos_model_comparison.py", line 218, in main
+    trading_days.loc[(trading_days >= t) & (trading_days <= end)]
+AttributeError: 'DatetimeIndex' object has no attribute 'loc'

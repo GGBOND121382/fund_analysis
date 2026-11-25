@@ -2,7 +2,7 @@
  "model": "M2",
  "horizon": "6m",
  "asof": "2026-11-20",
- "git_sha": "f0921bde0a2c43f1bfee90e9e7c58da40651ca2a",
+ "git_sha": "5fafed0ca83e887ee9eb6580d590885323a12c48",
  "weights": {
   "return": 0.4,
   "drawdown": 0.35,

@@ -1,16 +1,17 @@
 {
   "asof": "2026-11-20",
-  "git_sha": "0154963",
+  "git_sha": "5fafed0",
   "seed": 42,
   "scenarios": 2000,
   "cash_rate": 0.011667,
   "pool_size": 10,
   "common_days": 730,
   "naive_equal_weight": {
-    "equal_weight_p95_mdd": 0.058815265614161,
+    "equal_weight_p95_mdd": 0.05881526561416079,
     "equal_weight_hist_mdd": 0.11484244352853068,
     "note": "等权组合情景P95回撤：相关性使组合风险不可由单基金预算相加推断"
   },
-  "target": "CAGR>=5% & MDD<=4%",
-  "feasible_4pct": true
+  "target": "conditional forecast annual return>=5% & scenario MDD<=4%",
+  "forecast_feasible_4pct": false,
+  "oos_status": "PIT_SELECTION_DATA_BLOCKED"
 }
