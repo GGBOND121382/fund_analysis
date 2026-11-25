@@ -135,19 +135,28 @@ def optimize_weights(paths, cash, mu_ann, hist_gross, budget, *, samples=4000,
     hist_M = hist_gross.to_numpy()  # D x F
     days = (hist_gross.index - hist_gross.index[0]).days.to_numpy(dtype=float)
     hist_cash = (1 + cash_rate) ** (days / 365.2425)
-    hist_wealth = hist_M @ W[:, 1:].T + np.outer(hist_cash, W[:, 0])  # D x K
+    entry_fee = exit_fee = FEE / 2.0
+    hist_wealth = (hist_M @ (W[:, 1:] * (1 - entry_fee)).T
+                   + np.outer(hist_cash, W[:, 0]))
+    hist_wealth[-1] -= exit_fee * (hist_M[-1] @ W[:, 1:].T)
+    hist_wealth = np.vstack([np.ones(len(W)), hist_wealth])
     hist_mdd = np.max(1 - hist_wealth / np.maximum.accumulate(hist_wealth, axis=0),
                       axis=0)
     best = None
     for lo in range(0, len(W), 50):
         wk = W[lo:lo + 50]  # K x (F+1)
-        wealth = (wk[:, :1, None] * cash[None]
-                  + np.einsum("kf,stf->kst", wk[:, 1:], paths))
+        fund_gross = np.einsum("kf,stf->kst", wk[:, 1:], paths)
+        wealth = wk[:, :1, None] * cash[None] + (1 - entry_fee) * fund_gross
+        wealth[:, :, -1] -= exit_fee * fund_gross[:, :, -1]
         wealth = np.concatenate([np.ones((len(wk), s_, 1)), wealth], axis=2)
         mdd = np.max(1 - wealth / np.maximum.accumulate(wealth, axis=2), axis=2)
         p95 = np.quantile(mdd, 0.95, axis=1)
-        fee_ann = 2 * FEE * (1 - wk[:, 0])
-        ret = wk[:, 0] * mu_ann[0] + wk[:, 1:] @ mu_ann[1:] - fee_ann
+        years = (t_ - 1) / 252.0
+        if np.any(mu_ann <= -1):
+            raise ValueError("annual forecast must exceed -100%")
+        growth = (1 + mu_ann) ** years
+        horizon_wealth = wk[:, 0] * growth[0] + (wk[:, 1:] @ growth[1:]) * (1 - FEE)
+        ret = horizon_wealth ** (1.0 / years) - 1.0
         feas = (p95 <= budget + 1e-12) & (hist_mdd[lo:lo + 50] <= budget + 1e-12)
         for j in np.where(feas)[0]:
             if best is None or ret[j] > best["expected_annual"]:
@@ -158,57 +167,17 @@ def optimize_weights(paths, cash, mu_ann, hist_gross, budget, *, samples=4000,
 
 
 def walk_forward(pool, paths, cash_rate, formation_dates, budget=0.04, seed=42):
-    rows = []
-    for fd in formation_dates:
-        fd = pd.Timestamp(fd)
-        start = fd - pd.DateOffset(years=3)
-        codes = []
-        for c in pool.code:
-            nav = paths.get(c)
-            if nav is None or nav.dates[0] > start + pd.Timedelta(days=30):
-                continue
-            codes.append(c)
-        if len(codes) < 3:
-            rows.append(dict(formation=str(fd.date()), status="POOL_TOO_SMALL"))
-            continue
-        dates, gross, logret = common_window(paths, codes, start, fd)
-        mu_map = per_fund_mu(pd.DataFrame(gross))
-        mu_ann = np.array([cash_rate] + [mu_map[c][2] for c in codes])
-        sc = joint_stationary_bootstrap(logret, steps=STEPS, scenarios=1000,
-                                        block_length=10, seed=seed)
-        cash = cash_paths(cash_rate, steps=STEPS, scenarios=1000)
-        best = optimize_weights(sc, cash, mu_ann, gross, budget,
-                                samples=2000, seed=seed, cash_rate=cash_rate)
-        if best is None:
-            rows.append(dict(formation=str(fd.date()), n_pool=len(codes),
-                             status="NO_FEASIBLE_WEIGHT"))
-            continue
-        # 未来 6 个月真实净值评价
-        hold_end = fd + pd.DateOffset(months=6)
-        series = {}
-        for c in codes:
-            nav = paths[c]
-            m = (nav.dates >= fd) & (nav.dates <= hold_end)
-            series[c] = pd.Series(nav.value[m], index=nav.dates[m])
-        fwd = pd.DataFrame(series).dropna()
-        fwd = fwd.loc[fwd.index >= fwd.index[0]]
-        fwd_g = (fwd / fwd.iloc[0]).to_numpy()
-        w = np.array(best["weights"])
-        inv = 1 - w[0]
-        wealth = w[0] * (1 + cash_rate) ** (np.arange(len(fwd_g)) / 252) \
-            + fwd_g @ (w[1:] * (1 - FEE * inv / max(inv, 1e-12)))
-        wealth = np.concatenate([[1.0], wealth])
-        r_net = float(wealth[-1] - 1)
-        mdd = float(np.max(1 - wealth / np.maximum.accumulate(wealth)))
-        rows.append(dict(formation=str(fd.date()), n_pool=len(codes),
-                         status="OK", expected_annual=best["expected_annual"],
-                         fwd_6m_net=r_net, fwd_6m_mdd=mdd,
-                         cash_w=w[0],
-                         top_holdings=json.dumps(
-                             {c: round(float(x), 4) for c, x in
-                              sorted(zip(codes, w[1:]), key=lambda kv: -kv[1])
-                              if x > 0.02}, ensure_ascii=False)))
-    return pd.DataFrame(rows)
+    """Block historical claims when the input pool is selected using 2026-11 data.
+
+    PIT historical universe and channel eligibility are absent. The legacy
+    backtest used today's selected winners in past folds (lookahead bias).
+    """
+    return pd.DataFrame([
+        dict(formation=str(pd.Timestamp(fd).date()),
+             status="PIT_SELECTION_DATA_BLOCKED",
+             reason="Historical selection needs dated fund universe and trade eligibility")
+        for fd in formation_dates
+    ])
 
 
 def main():
@@ -298,10 +267,13 @@ def main():
 
     # 4) 朴素等权对照（相关性影响演示）
     eq_w = np.full(len(pool), 1.0 / len(pool))
-    wealth_eq = np.einsum("f,stf->st", eq_w, sc_joint)
+    wealth_eq = (1 - FEE / 2) * np.einsum("f,stf->st", eq_w, sc_joint)
+    wealth_eq[:, -1] -= (FEE / 2) * np.einsum("f,sf->s", eq_w, sc_joint[:, -1, :])
     wealth_eq = np.concatenate([np.ones((args.scenarios, 1)), wealth_eq], axis=1)
     eq_p95 = float(np.quantile(max_drawdown(wealth_eq), 0.95))
-    hist_eq = gross.to_numpy() @ eq_w
+    hist_eq = (1 - FEE / 2) * (gross.to_numpy() @ eq_w)
+    hist_eq[-1] -= (FEE / 2) * (gross.to_numpy()[-1] @ eq_w)
+    hist_eq = np.r_[1.0, hist_eq]
     eq_hist_mdd = float(np.max(1 - hist_eq / np.maximum.accumulate(hist_eq)))
     naive = dict(equal_weight_p95_mdd=eq_p95, equal_weight_hist_mdd=eq_hist_mdd,
                  note="等权组合情景P95回撤：相关性使组合风险不可由单基金预算相加推断")
@@ -316,10 +288,11 @@ def main():
                scenarios=args.scenarios, cash_rate=cash_rate,
                pool_size=len(pool), common_days=len(dates),
                naive_equal_weight=naive,
-               target="CAGR>=5% & MDD<=4%",
-               feasible_4pct=bool((frontier.budget.eq(0.04)
+               target="conditional forecast annual return>=5% & scenario MDD<=4%",
+               forecast_feasible_4pct=bool((frontier.budget.eq(0.04)
                                    & frontier.status.eq("OK")
-                                   & frontier.expected_annual.ge(0.05)).any()))
+                                   & frontier.expected_annual.ge(0.05)).any()),
+               oos_status="PIT_SELECTION_DATA_BLOCKED")
     (outdir / "run_summary.json").write_text(
         json.dumps(run, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(run, indent=2, ensure_ascii=False))
