@@ -37,6 +37,18 @@ BOOT_STEPS = 126  # 6 个月约 126 个交易日
 MIN_GROUP = 10
 
 
+def annual_log_mean_se(monthly):
+    """SE of 12 * mean(monthly log returns), assuming independent months.
+
+    Month-to-month dependence is not modeled here; this is an estimation
+    uncertainty measure, not a future return volatility forecast.
+    """
+    x = np.asarray(monthly, dtype=float)
+    if x.ndim != 1 or len(x) < 2 or not np.isfinite(x).all() or np.any(x <= -1):
+        raise ValueError("at least two finite monthly returns > -100% required")
+    return float(12.0 * np.std(np.log1p(x), ddof=1) / np.sqrt(len(x)))
+
+
 def pct(s):
     """M0 口径分位：升序平均并列，N=1 -> 50。"""
     n = s.notna().sum()
@@ -89,9 +101,7 @@ def process_period(period, asof, inp, paths, boot_scenarios=2000, boot_block=10,
             continue
         monthly = nav.monthly(asof, period_m, complete)
         if monthly is not None and len(monthly) >= 4:
-            mlog = np.log1p(monthly)
-            monthly_stats[r["code"]] = (
-                float(np.std(mlog, ddof=1) * np.sqrt(12.0) / np.sqrt(len(mlog))))
+            monthly_stats[r["code"]] = annual_log_mean_se(monthly)
         i, j = nav.right(begin), nav.right(asof)
         if 0 <= i < j:
             v = nav.value[i:j + 1]
