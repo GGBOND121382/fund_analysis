@@ -54,8 +54,8 @@ class PortfolioRiskAccounting(unittest.TestCase):
         self.assertTrue((rows.status == "PIT_SELECTION_DATA_BLOCKED").all())
 
     def test_roundtrip_fee_affects_scenario_drawdown_and_forecast(self):
-        paths = np.ones((4, 3, 1))
-        cash = np.ones((4, 3))
+        paths = np.ones((4, 127, 1))
+        cash = np.ones((4, 127))
         dates = pd.bdate_range("2025-01-01", periods=3)
         historical = pd.DataFrame({"123456": np.ones(3)}, index=dates)
         out = optimize_weights(paths, cash, np.array([0.0, 0.10]),
