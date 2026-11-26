@@ -2,7 +2,7 @@
 """P2 历史样本外模型比较：M0-noSA / M1 / M2 / M3。
 
 设计与已知局限（如实声明）：
-- 历史形成日滚动：半年间隔 7 个独立折（持有期 6 个月不重叠，相邻折独立）；
+- 历史形成日滚动：半年间隔 7 个不重叠折（持有期 6 个月，不保证统计独立）；
   辅助报告季度形成日（重叠持有期，不作为独立统计证据）。
 - 每个形成日只用截至当日的净值（NavPath 截断），不使用形成日后数据。
 - 历史冲击事件无法构成统一事前规则 -> SA 项去除，M0 降级为三因子版
@@ -108,6 +108,8 @@ def score_fold(df, seed):
     d["S_M1"] = W3["return"] * d["SR_EB"] + W3["drawdown"] * d["SD"] + W3["downside"] * d["SL"]
     d["S_M2"] = W3["return"] * d["SR_EB"] + W3["drawdown"] * d["SD95"] + W3["downside"] * d["SL"]
     d["S_M3"] = W3["return"] * d["SR_EB"] + W3["drawdown"] * d["SD"] + W3["downside"] * d["SL_daily"]
+    d["S_RISK_D95"] = W3["return"] * d["SR"] + W3["drawdown"] * d["SD95"] + W3["downside"] * d["SL"]
+    d["S_RISK_DAILY"] = W3["return"] * d["SR"] + W3["drawdown"] * d["SD"] + W3["downside"] * d["SL_daily"]
     return d
 
 
@@ -136,14 +138,15 @@ def future_perf(paths, codes, t, hold_months, names=None, market_days=None):
         nav = paths.get(code)
         if nav is None:
             return reject("nav_path_missing", code)
-        i, j = nav.right(t), nav.right(end)
-        if i < 0 or j <= i:
+        # Formation-day NAV is only known after the subscription cutoff.
+        i, j = nav.right(t) + 1, nav.right(end)
+        if i >= len(nav.days) or j <= i:
             return reject("no_nav_spanning_formation_exit", code)
-        if nav.day(t) - nav.days[i] > 10 or nav.day(end) - nav.days[j] > 10:
+        if nav.days[i] - nav.day(t) > 10 or nav.day(end) - nav.days[j] > 10:
             return reject("formation_or_exit_nav_gap_gt_10d", code)
         if market_days is not None:
             have = set(nav.days[i:j + 1].tolist())
-            missing = [int(d) for d in market_days if int(d) not in have]
+            missing = [int(d) for d in market_days if nav.day(t) < int(d) <= nav.day(end) and int(d) not in have]
             if missing:
                 d0 = pd.Timestamp(np.datetime64(int(missing[0]), "D"))
                 return reject(f"missing_market_day:{d0.date()}", code)
@@ -155,7 +158,7 @@ def future_perf(paths, codes, t, hold_months, names=None, market_days=None):
     aligned = pd.concat(series, axis=1, join="inner").sort_index()
     if len(aligned) < 60:
         return reject("aligned_calendar_lt_60_days")
-    if (pd.Timestamp(t) - aligned.index[0]).days > 10 or \
+    if (aligned.index[0] - pd.Timestamp(t)).days > 10 or \
             (pd.Timestamp(end) - aligned.index[-1]).days > 10:
         return reject("aligned_window_edge_gt_10d")
     if market_days is None and \
@@ -174,7 +177,7 @@ def future_perf(paths, codes, t, hold_months, names=None, market_days=None):
     # Zero hurdle for both ratios; report it explicitly, not a risk-free Sharpe.
     daily_downside = float(np.sqrt(np.mean(np.minimum(dr, 0.0) ** 2)))
     sd = float(np.std(dr, ddof=1)) if len(dr) > 1 else np.nan
-    ann = float(wealth[-1] ** (365.2425 / ((end - t).days)) - 1.0)
+    ann = float(wealth[-1] ** (365.2425 / ((aligned.index[-1] - aligned.index[0]).days)) - 1.0)
     sharpe = float(np.mean(dr) / sd * np.sqrt(252.0)) if sd > 0 else np.nan
     sortino = (float(np.mean(dr) / daily_downside * np.sqrt(252.0))
                if daily_downside > 0 else np.nan)
@@ -190,14 +193,20 @@ def main():
     ap.add_argument("--data-dir", default="data/all_funds")
     ap.add_argument("--output", default="reports/all_funds/models_20261120/oos")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--universe", choices=["all", "defensive_bond"], default="all")
     args = ap.parse_args()
     asof = pd.Timestamp(args.asof)
     out = Path(args.output)
+    if args.universe != "all":
+        out = out / args.universe
     out.mkdir(parents=True, exist_ok=True)
 
     import re
     low_vol_re = re.compile("债|固收|绝对收益|货币|FOF-稳健")
     catalog = load_catalog(Path(args.data_dir) / "fund_list.csv")
+    if args.universe == "defensive_bond":
+        catalog = catalog.loc[catalog.group.isin(["中长纯债", "短债/中短债", "利率债", "信用债", "指数型-固收"])
+                              & ~catalog.name.str.contains(r"滚动|持有|定开|封闭|可转债|转债", na=False)].copy()
     paths, _ = load_paths(catalog, Path(args.data_dir), asof)
     fac = pd.read_csv(ROOT / "data" / "factors" / "daily.csv",
                       parse_dates=["date"])
@@ -224,7 +233,7 @@ def main():
             continue
         d = score_fold(df, args.seed)
         row = {"formation": t_str, "candidates": int(len(d))}
-        for model in ("S_M0", "S_M1", "S_M2", "S_M3"):
+        for model in ("S_M0", "S_M1", "S_M2", "S_M3", "S_RISK_D95", "S_RISK_DAILY"):
             top = d.dropna(subset=[model]).sort_values(model, ascending=False)
             top = top.drop_duplicates("product_key").head(10)
             perf = future_perf(paths, top["code"].tolist(), t, HOLD_MONTHS,
@@ -241,7 +250,7 @@ def main():
 
     # 汇总：配对差 + 小样本 t 置信区间
     summary = {}
-    for model in ("S_M1", "S_M2", "S_M3"):
+    for model in ("S_M1", "S_M2", "S_M3", "S_RISK_D95", "S_RISK_DAILY"):
         dr, dm = [], []
         for f in folds:
             fm, f0 = f.get(model) or {}, f.get("S_M0") or {}
@@ -260,7 +269,7 @@ def main():
                           "mean_delta_MDD": float(np.mean(dm)) if n else None,
                           "ci95_delta_MDD": [float(x) for x in tm],
                           "win_rate_R": float(np.mean([x > 0 for x in dr])) if n else None}
-    result = {"asof": args.asof, "git_sha": sha, "formation_dates": FORMATION_DATES,
+    result = {"universe": args.universe, "execution": "first NAV strictly after formation", "asof": args.asof, "git_sha": sha, "formation_dates": FORMATION_DATES,
               "hold_months": HOLD_MONTHS, "roundtrip_fee": ROUNDTRIP_FEE,
               "boot_scenarios": BOOT_SCENARIOS, "seed": args.seed,
               "limitations": ["M0 degraded to 3-factor (no SA) - shock window not PIT-definable",
