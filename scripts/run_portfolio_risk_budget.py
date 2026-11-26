@@ -73,6 +73,7 @@ def build_pool(asof, n_bond=6, n_equity=3, n_gold=2):
     ok = set(ths.loc[ths["buy"].eq("1")
                      & ths["sgstat"].isin(["开放", "限制大额"]), "code"])
     rank = rank.loc[rank.code.isin(ok)].copy()
+    rank = rank.loc[~rank.name.str.contains(r'滚动|持有|定开|封闭', na=False)]
     BOND_GROUPS = ("中长纯债", "短债/中短债", "一级债基", "二级债基",
                    "利率债", "信用债", "指数型-固收", "偏债混合")
     bond = rank.loc[rank.group.isin(BOND_GROUPS)]
@@ -119,6 +120,36 @@ def per_fund_mu(df):
     return out
 
 
+def historical_upper_bound(hist_assets, growth, budget, max_iter=100):
+    """Upper bound on terminal wealth under historical drawdown constraints.
+
+    Each row of hist_assets contains net wealth per initial unit of each
+    asset. The first row is all ones. Dropping scenario constraints gives
+    a relaxation; even an unfinished cutting-plane solve is an upper bound.
+    """
+    from scipy.optimize import linprog
+    A = np.asarray(hist_assets, dtype=float)
+    g = np.asarray(growth, dtype=float)
+    if A.ndim != 2 or g.shape != (A.shape[1],) or not np.isfinite(A).all() or not np.isfinite(g).all() or np.any(A <= 0) or not 0 <= budget < 1:
+        raise ValueError('invalid historical relaxation inputs')
+    cuts = {}
+    for _ in range(max_iter):
+        sol = linprog(-g, A_ub=np.array(list(cuts.values())) if cuts else None,
+                      b_ub=np.zeros(len(cuts)) if cuts else None,
+                      A_eq=np.ones((1, len(g))), b_eq=[1.0], bounds=(0, 1), method='highs')
+        if not sol.success:
+            return None
+        wealth = A @ sol.x
+        peaks = np.maximum.accumulate(wealth)
+        violations = np.flatnonzero(wealth < (1-budget)*peaks - 1e-9)
+        if not len(violations):
+            return float(-sol.fun), sol.x, True
+        for t in violations:
+            s = int(np.argmax(wealth[:t+1]))
+            cuts[s, int(t)] = (1-budget)*A[s] - A[t]
+    return float(-sol.fun), sol.x, False
+
+
 def optimize_weights(paths, cash, mu_ann, hist_gross, budget, *, samples=4000,
                      seed=42, cash_rate=0.0):
     """Dirichlet 权重搜索：max sum(w*mu)-fee s.t. P95MDD<=B 且历史混合MDD<=B。
@@ -131,14 +162,32 @@ def optimize_weights(paths, cash, mu_ann, hist_gross, budget, *, samples=4000,
     w_list = [np.eye(f + 1)]  # 角点（含纯现金）
     w_list.append(rng.dirichlet(np.ones(f + 1), size=samples))
     w_list.append(rng.dirichlet(np.full(f + 1, 3.0), size=samples))  # 偏分散
-    W = np.concatenate(w_list).reshape(-1, f + 1)
+    # Explicit sparse allocations; random simplex samples almost never hit edges.
+    for i in range(f + 1):
+        for j in range(i + 1, f + 1):
+            a = np.linspace(0, 1, 101)
+            edge = np.zeros((len(a), f + 1))
+            edge[:, i], edge[:, j] = a, 1-a
+            w_list.append(edge)
     hist_M = hist_gross.to_numpy()  # D x F
     days = (hist_gross.index - hist_gross.index[0]).days.to_numpy(dtype=float)
     hist_cash = (1 + cash_rate) ** (days / 365.2425)
     entry_fee = exit_fee = FEE / 2.0
+    years = (t_ - 1) / 252.0
+    if np.any(mu_ann <= -1):
+        raise ValueError("annual forecast must exceed -100%")
+    growth = (1 + mu_ann) ** years
+    growth[1:] *= (1-entry_fee)*(1-exit_fee)
+    hist_assets = np.column_stack([hist_cash, hist_M*(1-entry_fee)])
+    hist_assets[-1, 1:] *= 1-exit_fee
+    hist_assets = np.vstack([np.ones(f+1), hist_assets])
+    upper = historical_upper_bound(hist_assets, growth, budget)
+    if upper is not None:
+        w_list.append(upper[1][None, :])
+    W = np.concatenate(w_list).reshape(-1, f + 1)
     hist_wealth = (hist_M @ (W[:, 1:] * (1 - entry_fee)).T
                    + np.outer(hist_cash, W[:, 0]))
-    hist_wealth[-1] -= exit_fee * (hist_M[-1] @ W[:, 1:].T)
+    hist_wealth[-1] -= exit_fee * (1-entry_fee) * (hist_M[-1] @ W[:, 1:].T)
     hist_wealth = np.vstack([np.ones(len(W)), hist_wealth])
     hist_mdd = np.max(1 - hist_wealth / np.maximum.accumulate(hist_wealth, axis=0),
                       axis=0)
@@ -147,15 +196,11 @@ def optimize_weights(paths, cash, mu_ann, hist_gross, budget, *, samples=4000,
         wk = W[lo:lo + 50]  # K x (F+1)
         fund_gross = np.einsum("kf,stf->kst", wk[:, 1:], paths)
         wealth = wk[:, :1, None] * cash[None] + (1 - entry_fee) * fund_gross
-        wealth[:, :, -1] -= exit_fee * fund_gross[:, :, -1]
+        wealth[:, :, -1] -= exit_fee * (1-entry_fee) * fund_gross[:, :, -1]
         wealth = np.concatenate([np.ones((len(wk), s_, 1)), wealth], axis=2)
         mdd = np.max(1 - wealth / np.maximum.accumulate(wealth, axis=2), axis=2)
         p95 = np.quantile(mdd, 0.95, axis=1)
-        years = (t_ - 1) / 252.0
-        if np.any(mu_ann <= -1):
-            raise ValueError("annual forecast must exceed -100%")
-        growth = (1 + mu_ann) ** years
-        horizon_wealth = wk[:, 0] * growth[0] + (wk[:, 1:] @ growth[1:]) * (1 - FEE)
+        horizon_wealth = wk @ growth
         ret = horizon_wealth ** (1.0 / years) - 1.0
         feas = (p95 <= budget + 1e-12) & (hist_mdd[lo:lo + 50] <= budget + 1e-12)
         for j in np.where(feas)[0]:
@@ -163,6 +208,9 @@ def optimize_weights(paths, cash, mu_ann, hist_gross, budget, *, samples=4000,
                 best = dict(expected_annual=float(ret[j]), p95_mdd=float(p95[j]),
                             hist_mdd=float(hist_mdd[lo + j]),
                             weights=wk[j].tolist())
+    if best is not None:
+        best['historical_upper_annual'] = (upper[0] ** (1/years) - 1) if upper is not None else None
+        best['historical_bound_converged'] = bool(upper is not None and upper[2])
     return best
 
 
@@ -255,6 +303,11 @@ def main():
             row.update(status="NO_FEASIBLE_WEIGHT")
         else:
             row.update(status="OK", expected_annual=best["expected_annual"],
+                       historical_upper_annual=best["historical_upper_annual"],
+                       historical_bound_converged=best["historical_bound_converged"],
+                       target_status=("FOUND_FEASIBLE" if best["expected_annual"] >= 0.05 else
+                                      "INFEASIBLE_UNDER_FIXED_INPUTS" if best["historical_upper_annual"] is not None and best["historical_upper_annual"] < 0.05 - 1e-8 else
+                                      "SEARCH_INCONCLUSIVE"),
                        p95_mdd=best["p95_mdd"], hist_mdd=best["hist_mdd"],
                        cash_w=best["weights"][0],
                        **{f"w_{c}": round(x, 4)
@@ -268,11 +321,11 @@ def main():
     # 4) 朴素等权对照（相关性影响演示）
     eq_w = np.full(len(pool), 1.0 / len(pool))
     wealth_eq = (1 - FEE / 2) * np.einsum("f,stf->st", eq_w, sc_joint)
-    wealth_eq[:, -1] -= (FEE / 2) * np.einsum("f,sf->s", eq_w, sc_joint[:, -1, :])
+    wealth_eq[:, -1] -= (FEE / 2) * (1-FEE/2) * np.einsum("f,sf->s", eq_w, sc_joint[:, -1, :])
     wealth_eq = np.concatenate([np.ones((args.scenarios, 1)), wealth_eq], axis=1)
     eq_p95 = float(np.quantile(max_drawdown(wealth_eq), 0.95))
     hist_eq = (1 - FEE / 2) * (gross.to_numpy() @ eq_w)
-    hist_eq[-1] -= (FEE / 2) * (gross.to_numpy()[-1] @ eq_w)
+    hist_eq[-1] -= (FEE / 2) * (1-FEE/2) * (gross.to_numpy()[-1] @ eq_w)
     hist_eq = np.r_[1.0, hist_eq]
     eq_hist_mdd = float(np.max(1 - hist_eq / np.maximum.accumulate(hist_eq)))
     naive = dict(equal_weight_p95_mdd=eq_p95, equal_weight_hist_mdd=eq_hist_mdd,
@@ -289,9 +342,9 @@ def main():
                pool_size=len(pool), common_days=len(dates),
                naive_equal_weight=naive,
                target="conditional forecast annual return>=5% & scenario MDD<=4%",
-               forecast_feasible_4pct=bool((frontier.budget.eq(0.04)
-                                   & frontier.status.eq("OK")
-                                   & frontier.expected_annual.ge(0.05)).any()),
+               target_status_4pct=(frontier.loc[frontier.budget.eq(0.04), "target_status"].iloc[0]
+                                   if "target_status" in frontier and frontier.loc[frontier.budget.eq(0.04), "target_status"].notna().any()
+                                   else "SEARCH_INCONCLUSIVE"),
                oos_status="PIT_SELECTION_DATA_BLOCKED")
     (outdir / "run_summary.json").write_text(
         json.dumps(run, indent=2, ensure_ascii=False), encoding="utf-8")
