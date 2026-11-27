@@ -230,18 +230,37 @@ def main():
         keep = [c for c in keep if c in cand.columns]
         cand_out = cand[keep].rename(columns={"R": "annualized_return"})
         cand_out.to_csv(out / f"model_candidate_audit_{period}.csv", index=False)
+        channel_file = inp / f"ths_tradeable_status_{period}.csv"
+        verified_codes = set()
+        if channel_file.is_file():
+            status = pd.read_csv(channel_file, dtype={"code": str, "buy": str})
+            verified_codes = set(status.loc[status.buy.eq("1") &
+                status.sgstat.isin(["开放", "限制大额"]) &
+                status.shstat.eq("开放"), "code"].str.zfill(6))
         for model in ("M1", "M2", "M3"):
             col = f"SCORE_{model}"
             ranked = cand_out.dropna(subset=[col]).sort_values([col, "code"], ascending=[False, True]).reset_index(drop=True)
             ranked.insert(0, f"rank_{model}", range(1, len(ranked) + 1))
+            product_board = ranked.drop_duplicates("product_key").copy()
+            product_board.insert(0, "product_rank", range(1, len(product_board)+1))
             for k in (10, 20, 50):
-                ranked.drop_duplicates("product_key").head(k).to_csv(out / f"top{k}_{model.lower()}_{period}.csv", index=False)
+                product_board.head(k).to_csv(out / f"top{k}_{model.lower()}_{period}.csv", index=False)
+            # Channel snapshot covers only checked shares; never label this
+            # a complete all-market tradeable board. Filter before dedup.
+            known = ranked.loc[ranked.code.isin(verified_codes) &
+                ~ranked.name.str.contains(r"滚动|持有|定开|定期开放|定期债券|封闭", na=False)].copy()
+            known = known.drop_duplicates("product_key")
+            known.insert(0, "checked_tradeable_rank", range(1, len(known)+1))
+            known.to_csv(out / f"checked_tradeable_{model.lower()}_{period}.csv", index=False)
             ranked.to_csv(out / f"full_ranking_{model.lower()}_{period}.csv", index=False)
             audit = {"model": model, "horizon": period, "asof": args.asof, "git_sha": sha,
                      "weights": W, "coverage": coverage,
                      "m1_note": "原始收益条件EB研究版：同产品一票、零离散/小样本不收缩、同月样本；非基准调整，非未来收益预测",
                      "bootstrap": {"scenarios": args.scenarios, "block": args.block,
-                                   "seed": args.seed, "steps": BOOT_STEPS}}
+                                   "seed": args.seed, "steps": BOOT_STEPS},
+                     "tradeable_scope": "checked channel snapshot only; name-based lock filter",
+                     "channel_checked_buy_sell_codes": len(verified_codes),
+                     "checked_tradeable_products": len(known)}
             with open(out / f"model_audit_{model.lower()}_{period}.json", "w") as f:
                 json.dump(audit, f, ensure_ascii=False, indent=1)
         summary[period] = coverage
