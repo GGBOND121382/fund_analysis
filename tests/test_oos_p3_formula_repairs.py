@@ -31,11 +31,12 @@ class OOSAccounting(unittest.TestCase):
         # the entire requested period. All funds share identical first/last.
         perf = future_perf(paths, list(paths), dates[0], 7)
         self.assertIsNotNone(perf)
-        last_values = [p.value[-1] / p.value[0] for p in paths.values()]
+        last_values = [p.value[-1] / p.value[1] for p in paths.values()]
         expected = ((1 - ROUNDTRIP_FEE / 2) ** 2
                     * np.mean(last_values) - 1)
         self.assertAlmostEqual(perf["net_return"], expected, places=12)
         self.assertEqual(perf["n_funds"], 10)
+        self.assertEqual(perf["start_date"], str(dates[1].date()))
 
     def test_market_holiday_is_not_a_data_hole(self):
         # A day on which NO fund reports (market-wide closure) must not reject.

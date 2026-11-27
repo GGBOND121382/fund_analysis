@@ -106,6 +106,21 @@ class NavPath:
         return v[1:] / v[:-1] - 1
 
 
+def nav_quality_issue(values):
+    """Reject invalid or effectively constant *paths*, not zero terminal return.
+
+    A legitimate round trip can finish at its initial NAV while exhibiting
+    substantial risk. The tolerance is only for floating-point equality;
+    low volatility itself is not grounds for rejection here.
+    """
+    v = np.asarray(values, dtype=float)
+    if v.ndim != 1 or len(v) < 2 or not np.isfinite(v).all() or np.any(v <= 0):
+        return "INVALID_NAV_PATH"
+    if np.max(v) / np.min(v) - 1.0 <= 1e-10:
+        return "FLAT_NAV_REVIEW"
+    return ""
+
+
 def feature(nav, end, horizon, low_vol, exact=True):
     n, obs_min = HORIZONS[horizon]
     begin,period,complete_months = window_dates(end,n)
