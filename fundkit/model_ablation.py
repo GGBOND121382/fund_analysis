@@ -116,8 +116,10 @@ def add_return_ablation(d, monthly, eb_fit):
     d.loc[valid,"factor_status"]=d.loc[valid,"code"].map(fitted.eb_status).map(
         lambda s:"FACTOR_EB" if s=="EB_CONDITIONAL" else "FALLBACK_"+str(s))
     use=d.factor_status.eq("FACTOR_EB")
-    d.loc[valid,"factor_eb_weight"]=d.loc[valid,"code"].map(fitted.eb_weight)
+    d.loc[valid,"factor_eb_weight"]=d.loc[valid,"code"].map(fitted.eb_weight).to_numpy(dtype=float)
+    if not use.any():
+        return d
     center=d.loc[use,"factor_mean"]+d.loc[use,"code"].map(fitted.eb_log_cagr)
     uncertainty=d.loc[use,"factor_se"]+d.loc[use,"code"].map(fitted.eb_se)
-    d.loc[use,"return_M5"]=np.expm1(center-Z*uncertainty)
+    d.loc[use,"return_M5"]=np.expm1(center-Z*uncertainty).to_numpy(dtype=float)
     return d
