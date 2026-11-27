@@ -18,7 +18,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from fundkit.industry_rank import HORIZONS, LOW_VOL, feature
+from fundkit.industry_rank import HORIZONS, LOW_VOL, feature, nav_quality_issue
 from scripts.run_industry_fund_ranking import load_catalog, load_paths
 
 CONFIG = json.loads((ROOT/"config"/"comprehensive_ranking_m0_v1.json").read_text(encoding="utf-8"))
@@ -64,6 +64,10 @@ def horizon_rows(catalog, paths, end, h, shock_start, shock_end):
         rec.update(obs=f["obs"],window_start=str(f["start"].date()),window_end=str(f["end"].date()),
                    months_used=len(monthly),R=R,D=f["max_drawdown"],L=L,
                    period_return=f["period_return"])
+        issue = nav_quality_issue(nav.value[nav.right(pd.Timestamp(f["start"])):nav.right(end)+1])
+        if issue:
+            rows.append(dict(rec,status=issue,risk_status=issue,reason=issue))
+            continue
         shock = shock_metrics(nav,pd.Timestamp(shock_start),pd.Timestamp(shock_end))
         if shock is None:
             rows.append(dict(rec,status="事件期缺数据",risk_status="",reason="shock endpoints or coverage missing"))
