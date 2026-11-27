@@ -1,0 +1,26 @@
+name: Independent debug data replay
+on:
+  push:
+    branches:
+      - codex/fund-analysis-all-fund-ranking-20261114
+    paths:
+      - 'scripts/audit_debug_data_20261127.py'
+      - '.github/workflows/debug-data-replay.yml'
+  workflow_dispatch:
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt
+      - run: python scripts/audit_debug_data_20261127.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debug-data-replay-20261127
+          path: artifacts/debug_audit_20261127
+          retention-days: 30
