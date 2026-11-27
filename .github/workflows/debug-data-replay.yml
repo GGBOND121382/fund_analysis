@@ -1,10 +1,14 @@
-name: Independent debug data replay
+name: Independent M0-M7 ablation replay
 on:
   push:
     branches:
       - codex/fund-analysis-all-fund-ranking-20261114
     paths:
       - 'scripts/audit_debug_data_20261127.py'
+      - 'fundkit/model_ablation.py'
+      - 'scripts/rank_models_m123.py'
+      - 'scripts/run_oos_model_comparison.py'
+      - 'tests/test_model_ablation.py'
       - '.github/workflows/debug-data-replay.yml'
   workflow_dispatch:
 jobs:
@@ -17,10 +21,11 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -p test_model_ablation.py -v
       - run: python scripts/audit_debug_data_20261127.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: debug-data-replay-20261127
-          path: artifacts/debug_audit_20261127
+          name: m0-m7-ablation-20261128
+          path: artifacts/debug_ablation_20261128
           retention-days: 30
