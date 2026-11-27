@@ -26,6 +26,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_industry_fund_ranking import load_catalog, load_paths  # noqa: E402
 from fundkit.industry_rank import NavPath, window_dates, nav_quality_issue  # noqa: E402
+from fundkit.model_ablation import add_return_ablation, cny_comparable, identity_keys
 from fundkit.opportunity_rank import stationary_bootstrap, max_drawdown  # noqa: E402
 from rank_models_m123 import eb_posteriors, pct, BOOT_STEPS, EB_Z, annual_log_mean_se  # noqa: E402
 
@@ -88,9 +89,10 @@ def fold_features(catalog, paths, t, low_vol_re):
     return pd.DataFrame(rows)
 
 
-def score_fold(df, seed):
-    d = eb_posteriors(df.dropna(subset=["annual_se", "observed_log_cagr"]).copy())
-    d["mu_lower"] = np.exp(d["eb_log_cagr"] - EB_Z * d["eb_se"]) - 1.0
+def score_fold(df, seed, formation=None):
+    d = df.dropna(subset=["annual_se", "observed_log_cagr"]).copy()
+    d["product_key"] = identity_keys(d)
+    d = d.loc[cny_comparable(d)].copy()
     d95 = {}
     for r in d.itertuples(index=False):
         v = r.nav_obj.value[r.nav_i: r.nav_j + 1]
@@ -102,7 +104,19 @@ def score_fold(df, seed):
             pass
     d["D95"] = d["code"].map(d95)
     # All models use identical finite-feature cohorts, including the control.
-    d = d.loc[np.isfinite(d[["mu_lower", "D95", "L_daily", "D", "L", "annualized_return"]]).all(axis=1)].copy()
+    d = d.loc[np.isfinite(d[["annual_se", "eb_observed_log_mean", "D95", "L_daily", "D", "L", "annualized_return"]]).all(axis=1)].copy()
+    monthly_rows = []
+    if formation is None and len(d):
+        formation = max(n.dates[-1] for n in d.nav_obj)
+    if formation is not None:
+        _, period, complete = window_dates(pd.Timestamp(formation), 12)
+        for r in d.itertuples(index=False):
+            m = r.nav_obj.monthly(pd.Timestamp(formation), period, complete)
+            if m is not None:
+                months = pd.period_range(end=period, periods=len(m), freq="M")
+                monthly_rows.append(pd.DataFrame({"code":r.code,"month":months.astype(str),"monthly_return":m}))
+    monthly = pd.concat(monthly_rows,ignore_index=True) if monthly_rows else pd.DataFrame(columns=["code","month","monthly_return"])
+    d = add_return_ablation(eb_posteriors(d), monthly, eb_posteriors)
     d["SR"] = pct(d["annualized_return"])
     d["SD"] = 100.0 - pct(d["D"])
     d["SL"] = 100.0 - pct(d["L"])
@@ -115,6 +129,10 @@ def score_fold(df, seed):
     d["S_M3"] = W3["return"] * d["SR_EB"] + W3["drawdown"] * d["SD"] + W3["downside"] * d["SL_daily"]
     d["S_RISK_D95"] = W3["return"] * d["SR"] + W3["drawdown"] * d["SD95"] + W3["downside"] * d["SL"]
     d["S_RISK_DAILY"] = W3["return"] * d["SR"] + W3["drawdown"] * d["SD"] + W3["downside"] * d["SL_daily"]
+    d["S_M4"] = W3["return"]*pct(d.return_M4)+W3["drawdown"]*d.SD+W3["downside"]*d.SL
+    d["S_M5"] = W3["return"]*pct(d.return_M5)+W3["drawdown"]*d.SD+W3["downside"]*d.SL
+    d["S_M6"] = d["S_RISK_D95"]
+    d["S_M7"] = d["S_RISK_DAILY"]
     return d
 
 
@@ -196,7 +214,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--asof", default="2026-11-20")
     ap.add_argument("--data-dir", default="data/all_funds")
-    ap.add_argument("--output", default="reports/all_funds/models_20261120/oos")
+    ap.add_argument("--output", default="reports/all_funds/models_ablation_20261128/oos")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--universe", choices=["all", "defensive_bond"], default="all")
     args = ap.parse_args()
@@ -209,6 +227,7 @@ def main():
     import re
     low_vol_re = re.compile("债|固收|绝对收益|货币|FOF-稳健")
     catalog = load_catalog(Path(args.data_dir) / "fund_list.csv")
+    catalog = catalog.loc[cny_comparable(catalog) & ~catalog.name.str.contains(r"滚动|持有|定开|定期开放|定期债券|封闭", na=False)].copy()
     if args.universe == "defensive_bond":
         catalog = catalog.loc[catalog.group.isin(["中长纯债", "短债/中短债", "利率债", "信用债", "指数型-固收"])
                               & ~catalog.name.str.contains(r"滚动|持有|定开|封闭|可转债|转债", na=False)].copy()
@@ -236,9 +255,11 @@ def main():
         if df.empty:
             print(t_str, "empty fold")
             continue
-        d = score_fold(df, args.seed)
-        row = {"formation": t_str, "candidates": int(len(d))}
-        for model in ("S_M0", "S_M1", "S_M2", "S_M3", "S_RISK_D95", "S_RISK_DAILY"):
+        d = score_fold(df, args.seed, t)
+        row = {"formation": t_str, "candidates": int(len(d)),
+               "calendar_complete": bool(trading_days.max() >= end - pd.Timedelta(days=3)),
+               "factor_eb_coverage": int(d.factor_status.eq("FACTOR_EB").sum())}
+        for model in tuple(f"S_M{i}" for i in range(8)):
             top = d.dropna(subset=[model]).sort_values([model, "code"], ascending=[False, True])
             top = top.drop_duplicates("product_key").head(10)
             perf = future_perf(paths, top["code"].tolist(), t, HOLD_MONTHS,
@@ -255,7 +276,7 @@ def main():
 
     # 汇总：配对差 + 小样本 t 置信区间
     summary = {}
-    for model in ("S_M1", "S_M2", "S_M3", "S_RISK_D95", "S_RISK_DAILY"):
+    for model in tuple(f"S_M{i}" for i in range(1,8)):
         dr, dm = [], []
         for f in folds:
             fm, f0 = f.get(model) or {}, f.get("S_M0") or {}
@@ -280,6 +301,8 @@ def main():
               "limitations": ["M0 degraded to 3-factor (no SA) - shock window not PIT-definable",
                               "current catalog only: survivorship bias on absolute levels",
                               "fees approximated at 10bp roundtrip, not PIT verified",
+                              "CNY comparable only; locks excluded by name, historical eligibility unknown",
+                              "M5 unit-loading category factor, no forward forecast; M6/M7 risk-only ablations",
                               "OOS return requires all 10 funds to have aligned full-horizon NAV"],
               "folds": folds, "summary_vs_M0": summary}
     with open(out / "oos_result.json", "w") as f:
