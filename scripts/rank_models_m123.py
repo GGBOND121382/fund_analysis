@@ -5,8 +5,8 @@
 窗口、asof、冲击窗与 M0 一致。四期限分别拟合，不使用形成日后数据。
 
 - M1（原始收益 EB 研究版，非基准调整——本地无类别基准 PIT 净值历史）：
-  月度对数收益 -> observed_log_cagr/annual_se -> 类内正态-正态 EB
-  （peer median 先验，tau2 去偏，复用 fundkit.discovery_risk_rank._posteriors 思路）
+  月度对数收益 -> eb_observed_log_mean/annual_se -> 类内正态-正态 EB
+  （每产品一票的 peer median 先验；tau2 不可识别时显式不收缩）
   mu_lower = exp(eb_log_cagr - 0.67448975*eb_se) - 1
   S_M1 = 0.40*P(mu_lower) + 0.35*SD + 0.15*SA + 0.10*SL
 - M2：窗口内日收益 stationary_bootstrap（复用 fundkit.opportunity_rank），
@@ -161,12 +161,14 @@ def process_period(period, asof, inp, paths, boot_scenarios=2000, boot_block=10,
     cand["eb_observed_log_mean"] = cand["code"].map(monthly_means)
     cand["observed_log_cagr"] = np.log1p(cand["period_return"]) / (
         (pd.to_datetime(cand["window_end"]) - pd.to_datetime(cand["window_start"])).dt.days / 365.2425)
-    ok = cand.dropna(subset=["annual_se", "observed_log_cagr"]).copy()
-    ok = eb_posteriors(ok)
-    cand = cand.merge(ok[["code", "eb_log_cagr", "eb_se", "peer_count", "mu_lower", "eb_tau2", "eb_weight", "eb_status"]],
-                      on="code", how="left")
     cand["L_daily"] = cand["code"].map(daily_stats)
     cand["D95"] = cand["code"].map(d95)
+    finite = np.isfinite(cand[["annual_se", "eb_observed_log_mean", "observed_log_cagr",
+                              "D95", "L_daily", "R", "D", "L", "Aret", "Add"]]).all(axis=1)
+    cand.loc[cand.model_quality_status.eq("OK") & ~finite, "model_quality_status"] = "INCOMPLETE_FEATURES"
+    ok = eb_posteriors(cand.loc[cand.model_quality_status.eq("OK")].copy())
+    cand = cand.merge(ok[["code", "eb_log_cagr", "eb_se", "peer_count", "mu_lower", "eb_tau2", "eb_weight", "eb_status"]],
+                      on="code", how="left", validate="one_to_one")
 
     # Common complete candidate universe for every model, including M0.
     eligible = cand.model_quality_status.eq("OK") & np.isfinite(cand[["mu_lower", "D95", "L_daily", "R", "D", "L", "Aret", "Add"]]).all(axis=1)
