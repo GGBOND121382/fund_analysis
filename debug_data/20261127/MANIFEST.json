@@ -1,0 +1,1611 @@
+{
+ "generated_at": "2026-11-27T16:59:26.390644+08:00",
+ "git_sha": "628103589eb3222cf099a8001b349a16653bf649",
+ "asof": "2026-11-20",
+ "seed": 42,
+ "files": [
+  {
+   "path": "sample/nav_shard_01.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 12883,
+   "date_range": [
+    "2013-03-25",
+    "2026-11-20"
+   ],
+   "bytes": 333553,
+   "sha256": "22bfbd9c3e02b6f7b59881f8aee15f2890257394a7a0a358b81cf3fa4e322513",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_02.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450652,
+   "sha256": "d923f4db5b0c976e2fb493dea11bce9b6a490ee885c0964af269fb1aa8907ee1",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_03.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450105,
+   "sha256": "dedb934204cd2a61585bc8bee7ab33f8ecbbd01fc09422210a1e064007052730",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_04.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 11282,
+   "date_range": [
+    "2013-05-30",
+    "2026-11-20"
+   ],
+   "bytes": 356977,
+   "sha256": "0daabe2b1e478a3a3e17526c086d9f64f4f366dcb601960c3b2e8a1c833fe952",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_05.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6179,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 418254,
+   "sha256": "65ca3fafdf0baa6ee7733b74d1f7ad9eea71feecabeab3fee16212b6892fac2c",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_06.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 8126,
+   "date_range": [
+    "2015-06-26",
+    "2026-11-21"
+   ],
+   "bytes": 375925,
+   "sha256": "1c1a70edc27421bd84262ca2999da1097606f0136908847441693584c9acae17",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_07.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450029,
+   "sha256": "02cf81952a7c3bc2bc5ae2170f1002254b093eb563b1be59d46c7e2d412f546a",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_08.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 4704,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 318552,
+   "sha256": "d88d5caeb7877fea31561beae3f5beaad10d43322aecd63c86721746d2c7929d",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_09.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450215,
+   "sha256": "27851bd6af5c15f14ab93a08c7e860dcbb6bcdbb2f0c1eecc6c1064513cbae9f",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_10.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450026,
+   "sha256": "ff6c5fdeb033233808139b6d687248ac1e0d248f9fa1d255d2f03bad99398a5e",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_11.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6655,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 449547,
+   "sha256": "0da178835a88b215576ebb5ba010f0d1288b0901f6b1cc8c20807e00c1b985a1",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_12.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450305,
+   "sha256": "886b044b4a5dac0c9ceb08bc088ed89655a337b7299622b758ac6b94a796d901",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_13.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6304,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 426331,
+   "sha256": "3155f5a4aac067df7758364b15b993e7e4fd3b7a101d046bb009851d0ff974d4",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_14.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450286,
+   "sha256": "2dc3ddd0be4580fe69c195ca34cbf17eefbfbe84a5469f81ecdab97140766dc5",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_15.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6653,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 417662,
+   "sha256": "686b6d6ca90ac0adfcd3d8639486f3b0aee6c85d0888223c37208df2fa3b8d34",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_16.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450406,
+   "sha256": "5ad579b24ecdf5403f9073d19f5172b8ca883f5f0b15de7392362c0e5ca9b69b",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_17.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450390,
+   "sha256": "e0b3f7c5ffdb2886100f9c9c07c24b1fd92b7b3824944e1a43161cd7f629119b",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_18.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450305,
+   "sha256": "d47731c293fbed76fbf989e5b9242ec6dc08df9ce43ffaf1e678898d55b4afe9",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_19.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450298,
+   "sha256": "e37f8626ec4e5b3deaa5527851890a5ec40debdcb392bf6cf41bde0cc870d4a7",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_20.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450291,
+   "sha256": "5fcc0db81df7fb163be53ab3f0a20296bed22ba4e6db4fd33ff29e43fe886d72",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_21.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450307,
+   "sha256": "ac9bb41f0942a2bfcf71e153f2cd4b0102fe5128ddaceb554fb26d466db339c6",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_22.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5634,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 381292,
+   "sha256": "8f75c189969d1fc1237c1183be0080de4e269ab9061df118802ee7483a364784",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_23.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 4704,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 318483,
+   "sha256": "97423a06b3360fa72334383660135d2bd0143a9b0d68c8d8681b0bd342ef45fe",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_24.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450396,
+   "sha256": "b313165a5a395293df2981a39d703330bca0937dab4d485beef9c5ac381eb864",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_25.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6651,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450134,
+   "sha256": "8e400d9c1349011b5c89a34f9f287ba8c8b2b4c2af257f6487256a7c84f5583b",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_26.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6473,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 435794,
+   "sha256": "feec788c578937e5e44893805b4119fa2bcb84b17f1192eb0c439b7c218974b3",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_27.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5679,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 384331,
+   "sha256": "130344595360ff6d595ac2837fb45a770f653ae985d4652b3b63fc1c521842f0",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_28.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 7239,
+   "date_range": [
+    "2018-05-25",
+    "2026-11-20"
+   ],
+   "bytes": 458432,
+   "sha256": "e3f3c97551fdb29b97af283fb785e820591b2975b2ed3fcad98149e220fed5c6",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_29.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6590,
+   "date_range": [
+    "2018-06-14",
+    "2026-11-20"
+   ],
+   "bytes": 444454,
+   "sha256": "eb7cd435cf0b71baae9d8f1d04220b91ff069c438340327cfc030e2392f9f3f3",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_30.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5987,
+   "date_range": [
+    "2018-08-24",
+    "2026-11-20"
+   ],
+   "bytes": 403071,
+   "sha256": "9538855bcc811081136f9f3dc134ff4aca1fbac179c09724457104d6787a344f",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_31.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5074,
+   "date_range": [
+    "2018-11-15",
+    "2026-11-20"
+   ],
+   "bytes": 340317,
+   "sha256": "44356402e04d3a1a3af2f389052da110cfe5fda5e64abfccca13ee5cb5385cea",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_32.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5837,
+   "date_range": [
+    "2018-09-21",
+    "2026-11-20"
+   ],
+   "bytes": 392767,
+   "sha256": "f53d9ddb288cb56e6950fab540dbcd8ada661a79b589464fb263806cc551649f",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_33.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5768,
+   "date_range": [
+    "2018-12-07",
+    "2026-11-20"
+   ],
+   "bytes": 384556,
+   "sha256": "5302d4bf13a8ec19338696210d865c8242992074d5dcb5c8021e69fbf0c2703f",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_34.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5561,
+   "date_range": [
+    "2019-03-07",
+    "2026-11-20"
+   ],
+   "bytes": 374061,
+   "sha256": "d75fb2b4733aa1a9cedc076b6bd536b30c9d1341652cdb35f13adc00351cba4f",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_35.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6997,
+   "date_range": [
+    "2019-05-15",
+    "2026-11-20"
+   ],
+   "bytes": 446487,
+   "sha256": "b4fd2af9b87d9daf53ba536270cdbc670f4aa8b1630bf5dd229ef6120b54b99c",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_36.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5443,
+   "date_range": [
+    "2019-04-15",
+    "2026-11-20"
+   ],
+   "bytes": 365005,
+   "sha256": "34cbf3a24f928026b7f92818617159f5e64f1217dad97cd31ad62bf36b1f885d",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_37.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6101,
+   "date_range": [
+    "2019-04-15",
+    "2026-11-20"
+   ],
+   "bytes": 410031,
+   "sha256": "be8e3acd476bce0bdc0d749c5fbee7445a3fdc2f5273b8f17ebdf36f117e1c6e",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_38.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6079,
+   "date_range": [
+    "2019-05-15",
+    "2026-11-20"
+   ],
+   "bytes": 408586,
+   "sha256": "cd081cc295fd2295576651f31f33ef0a1795aedbc960780a9bfd1f6649a816fb",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_39.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5282,
+   "date_range": [
+    "2019-07-26",
+    "2026-11-20"
+   ],
+   "bytes": 356402,
+   "sha256": "ad61d537da894f359cfb45a8b0049dd6966f010fb1ac3a86deb8e869dc6d0c0f",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_40.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6702,
+   "date_range": [
+    "2019-09-04",
+    "2026-11-20"
+   ],
+   "bytes": 448395,
+   "sha256": "2ef0f19fb46b358ba34c5bcdfddfafb7a5cd0748c0e4fbda42591ca5ca21ad41",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_41.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6733,
+   "date_range": [
+    "2019-09-16",
+    "2026-11-20"
+   ],
+   "bytes": 452926,
+   "sha256": "d6d6b4dab6498d63a15a3d5bf652e6ae24a569e6a9d267b18810d1c67cb06a3b",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_42.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6729,
+   "date_range": [
+    "2019-11-20",
+    "2026-11-20"
+   ],
+   "bytes": 453324,
+   "sha256": "f9330cfac181c26bd3a6d92915f7fea73d3f8138b98be48af33a70ffac24b1bd",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_43.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 8171,
+   "date_range": [
+    "2019-11-27",
+    "2026-11-21"
+   ],
+   "bytes": 437760,
+   "sha256": "4f7354e5e1d6e7694f8d9b4e0dca2f464e68c6c235f047b86d224c3a15027dc5",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_44.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6776,
+   "date_range": [
+    "2020-01-08",
+    "2026-11-20"
+   ],
+   "bytes": 447688,
+   "sha256": "8025e126fcb52a4051c73e2b7f79ee9a0efb2e733bc54337fda352edf3923c88",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_45.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6425,
+   "date_range": [
+    "2020-03-12",
+    "2026-11-20"
+   ],
+   "bytes": 426945,
+   "sha256": "7308dd667eb077adcd8de3c8e8772a6151fdd5f6b4c3caee78ada030c93c2f16",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_46.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5652,
+   "date_range": [
+    "2020-04-23",
+    "2026-11-20"
+   ],
+   "bytes": 381875,
+   "sha256": "0acca4f3ea9cfe797e838c9b7f3210fb41445b92cd25b083f5261f1573851a66",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_47.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5749,
+   "date_range": [
+    "2020-02-27",
+    "2026-11-20"
+   ],
+   "bytes": 385154,
+   "sha256": "e7b47bb675a484a1dc99176225691b4a55858699884c1cc16d6ee56eb59866dd",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_48.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5993,
+   "date_range": [
+    "2020-06-30",
+    "2026-11-20"
+   ],
+   "bytes": 399688,
+   "sha256": "ae8692e8b93e93e0d75f254612ab62aa322474ce72e9ec1bf74ac2367cd0b195",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_49.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5715,
+   "date_range": [
+    "2020-08-06",
+    "2026-11-20"
+   ],
+   "bytes": 386430,
+   "sha256": "10e822a7c90a537affba893b3e0f5e0c3a151f9251aed68d83228c6586d22ced",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_50.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6673,
+   "date_range": [
+    "2020-07-29",
+    "2026-11-20"
+   ],
+   "bytes": 444033,
+   "sha256": "a291c1645d3da8d344b9d0585448d3466df8ad66bbf4b240937479fbf769bfd9",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_51.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6762,
+   "date_range": [
+    "2020-09-07",
+    "2026-11-20"
+   ],
+   "bytes": 457210,
+   "sha256": "95279d354d834a4a48d26e7deee5a1bb9f4cab149bf64dba1136b3b33cfb3b95",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_52.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5513,
+   "date_range": [
+    "2020-12-14",
+    "2026-11-20"
+   ],
+   "bytes": 372371,
+   "sha256": "6b08f2c41da3721eadfdb1ce8d6928e83b0dd74358ad1f993da97d203e5e88d6",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_53.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6456,
+   "date_range": [
+    "2021-04-16",
+    "2026-11-20"
+   ],
+   "bytes": 434644,
+   "sha256": "b092c1ce22f809b5b86c7e86e651d0800bcc0da056c727cdd73653683d72eb13",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_54.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6205,
+   "date_range": [
+    "2021-06-29",
+    "2026-11-20"
+   ],
+   "bytes": 412962,
+   "sha256": "de0b5b0cbd37874376bc4fc4bbb9343aef602c3b428b3eeb5c9507c80f1700a9",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_55.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6493,
+   "date_range": [
+    "2021-05-19",
+    "2026-11-20"
+   ],
+   "bytes": 428933,
+   "sha256": "5c6c45d37d4fe26ca08bbd2d40b72cea1d27841463fd8f9d6b06d0292dce95f3",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_56.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5841,
+   "date_range": [
+    "2021-06-15",
+    "2026-11-20"
+   ],
+   "bytes": 385520,
+   "sha256": "9e9bb3ed1eed1be2cb018994fbe2b99e6ae866f28cf816622277e6639730b7e6",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_57.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6314,
+   "date_range": [
+    "2021-06-25",
+    "2026-11-20"
+   ],
+   "bytes": 424844,
+   "sha256": "22dd4c77c690126a795043572da3aa5f3ac6f4d45e4dc98f38d1a5f4a3edf51e",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_58.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5906,
+   "date_range": [
+    "2021-07-23",
+    "2026-11-20"
+   ],
+   "bytes": 388973,
+   "sha256": "4a252bb86f349371dbf87d229d6ce84d12a9927c71f24bfb32c15fd76ce8de19",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_59.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6194,
+   "date_range": [
+    "2021-07-30",
+    "2026-11-20"
+   ],
+   "bytes": 413417,
+   "sha256": "a7d44787cc5055bc3ca9869634b862b564b05de7acec3f1874df23da8c2faf41",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_60.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6799,
+   "date_range": [
+    "2021-09-02",
+    "2026-11-20"
+   ],
+   "bytes": 452409,
+   "sha256": "6fabd405c0147f9f3e0d7f7324e287ed46eb59acb814853ecb468531227e9152",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_61.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6105,
+   "date_range": [
+    "2021-09-29",
+    "2026-11-20"
+   ],
+   "bytes": 406579,
+   "sha256": "fe4498f2ef512e1fe1d8b18aaccd690d0de5c1e7d5f7426958b2ed30f542495c",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_62.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6023,
+   "date_range": [
+    "2021-11-18",
+    "2026-11-20"
+   ],
+   "bytes": 393551,
+   "sha256": "66faf7970afa33387bfa02372ed1d75f73f7322861e21845b21b7c8956eddea2",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_63.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6770,
+   "date_range": [
+    "2021-10-18",
+    "2026-11-20"
+   ],
+   "bytes": 444214,
+   "sha256": "758871467ba9076160bbb17bee2bb84700a93700ee33f86ce2bfad4eb6c25eb3",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_64.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6555,
+   "date_range": [
+    "2021-12-16",
+    "2026-11-20"
+   ],
+   "bytes": 438416,
+   "sha256": "1f800f93e731a16173ea845955c11929de218c338d1748736e92d6211031cf77",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_65.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6926,
+   "date_range": [
+    "2022-01-04",
+    "2026-11-20"
+   ],
+   "bytes": 458201,
+   "sha256": "0cfb96e8d8e7e884cecfae03016c87bb592481664f99928c27ff2344af9de06a",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_66.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6007,
+   "date_range": [
+    "2022-02-16",
+    "2026-11-20"
+   ],
+   "bytes": 384557,
+   "sha256": "338901f337ba13074beaf683025d4a15dee39f26ce88ef2cd37c6eb13e80096c",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_67.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6213,
+   "date_range": [
+    "2022-03-18",
+    "2026-11-20"
+   ],
+   "bytes": 413246,
+   "sha256": "4911d9d7f97a4261be1ef6828b72a07ef74a838830a54d7ac15c756db35ea353",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_68.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6132,
+   "date_range": [
+    "2022-07-01",
+    "2026-11-20"
+   ],
+   "bytes": 409186,
+   "sha256": "e51779c1fc93d9a60ddb7b13df71da430df6d3268c676b3d52ba507e9c29b9e6",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_69.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5930,
+   "date_range": [
+    "2022-09-02",
+    "2026-11-20"
+   ],
+   "bytes": 395338,
+   "sha256": "0655d48c35ed4b16d0bd959b300d550038cda4d42819984be28c73dbe5d301d5",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_70.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6197,
+   "date_range": [
+    "2022-10-21",
+    "2026-11-20"
+   ],
+   "bytes": 410846,
+   "sha256": "cf80dcc8eb25724d81817ccc4c14a7b3e58fd7f6db2640451e7ca7850694b20b",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_71.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6434,
+   "date_range": [
+    "2022-11-28",
+    "2026-11-20"
+   ],
+   "bytes": 431548,
+   "sha256": "d1bb3f086f41ea3e453ed37b83ea2727c69bbaab101c6bb02b07b0a064bfb0dd",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_72.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6555,
+   "date_range": [
+    "2023-03-15",
+    "2026-11-20"
+   ],
+   "bytes": 427783,
+   "sha256": "72f20e1684a7640ad9b328b345acee84a85c2db75c5f058f7c3eed652df38027",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_73.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6902,
+   "date_range": [
+    "2023-05-23",
+    "2026-11-20"
+   ],
+   "bytes": 459619,
+   "sha256": "c5cdace1b50dd2b49836cf3cbb1eed086107e270cba142a3161c776e3097faf1",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_74.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6752,
+   "date_range": [
+    "2023-08-16",
+    "2026-11-20"
+   ],
+   "bytes": 442292,
+   "sha256": "d1c40dca5f7529331941373794ac5ee4a04fdf602f8e0425112abf5e1f4e7b30",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_75.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6524,
+   "date_range": [
+    "2023-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 423960,
+   "sha256": "0cb383a864dbcf7ee182a6291ca1c9547163108fad069b834a1a7c592cf597c4",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_76.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6483,
+   "date_range": [
+    "2023-12-21",
+    "2026-11-20"
+   ],
+   "bytes": 422639,
+   "sha256": "5fffa138bc6195c25b879f235cbd94892a130c3c3c318f9c63e7a29f7b5911f2",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_77.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6980,
+   "date_range": [
+    "2024-02-23",
+    "2026-11-20"
+   ],
+   "bytes": 449091,
+   "sha256": "aa24c0b94d159ecfa0e50ec97888d7f72901aac2520a424412dfed56ec0f0fd8",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_78.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 7455,
+   "date_range": [
+    "2024-04-30",
+    "2026-11-20"
+   ],
+   "bytes": 459120,
+   "sha256": "7bf39513684a9039a10f8502a5a987ccc091fcd51d200c2e26c71907245e22c6",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_79.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6555,
+   "date_range": [
+    "2024-10-10",
+    "2026-11-20"
+   ],
+   "bytes": 435823,
+   "sha256": "dd3428232d0f21d6695b817d72c0e9486ab8c428baa86bf7486a54490dafa438",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_80.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 7082,
+   "date_range": [
+    "2025-01-16",
+    "2026-11-20"
+   ],
+   "bytes": 445076,
+   "sha256": "6eca765105e5af8c069ac725616906d125990e6cad9eca6653b6da15c5421be9",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_81.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 7105,
+   "date_range": [
+    "2025-03-27",
+    "2026-11-20"
+   ],
+   "bytes": 455004,
+   "sha256": "f28ff718bf553f9bb6b02df0d28a8aafa15c6cf424d1e44ccc8e1797fe65b9de",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_82.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6234,
+   "date_range": [
+    "2023-10-12",
+    "2026-11-20"
+   ],
+   "bytes": 405734,
+   "sha256": "100c8ca348e6a9dcd95be01db828a7e2dbd7191cfee983cc8b0025020e38704d",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_83.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 4717,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 319003,
+   "sha256": "118d41043515a174b605f18782915d6346e763c5ded23c379a244bae238e8aa9",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_84.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450145,
+   "sha256": "717237b436e19e0219361b609203bb3948f36f2f7f13cece536829f2aca31b4b",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_85.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 8309,
+   "date_range": [
+    "2014-10-23",
+    "2026-11-21"
+   ],
+   "bytes": 400401,
+   "sha256": "e97145d43b02db73dcb32a71ee1b6d8266405337b1332cd0ad33ea4a7739dd37",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_86.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6081,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 411691,
+   "sha256": "e792c0d38aab245499c304f2772735f66eb3b621c7f005f7a79020871d0cd8f1",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_87.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5513,
+   "date_range": [
+    "2021-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 373328,
+   "sha256": "55d3dd6fac15c434fc454430c42deb95b4608425422cc37bba30944529b67f86",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_88.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6654,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450393,
+   "sha256": "6617cd68a593b4c98f5e6d8fd0944c6fc6c42e20b45736d205b0dfabccad3ced",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_89.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 6653,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 450847,
+   "sha256": "18be6150aab7f17643bdce3c2be2bac101b0f40238dae6004d4668b23fc6c611",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_90.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5994,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 405578,
+   "sha256": "b0b2636ee96120b1de9453aceef0ac7f42a63cb3f80fda8a4fb8d611ca2413e2",
+   "notes": ""
+  },
+  {
+   "path": "sample/nav_shard_91.csv",
+   "section": "sample",
+   "description": "代表性基金净值序列分片",
+   "rows": 5990,
+   "date_range": [
+    "2017-10-13",
+    "2026-11-20"
+   ],
+   "bytes": 402634,
+   "sha256": "960fbe3334e65193327bc023a2ccfbf651e8cf7cced4e7d9f33e29e94c418a08",
+   "notes": ""
+  },
+  {
+   "path": "sample/sample_funds.csv",
+   "section": "sample",
+   "description": "代表性基金元数据与入选标签",
+   "rows": 496,
+   "date_range": null,
+   "bytes": 112492,
+   "sha256": "de9559dc48ca6dbd1593bd5749859c721d3d360526a55cff42f1fac3204fac27",
+   "notes": ""
+  },
+  {
+   "path": "sample/trade_lock_status.csv",
+   "section": "sample",
+   "description": "交易状态（天天基金+THS）与锁定期信息",
+   "rows": 496,
+   "date_range": null,
+   "bytes": 168182,
+   "sha256": "e2c2d043d27dd346960f38aea345ebcbb6b237f93fe078add5e8d3d906419614",
+   "notes": ""
+  },
+  {
+   "path": "sample/events_dividends.csv",
+   "section": "sample",
+   "description": "样本基金分红事件（data/dividends.csv 子集）",
+   "rows": 1898,
+   "date_range": null,
+   "bytes": 45872,
+   "sha256": "31d3c742299ac4ad5fd16db2d52ed3e362f8ae06d189cd4909ae89b545edefce",
+   "notes": ""
+  },
+  {
+   "path": "sample/events_splits.csv",
+   "section": "sample",
+   "description": "样本基金份额拆分事件（data/splits.json 子集）",
+   "rows": 2,
+   "date_range": null,
+   "bytes": 72,
+   "sha256": "4627c5a27d11a9f3e73ba9d59282d827f34851a21ee49e73482571565b001b1f",
+   "notes": ""
+  },
+  {
+   "path": "features/features_5y.csv.gz",
+   "section": "features",
+   "description": "5y 全市场特征（含质检失败及原因、EB原料、交易/锁定）",
+   "rows": 28346,
+   "date_range": null,
+   "bytes": 2002158,
+   "sha256": "f5ba1c157cc8cda929db2b6d431149384b80fb96c108205c1da095deade906ea",
+   "notes": ""
+  },
+  {
+   "path": "features/features_3y.csv.gz",
+   "section": "features",
+   "description": "3y 全市场特征（含质检失败及原因、EB原料、交易/锁定）",
+   "rows": 28346,
+   "date_range": null,
+   "bytes": 2882054,
+   "sha256": "32fd744264023d3556b6922513b13807971bc6e00d272f3ed7460504236aaef2",
+   "notes": ""
+  },
+  {
+   "path": "features/features_1y.csv.gz",
+   "section": "features",
+   "description": "1y 全市场特征（含质检失败及原因、EB原料、交易/锁定）",
+   "rows": 28346,
+   "date_range": null,
+   "bytes": 3923903,
+   "sha256": "0118968e54e8fa6fd455acee6c849db9101363b34392a48868e44ac24b754f34",
+   "notes": ""
+  },
+  {
+   "path": "features/features_6m.csv.gz",
+   "section": "features",
+   "description": "6m 全市场特征（含质检失败及原因、EB原料、交易/锁定）",
+   "rows": 28346,
+   "date_range": null,
+   "bytes": 4060658,
+   "sha256": "ecdd139eb43ea249fa119af0e2305f31a646a532e7e2cf3c373be603726eb4af",
+   "notes": ""
+  },
+  {
+   "path": "features/monthly_5y.csv.gz",
+   "section": "features",
+   "description": "5y 窗口内完整月度收益序列",
+   "rows": 558907,
+   "date_range": [
+    "2021-12",
+    "2026-10"
+   ],
+   "bytes": 6790288,
+   "sha256": "31baca0ec9230adb1cbb831f35f5b0d124b8576af96fb03ca09a232633d31b22",
+   "notes": ""
+  },
+  {
+   "path": "features/monthly_3y.csv.gz",
+   "section": "features",
+   "description": "3y 窗口内完整月度收益序列",
+   "rows": 503125,
+   "date_range": [
+    "2023-12",
+    "2026-10"
+   ],
+   "bytes": 6120382,
+   "sha256": "f1e9b772ac80b978f6d5db2b13e3e5891b38f48d53d3c63b640cff71a78b7ca7",
+   "notes": ""
+  },
+  {
+   "path": "features/monthly_1y.csv.gz",
+   "section": "features",
+   "description": "1y 窗口内完整月度收益序列",
+   "rows": 225940,
+   "date_range": [
+    "2025-12",
+    "2026-10"
+   ],
+   "bytes": 2749022,
+   "sha256": "ed3e3d348dfbaf6dc84a5b74105cdd7189afbaa131e35cddeaf4c018ae729c95",
+   "notes": ""
+  },
+  {
+   "path": "features/monthly_6m.csv.gz",
+   "section": "features",
+   "description": "6m 窗口内完整月度收益序列",
+   "rows": 106490,
+   "date_range": [
+    "2026-06",
+    "2026-10"
+   ],
+   "bytes": 1295227,
+   "sha256": "2e2920cffb91c11d9c1a3fed72cd346746c1798f9a7ac89588ab2494521cb66b",
+   "notes": ""
+  },
+  {
+   "path": "oos/factors_daily.csv",
+   "section": "oos",
+   "description": "基准指数(沪深300)/国债收益率/无风险利率（全量复制）",
+   "rows": 5873,
+   "date_range": [
+    "2005-01-04",
+    "2026-11-09"
+   ],
+   "bytes": 1231982,
+   "sha256": "907e0061a12d9adf0f3606c2d9320041c29743ace71273e3a13fb8fbeb390fbf",
+   "notes": ""
+  },
+  {
+   "path": "oos/market_calendar.csv",
+   "section": "oos",
+   "description": "沪深交易所交易日历（沪深300有行情的日期）",
+   "rows": 931,
+   "date_range": [
+    "2023-01-03",
+    "2026-11-09"
+   ],
+   "bytes": 10252,
+   "sha256": "993b02016f5c4e9d473bcff75941c63e7de7580b6f0c92b33286ed8286621158",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2023-05-19_pre_features.csv.gz",
+   "section": "oos",
+   "description": "2023-05-19 形成日候选基金特征（仅用形成日前数据）",
+   "rows": 11420,
+   "date_range": null,
+   "bytes": 985635,
+   "sha256": "7cd1a9803e7c48df07b4379bbc08edd55bbb1205c1c5bd0f90a479106669be82",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2023-05-19_pre_monthly.csv.gz",
+   "section": "oos",
+   "description": "2023-05-19 形成前月度收益（1y窗）",
+   "rows": 125620,
+   "date_range": [
+    "2022-06",
+    "2023-04"
+   ],
+   "bytes": 1527425,
+   "sha256": "dc547653838c65adcbc964699fbfa327b72365c030d7d0b56b5b10e68b5cc059",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2023-05-19_post_daily.csv.gz",
+   "section": "oos",
+   "description": "2023-05-19 形成后6个月日度净值（验证用，分离存储）",
+   "rows": 1404659,
+   "date_range": [
+    "2023-05-19",
+    "2023-11-17"
+   ],
+   "bytes": 12815990,
+   "sha256": "0908ca00e5369c51450116c17a995d8afa213fa55b9b51dc2c2a1b2c548d2bfd",
+   "notes": "形成日之后的数据，禁止用于打分"
+  },
+  {
+   "path": "oos/fold_2023-11-20_pre_features.csv.gz",
+   "section": "oos",
+   "description": "2023-11-20 形成日候选基金特征（仅用形成日前数据）",
+   "rows": 12376,
+   "date_range": null,
+   "bytes": 1071088,
+   "sha256": "3b531831f3c99d912070be12b2ccb7be276ec842bf2def5749ac71b5f32acad9",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2023-11-20_pre_monthly.csv.gz",
+   "section": "oos",
+   "description": "2023-11-20 形成前月度收益（1y窗）",
+   "rows": 136136,
+   "date_range": [
+    "2022-12",
+    "2023-10"
+   ],
+   "bytes": 1655089,
+   "sha256": "39335ec892cade5af090801366dba6a691a21dd8a32d67ff658dfdc0d74bd2f3",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2023-11-20_post_daily.csv.gz",
+   "section": "oos",
+   "description": "2023-11-20 形成后6个月日度净值（验证用，分离存储）",
+   "rows": 1484977,
+   "date_range": [
+    "2023-11-20",
+    "2024-05-20"
+   ],
+   "bytes": 13718305,
+   "sha256": "7f22a2da741851e7be1d6e816ae2efe52e65427dc9198083d52d4c04bf0da3e4",
+   "notes": "形成日之后的数据，禁止用于打分"
+  },
+  {
+   "path": "oos/fold_2024-05-20_pre_features.csv.gz",
+   "section": "oos",
+   "description": "2024-05-20 形成日候选基金特征（仅用形成日前数据）",
+   "rows": 13186,
+   "date_range": null,
+   "bytes": 1139426,
+   "sha256": "ab240ca892855176cc82d3bf056ee7840eea65e53e48a5c4e50034db35863c26",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2024-05-20_pre_monthly.csv.gz",
+   "section": "oos",
+   "description": "2024-05-20 形成前月度收益（1y窗）",
+   "rows": 145046,
+   "date_range": [
+    "2023-06",
+    "2024-04"
+   ],
+   "bytes": 1765314,
+   "sha256": "8082e187fdcf9970bb4aad58bc4af9b0c3f3d76329926bc2e70e557dff2ec445",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2024-05-20_post_daily.csv.gz",
+   "section": "oos",
+   "description": "2024-05-20 形成后6个月日度净值（验证用，分离存储）",
+   "rows": 1661256,
+   "date_range": [
+    "2024-05-20",
+    "2024-11-20"
+   ],
+   "bytes": 15121209,
+   "sha256": "8e04f82cd923d50d7ea67e6239239cdb5e5708cac297e1f11e61ccb5d050e1c9",
+   "notes": "形成日之后的数据，禁止用于打分"
+  },
+  {
+   "path": "oos/fold_2024-11-20_pre_features.csv.gz",
+   "section": "oos",
+   "description": "2024-11-20 形成日候选基金特征（仅用形成日前数据）",
+   "rows": 15724,
+   "date_range": null,
+   "bytes": 1352301,
+   "sha256": "9b0132923592ea4ba2e94fa81c2b0532ea52b4583f377338cc5f6ce700d19427",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2024-11-20_pre_monthly.csv.gz",
+   "section": "oos",
+   "description": "2024-11-20 形成前月度收益（1y窗）",
+   "rows": 172964,
+   "date_range": [
+    "2023-12",
+    "2024-10"
+   ],
+   "bytes": 2100194,
+   "sha256": "2d36248ac172ec028358de4c6f3bd1ece3323ee4162b1c3b6c378ad9aee9c939",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2024-11-20_post_daily.csv.gz",
+   "section": "oos",
+   "description": "2024-11-20 形成后6个月日度净值（验证用，分离存储）",
+   "rows": 1871102,
+   "date_range": [
+    "2024-11-20",
+    "2025-05-20"
+   ],
+   "bytes": 17255557,
+   "sha256": "797e1d40f874a7259b85162d7186d26950b86dbe9c526918d26b25e516ff2131",
+   "notes": "形成日之后的数据，禁止用于打分"
+  },
+  {
+   "path": "oos/fold_2025-05-20_pre_features.csv.gz",
+   "section": "oos",
+   "description": "2025-05-20 形成日候选基金特征（仅用形成日前数据）",
+   "rows": 16776,
+   "date_range": null,
+   "bytes": 1445498,
+   "sha256": "4a7229489852d274fccae2d1abe17a18c53c4a2ea8cae361cf28ec41048634ce",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2025-05-20_pre_monthly.csv.gz",
+   "section": "oos",
+   "description": "2025-05-20 形成前月度收益（1y窗）",
+   "rows": 184536,
+   "date_range": [
+    "2024-06",
+    "2025-04"
+   ],
+   "bytes": 2250164,
+   "sha256": "b1b26fcf4dabc007b600a91af545f427b4b642b3f34b72b6b99c9317e942d1eb",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2025-05-20_post_daily.csv.gz",
+   "section": "oos",
+   "description": "2025-05-20 形成后6个月日度净值（验证用，分离存储）",
+   "rows": 2113728,
+   "date_range": [
+    "2025-05-20",
+    "2025-11-20"
+   ],
+   "bytes": 19289178,
+   "sha256": "01bc1fb07e63aefb4d178ee42bb461e501372a2c9a0f2f2ccd37bb61ca5fa98c",
+   "notes": "形成日之后的数据，禁止用于打分"
+  },
+  {
+   "path": "oos/fold_2025-11-20_pre_features.csv.gz",
+   "section": "oos",
+   "description": "2025-11-20 形成日候选基金特征（仅用形成日前数据）",
+   "rows": 18040,
+   "date_range": null,
+   "bytes": 1551499,
+   "sha256": "859636294c9fb29f8bdbd27e8bcea57bbb9845d180b6060e0527f9f083f067a4",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2025-11-20_pre_monthly.csv.gz",
+   "section": "oos",
+   "description": "2025-11-20 形成前月度收益（1y窗）",
+   "rows": 198440,
+   "date_range": [
+    "2024-12",
+    "2025-10"
+   ],
+   "bytes": 2421698,
+   "sha256": "0812e1bf7d2a4a4b436d4c82a8bf06f25b0d2dc56b7a98e54bcddb772546b072",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2025-11-20_post_daily.csv.gz",
+   "section": "oos",
+   "description": "2025-11-20 形成后6个月日度净值（验证用，分离存储）",
+   "rows": 2128224,
+   "date_range": [
+    "2025-11-14",
+    "2026-05-20"
+   ],
+   "bytes": 19667946,
+   "sha256": "5eea5c13f45f09622c10098bafab0fe4e44dd0b8f1c8652f9da9aaae2e70c0fe",
+   "notes": "形成日之后的数据，禁止用于打分"
+  },
+  {
+   "path": "oos/fold_2026-05-20_pre_features.csv.gz",
+   "section": "oos",
+   "description": "2026-05-20 形成日候选基金特征（仅用形成日前数据）",
+   "rows": 19414,
+   "date_range": null,
+   "bytes": 1666835,
+   "sha256": "eea93ac86af6a7e0556c4bce44de75678f5135148d46fa793d83f68df433311c",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2026-05-20_pre_monthly.csv.gz",
+   "section": "oos",
+   "description": "2026-05-20 形成前月度收益（1y窗）",
+   "rows": 213554,
+   "date_range": [
+    "2025-06",
+    "2026-04"
+   ],
+   "bytes": 2600707,
+   "sha256": "6531f7e9de8f5fd4852c6f201f77fabb5f426518cf0b873c0005bafcd687cde1",
+   "notes": ""
+  },
+  {
+   "path": "oos/fold_2026-05-20_post_daily.csv.gz",
+   "section": "oos",
+   "description": "2026-05-20 形成后6个月日度净值（验证用，分离存储）",
+   "rows": 2439653,
+   "date_range": [
+    "2026-05-15",
+    "2026-11-20"
+   ],
+   "bytes": 22377374,
+   "sha256": "debc6580fcb57a3d88f8e077b26662d3645acbecdc041ef3560ea5c3a33427ee",
+   "notes": "形成日之后的数据，禁止用于打分"
+  },
+  {
+   "path": "README.md",
+   "section": "meta",
+   "description": "数据包说明",
+   "rows": null,
+   "date_range": null,
+   "bytes": 4153,
+   "sha256": "90e129203f0592bcf37d709d7041974edc41fe7cfffbfca6faba5a884a6cf13c",
+   "notes": ""
+  }
+ ]
+}
