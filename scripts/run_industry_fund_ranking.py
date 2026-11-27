@@ -17,6 +17,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from fundkit.defensive_screen import Shock, adjusted_asof, market_category, money_index, share_identity
+from fundkit.model_ablation import canonical_product_name
 from fundkit.industry_rank import (HORIZONS, RANK_COLS, NavPath, assemble, compare_forward,
                                    add_main_ranking, add_global_ranking, effective_group, periodic_classification, fold_dates, main_stress_features,
                                    ranking, stress_metrics)
@@ -73,7 +74,8 @@ def load_catalog(path, codes=None, periodic_overrides=None):
         group,family,currency,basis = market_category(name,r.type)
         group,is_long,is_unverified,periodic_status,periodic_months,periodic_source = periodic_classification(
             name,group,r.type,r.code,periodic_overrides)
-        product,share = share_identity(name)
+        _,share = share_identity(name)
+        product = canonical_product_name(name)
         reason = ("长封闭定开（≥24月）默认排除排名" if is_long else
                   "定开运作周期未核实，暂不参与排名" if is_unverified else "")
         rows.append(dict(code=r.code,name=name,fund_type=r.type,group=group,product=product,
