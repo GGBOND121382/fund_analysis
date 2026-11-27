@@ -25,7 +25,7 @@ import pandas as pd
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_industry_fund_ranking import load_catalog, load_paths  # noqa: E402
-from fundkit.industry_rank import NavPath, window_dates  # noqa: E402
+from fundkit.industry_rank import NavPath, window_dates, nav_quality_issue  # noqa: E402
 from fundkit.opportunity_rank import stationary_bootstrap, max_drawdown  # noqa: E402
 from rank_models_m123 import eb_posteriors, pct, BOOT_STEPS, EB_Z, annual_log_mean_se  # noqa: E402
 
@@ -64,6 +64,8 @@ def fold_features(catalog, paths, t, low_vol_re):
         if low_vol_re.search(row.group) and np.any(nav.jumps[i:j] > 0.03):
             continue
         v = nav.value[i:j + 1]
+        if nav_quality_issue(v):
+            continue
         ret, mdd = nav.stats(i, j)
         monthly = nav.monthly(t, period, complete)
         if monthly is None or len(monthly) < 4:
@@ -80,6 +82,7 @@ def fold_features(catalog, paths, t, low_vol_re):
             "D": mdd, "L": float(np.sqrt(np.mean(np.minimum(monthly, 0.0) ** 2))),
             "observed_log_cagr": float(np.log1p(ret) / years),
             "annual_se": annual_log_mean_se(monthly),
+            "eb_observed_log_mean": float(12 * np.mean(np.log1p(monthly))),
             "L_daily": float(np.sqrt(252.0 / len(dr) * np.sum(np.minimum(dr, 0.0) ** 2))),
             "nav_obj": nav, "nav_i": i, "nav_j": j})
     return pd.DataFrame(rows)
@@ -98,6 +101,8 @@ def score_fold(df, seed):
         except ValueError:
             pass
     d["D95"] = d["code"].map(d95)
+    # All models use identical finite-feature cohorts, including the control.
+    d = d.loc[np.isfinite(d[["mu_lower", "D95", "L_daily", "D", "L", "annualized_return"]]).all(axis=1)].copy()
     d["SR"] = pct(d["annualized_return"])
     d["SD"] = 100.0 - pct(d["D"])
     d["SL"] = 100.0 - pct(d["L"])
@@ -234,7 +239,7 @@ def main():
         d = score_fold(df, args.seed)
         row = {"formation": t_str, "candidates": int(len(d))}
         for model in ("S_M0", "S_M1", "S_M2", "S_M3", "S_RISK_D95", "S_RISK_DAILY"):
-            top = d.dropna(subset=[model]).sort_values(model, ascending=False)
+            top = d.dropna(subset=[model]).sort_values([model, "code"], ascending=[False, True])
             top = top.drop_duplicates("product_key").head(10)
             perf = future_perf(paths, top["code"].tolist(), t, HOLD_MONTHS,
                                names=dict(zip(top["code"], top["name"])),
