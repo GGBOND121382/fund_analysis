@@ -118,6 +118,10 @@ def nav_quality_issue(values):
         return "INVALID_NAV_PATH"
     if np.max(v) / np.min(v) - 1.0 <= 1e-10:
         return "FLAT_NAV_REVIEW"
+    # A long, stale suffix can hide inside a nonconstant multi-year window.
+    # 126 observations are roughly six months for daily-valued funds.
+    if len(v) >= 126 and np.max(v[-126:]) / np.min(v[-126:]) - 1.0 <= 1e-10:
+        return "STALE_NAV_SUFFIX_REVIEW"
     return ""
 
 
