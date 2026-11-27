@@ -39,8 +39,7 @@ def identity_keys(d):
 def cny_comparable(d):
     """Fail closed on known non-CNY denominations; no FX imputation."""
     base = d.name.map(lambda n: share_identity(str(n).strip())[0])
-    suffix = base.str.extract(CURRENCY_SUFFIX, expand=False) if CURRENCY_SUFFIX.groups else base.map(
-        lambda n: CURRENCY_SUFFIX.search(n).group(0) if CURRENCY_SUFFIX.search(n) else "")
+    suffix = base.map(lambda n: CURRENCY_SUFFIX.search(n).group(0) if CURRENCY_SUFFIX.search(n) else "")
     foreign = suffix.fillna("").str.contains(r"美元|港元|港币|欧元|USD|HKD|EUR", case=False, regex=True)
     foreign |= d.group.fillna("").str.contains(FOREIGN_GROUP, regex=True)
     if "currency" in d:
@@ -59,7 +58,7 @@ def category_residual_features(d, monthly):
     m = monthly.loc[monthly.code.isin(d.code), ["code","month","monthly_return"]].copy()
     if m.duplicated(["code","month"]).any():
         raise ValueError("duplicate monthly observations")
-    m["x"] = np.log1p(m.monthly_return)
+    m["x"] = np.log1p(pd.to_numeric(m.monthly_return, errors="coerce").astype(float))
     m = m.loc[np.isfinite(m.x)]
     if m.empty:
         return pd.DataFrame(columns=["code","factor_mean","factor_se","residual_mean","residual_se","factor_months","factor_peer_count"])
@@ -104,7 +103,9 @@ def add_return_ablation(d, monthly, eb_fit):
     d["factor_status"]="FALLBACK_NO_FACTOR"
     d["factor_eb_weight"]=np.nan
     d=d.merge(category_residual_features(d,monthly),on="code",how="left",validate="one_to_one")
-    valid=np.isfinite(d[["factor_mean","factor_se","residual_mean","residual_se"]]).all(axis=1)
+    numeric = ["factor_mean","factor_se","residual_mean","residual_se"]
+    d[numeric] = d[numeric].apply(pd.to_numeric,errors="coerce").astype(float)
+    valid=np.isfinite(d[numeric]).all(axis=1)
     if "complete_months" in d:
         valid &= d.factor_months.eq(d.complete_months)
     sub=d.loc[valid,["code","group","product_key","residual_mean","residual_se"]].copy()
