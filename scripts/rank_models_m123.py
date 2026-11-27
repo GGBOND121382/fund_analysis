@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P1: M1/M2/M3 模型实验（M0 固定对照，不改 M0 任何输出）。
+"""P1: M0-M7 模型实验（M0 固定对照，不改 M0 任何输出）。
 
 候选从 M0 SCORED 出发，重查净值质量，所有模型在共同有效候选集计算百分位。
 窗口、asof、冲击窗与 M0 一致。四期限分别拟合，不使用形成日后数据。
@@ -29,6 +29,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_industry_fund_ranking import load_catalog, load_paths  # noqa: E402
 from fundkit.industry_rank import HORIZONS, window_dates, nav_quality_issue  # noqa: E402
+from fundkit.model_ablation import add_return_ablation, cny_comparable, identity_keys
 from fundkit.opportunity_rank import stationary_bootstrap, max_drawdown  # noqa: E402
 
 W = {"return": 0.40, "drawdown": 0.35, "shock": 0.15, "downside": 0.10}
@@ -122,9 +123,15 @@ def process_period(period, asof, inp, paths, boot_scenarios=2000, boot_block=10,
 
     # --- 逐只计算 M1/M2/M3 所需序列指标 ---
     monthly_stats, monthly_means, daily_stats, d95, quality = {}, {}, {}, {}, {}
+    monthly_rows = []
+    cand["product_key"] = identity_keys(cand)
+    comparable = set(cand.loc[cny_comparable(cand), "code"])
     for _, r in cand.iterrows():
         nav = paths.get(r["code"])
         code = r["code"]
+        if code not in comparable:
+            quality[code] = "NON_CNY_OR_CURRENCY_REVIEW"
+            continue
         if nav is None:
             quality[code] = "MISSING_NAV"
             continue
@@ -143,6 +150,8 @@ def process_period(period, asof, inp, paths, boot_scenarios=2000, boot_block=10,
             continue
         monthly_stats[code] = annual_log_mean_se(monthly)
         monthly_means[code] = float(12 * np.mean(np.log1p(monthly)))
+        months = pd.period_range(end=period_m, periods=len(monthly), freq="M")
+        monthly_rows.append(pd.DataFrame({"code": code, "month": months.astype(str), "monthly_return": monthly}))
         if 0 <= i < j:
             dr = v[1:] / v[:-1] - 1
             if len(dr) >= 5:
@@ -166,8 +175,10 @@ def process_period(period, asof, inp, paths, boot_scenarios=2000, boot_block=10,
     finite = np.isfinite(cand[["annual_se", "eb_observed_log_mean", "observed_log_cagr",
                               "D95", "L_daily", "R", "D", "L", "Aret", "Add"]]).all(axis=1)
     cand.loc[cand.model_quality_status.eq("OK") & ~finite, "model_quality_status"] = "INCOMPLETE_FEATURES"
+    monthly_frame = pd.concat(monthly_rows, ignore_index=True) if monthly_rows else pd.DataFrame(columns=["code","month","monthly_return"])
     ok = eb_posteriors(cand.loc[cand.model_quality_status.eq("OK")].copy())
-    cand = cand.merge(ok[["code", "eb_log_cagr", "eb_se", "peer_count", "mu_lower", "eb_tau2", "eb_weight", "eb_status"]],
+    ok = add_return_ablation(ok, monthly_frame, eb_posteriors)
+    cand = cand.merge(ok[["code", "eb_log_cagr", "eb_se", "peer_count", "mu_lower", "eb_tau2", "eb_weight", "eb_status", "return_M4", "return_M5", "factor_status", "factor_eb_weight", "factor_mean", "factor_se", "residual_mean", "residual_se", "factor_months", "factor_peer_count"]],
                       on="code", how="left", validate="one_to_one")
 
     # Common complete candidate universe for every model, including M0.
@@ -185,6 +196,11 @@ def process_period(period, asof, inp, paths, boot_scenarios=2000, boot_block=10,
         + W["shock"] * cand["SA"] + W["downside"] * cand["SL"]
     cand["SCORE_M3"] = W["return"] * cand["SR_EB"] + W["drawdown"] * cand["SD"] \
         + W["shock"] * cand["SA"] + W["downside"] * cand["SL_daily"]
+    for model, ret, dd, down in (("M4", pct(cand.return_M4.where(eligible)), "SD", "SL"),
+                                 ("M5", pct(cand.return_M5.where(eligible)), "SD", "SL"),
+                                 ("M6", cand.SR, "SD95", "SL"),
+                                 ("M7", cand.SR, "SD", "SL_daily")):
+        cand["SCORE_"+model] = .4*ret + .35*cand[dd] + .15*cand.SA + .1*cand[down]
     coverage = {
         "candidates_m0": int(len(cand)),
         "eligible_common": int(eligible.sum()),
@@ -193,6 +209,8 @@ def process_period(period, asof, inp, paths, boot_scenarios=2000, boot_block=10,
         "m1_scored": int(cand["SCORE_M1"].notna().sum()),
         "m2_scored": int(cand["SCORE_M2"].notna().sum()),
         "m3_scored": int(cand["SCORE_M3"].notna().sum()),
+        "factor_status_counts": cand.factor_status.fillna("NOT_FITTED").value_counts().to_dict(),
+        **{f"m{i}_scored": int(cand[f"SCORE_M{i}"].notna().sum()) for i in range(4,8)},
         "eb_missing": int(cand["mu_lower"].isna().sum()),
         "d95_missing": int(cand["D95"].isna().sum()),
         "l_daily_missing": int(cand["L_daily"].isna().sum()),
@@ -205,7 +223,7 @@ def main():
     ap.add_argument("--asof", default="2026-11-20")
     ap.add_argument("--input", default="reports/all_funds/comprehensive_20261120")
     ap.add_argument("--data-dir", default="data/all_funds")
-    ap.add_argument("--output", default="reports/all_funds/models_20261120")
+    ap.add_argument("--output", default="reports/all_funds/models_ablation_20261128")
     ap.add_argument("--scenarios", type=int, default=2000)
     ap.add_argument("--block", type=int, default=10)
     ap.add_argument("--seed", type=int, default=42)
@@ -228,7 +246,9 @@ def main():
                 "eb_tau2", "eb_weight", "eb_status", "model_quality_status", "SCORE_M0_original",
                 "mu_lower", "L_daily", "D95",
                 "SR", "SD", "SL", "SA", "SR_EB", "SD95", "SL_daily",
-                "SCORE_M1", "SCORE_M2", "SCORE_M3", "risk_status", "trade_status"]
+                "SCORE_M1", "SCORE_M2", "SCORE_M3", "SCORE_M4", "SCORE_M5", "SCORE_M6", "SCORE_M7",
+                "return_M4", "return_M5", "factor_status", "factor_eb_weight", "factor_mean", "factor_se",
+                "residual_mean", "residual_se", "factor_months", "factor_peer_count", "risk_status", "trade_status"]
         keep = [c for c in keep if c in cand.columns]
         cand_out = cand[keep].rename(columns={"R": "annualized_return"})
         cand_out.to_csv(out / f"model_candidate_audit_{period}.csv", index=False)
@@ -239,7 +259,7 @@ def main():
             verified_codes = set(status.loc[status.buy.eq("1") &
                 status.sgstat.isin(["开放", "限制大额"]) &
                 status.shstat.eq("开放"), "code"].str.zfill(6))
-        for model in ("M1", "M2", "M3"):
+        for model in (f"M{i}" for i in range(8)):
             col = f"SCORE_{model}"
             ranked = cand_out.dropna(subset=[col]).sort_values([col, "code"], ascending=[False, True]).reset_index(drop=True)
             ranked.insert(0, f"rank_{model}", range(1, len(ranked) + 1))
@@ -261,6 +281,8 @@ def main():
                      "bootstrap": {"scenarios": args.scenarios, "block": args.block,
                                    "seed": args.seed, "steps": BOOT_STEPS},
                      "tradeable_scope": "checked channel snapshot only; name-based lock filter",
+                     "currency_scope": "CNY comparable; known foreign-currency or unresolved legacy flag excluded",
+                     "m5_note": "leave-one-product-out category mean, fixed unit exposure, conservative sum-SE; not a predictive quantile",
                      "channel_checked_buy_sell_codes": len(verified_codes),
                      "checked_tradeable_products": len(known)}
             with open(out / f"model_audit_{model.lower()}_{period}.json", "w") as f:
