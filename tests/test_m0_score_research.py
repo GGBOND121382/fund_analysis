@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 import pandas as pd
 from fundkit.m0_score_research import (WEIGHTS, monthly_metrics, build_scores,
-    product_representatives, future_matrix, portfolio_stats)
+    product_representatives, future_matrix, portfolio_stats, monthly_risk_free)
 
 
 class TestM0Research(unittest.TestCase):
@@ -27,6 +27,19 @@ class TestM0Research(unittest.TestCase):
         with self.assertRaises(ValueError):
             monthly_metrics(pd.concat([m,m.iloc[[0]]]),"2025-06-20")
 
+    def test_risk_free_is_known_before_month(self):
+        f=pd.DataFrame(dict(date=["2024-12-31","2025-01-31","2025-02-28","2025-03-31","2025-04-30"],
+                            risk_free_annual=[.012,.024,.036,.048,.06]))
+        rf=monthly_risk_free(f)
+        self.assertAlmostEqual(rf.loc[pd.Period("2025-01")],(1.012)**(1/12)-1)
+        self.assertAlmostEqual(rf.loc[pd.Period("2025-05")],(1.06)**(1/12)-1)
+        m=pd.DataFrame(dict(code="a",month=pd.period_range("2025-01",periods=5,freq="M").astype(str),
+                            monthly_return=[.01,.02,-.01,.01,.03]))
+        z=monthly_metrics(m,"2025-06-20",rf).iloc[0]
+        excess=m.monthly_return.to_numpy()-rf.to_numpy()
+        self.assertAlmostEqual(z.sharpe,np.sqrt(12)*excess.mean()/excess.std(ddof=1))
+        with self.assertRaises(ValueError):
+            monthly_metrics(m,"2025-06-20",rf.iloc[:-1])
     def test_ratio_floors(self):
         m=pd.DataFrame(dict(code="a",month=pd.period_range("2025-01",periods=5,freq="M").astype(str),monthly_return=.001))
         z=monthly_metrics(m,"2025-06-20").iloc[0]
