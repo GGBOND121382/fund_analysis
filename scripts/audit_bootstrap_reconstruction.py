@@ -8,13 +8,15 @@ folds are unavailable, and the last fold is provisional (calendar incomplete).
 No data from the evaluated post slice may enter the score.
 """
 import json
+import sys
 from pathlib import Path
 from collections import Counter
 from functools import lru_cache
 import numpy as np
 import pandas as pd
 
-from audit_debug_data_20261127 import DATA, read, verify, clean, month_features, board, LOCK_RE
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+from audit_debug_data_20261127 import DATA, read, verify, clean, month_features, board, LOCK_RE, score as full_score
 from rank_models_m123 import pct, eb_posteriors, BOOT_STEPS
 from fundkit.industry_rank import NavPath, nav_quality_issue
 from fundkit.opportunity_rank import stationary_bootstrap, max_drawdown
@@ -63,10 +65,13 @@ def reconstruct(d, history, t):
     for code,g in hist.groupby("code",sort=False):
         r=by.loc[code]
         # The same historical observation in adjacent slices must agree.
-        same=g.groupby("date").nav.agg(["min","max"])
-        if not np.allclose(same["min"],same["max"],rtol=1e-10,atol=1e-12):
+        dates=g.date.to_numpy()
+        vals=g.nav.to_numpy(dtype=float)
+        dup=dates[1:]==dates[:-1]
+        if dup.any() and not np.allclose(vals[1:][dup],vals[:-1][dup],rtol=1e-10,atol=1e-12):
             counts["overlap_conflict"]+=1; continue
-        g=g.drop_duplicates("date")
+        if dup.any():
+            g=g.drop_duplicates("date")
         n=NavPath(pd.DatetimeIndex(g.date),g.nav.to_numpy(dtype=float))
         i,j=n.right(begin),n.right(t)
         if i<0 or j-i+1<200 or n.day(begin)-n.days[i]>7 or n.day(t)-n.days[j]>7:
@@ -175,7 +180,7 @@ def main():
     assert abs(ref-fast_d95(v))<1e-12
     calendar=pd.DatetimeIndex(pd.to_datetime(read(DATA/"oos/market_calendar.csv").trade_date))
     days=calendar.to_numpy(dtype="datetime64[D]").astype("int64")
-    rows=[]; attr=[]; coverage=[]; cal=[]
+    rows=[]; attr=[]; full_attr=[]; coverage=[]; cal=[]
     previous=[]
     for k,day in enumerate(FORMATION_DATES):
         t=pd.Timestamp(day); end=t+pd.DateOffset(months=6)
@@ -200,6 +205,13 @@ def main():
                     top=board(ranked,model)
                     selections[label,model]=top
                     top[["code","name","group","product_key","annualized_return","D","D95","L_daily",model]].to_csv(OUT/f"{day}_{label}_{model}.csv",index=False)
+            # Reproduce the previous FULL-cohort extreme selections separately.
+            # They are not used to fit D95 or select the restricted cohort.
+            full_selections={}
+            if day in ("2025-05-20","2026-05-20"):
+                ranked_full=full_score(d,monthly,False,False)
+                for model in ("M0","M1","M3","M4","M5","M7"):
+                    full_selections[model]=board(ranked_full,model)
             # Future is loaded only after scores and selections are finalized.
             post=read(DATA/f"oos/fold_{day}_post_daily.csv.gz")
             paths=paths_for(post,{c for top in selections.values() for c in top.code})
@@ -209,6 +221,10 @@ def main():
                 row=dict(formation=day,universe=label,model=model,eligible=len(universes[label]),calendar_complete=complete,codes=top.code.tolist(),**perf)
                 rows.append(row); print("BOOT_OOS",json.dumps(row,ensure_ascii=False),flush=True)
                 attr.extend(attribution(top,paths,t,end,model,label,calendar))
+            if full_selections:
+                full_paths=paths_for(post,{c for top in full_selections.values() for c in top.code})
+                for model,top in full_selections.items():
+                    full_attr.extend(attribution(top,full_paths,t,end,model,"previous_full_cohort",calendar))
             if not complete:
                 review=calendar_review(post,d,t,calendar); cal.append(review)
                 print("CALENDAR",json.dumps(review),flush=True)
@@ -218,12 +234,16 @@ def main():
         previous=previous[-2:]
     pd.DataFrame(rows).to_csv(OUT/"oos.csv",index=False)
     pd.DataFrame(attr).to_csv(OUT/"attribution.csv",index=False)
+    pd.DataFrame(full_attr).to_csv(OUT/"previous_full_cohort_attribution.csv",index=False)
     s=summary(rows)
     for x in s: print("BOOT_SUMMARY",json.dumps(x),flush=True)
     # Show extreme constituents and any missing-date causes, not fabricated replacements.
     for x in attr:
         if x["formation"]=="2026-05-20" and x["universe"]=="all" or x.get("missing_calendar_count",0):
             print("ATTRIBUTION",json.dumps(x,ensure_ascii=False),flush=True)
+    for x in full_attr:
+        if x["formation"]=="2026-05-20" or x.get("missing_calendar_count",0):
+            print("FULL_ATTRIBUTION",json.dumps(x,ensure_ascii=False),flush=True)
     result=dict(source=source,coverage=coverage,summary=s,calendar=cal,
         limits=["first two formation dates unavailable","cohort restricted to funds present in both prior export slices and reconciled to pre-features",
         "final calendar incomplete, provisional only","historical daily returns reconstructed from prior elapsed slices, never current post",
