@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_industry_fund_ranking import load_catalog, load_paths  # noqa: E402
 from fundkit.industry_rank import NavPath, window_dates, nav_quality_issue  # noqa: E402
 from fundkit.model_ablation import add_return_ablation, cny_comparable, identity_keys
+from fundkit.oos_calendar import complete_calendar, VERIFIED_SUSPENSIONS
 from fundkit.opportunity_rank import stationary_bootstrap, max_drawdown  # noqa: E402
 from rank_models_m123 import eb_posteriors, pct, BOOT_STEPS, EB_Z, annual_log_mean_se  # noqa: E402
 
@@ -136,11 +137,12 @@ def score_fold(df, seed, formation=None):
     return d
 
 
-def future_perf(paths, codes, t, hold_months, names=None, market_days=None):
+def future_perf(paths, codes, t, hold_months, names=None, market_days=None, suspensions=None):
     """PIT buy-and-hold equal-weight TOP10, with calendar-aligned NAV paths.
 
     Funds must all cover the same formation/exit window. No positional
     averaging, silent fund removal, implicit price forward-fill or truncation.
+    Only an externally verified interior suspension may receive a last-quote mark.
     Fees are a 10bp *roundtrip*, split equally between entry and exit.
     Gaps are judged against the market calendar (union of all funds' NAV
     dates): a market-wide holiday is NOT a data hole; a fund missing a day
@@ -157,6 +159,8 @@ def future_perf(paths, codes, t, hold_months, names=None, market_days=None):
     if len(codes) != 10 or len(set(codes)) != 10:
         return reject("TOP10 list short or duplicated", None)
     series = {}
+    marked = []
+    suspensions = suspensions or {}
     for code in codes:
         nav = paths.get(code)
         if nav is None:
@@ -167,15 +171,24 @@ def future_perf(paths, codes, t, hold_months, names=None, market_days=None):
             return reject("no_nav_spanning_formation_exit", code)
         if nav.days[i] - nav.day(t) > 10 or nav.day(end) - nav.days[j] > 10:
             return reject("formation_or_exit_nav_gap_gt_10d", code)
+        value = pd.Series(nav.value[i:j+1], index=nav.dates[i:j+1])
         if market_days is not None:
             have = set(nav.days[i:j + 1].tolist())
             missing = [int(d) for d in market_days if nav.day(t) < int(d) <= nav.day(end) and int(d) not in have]
-            if missing:
-                d0 = pd.Timestamp(np.datetime64(int(missing[0]), "D"))
-                return reject(f"missing_market_day:{d0.date()}", code)
+            known = {nav.day(pd.Timestamp(d)) for d in suspensions.get(code, ())}
+            for day in missing:
+                d0 = pd.Timestamp(np.datetime64(int(day), "D"))
+                # A confirmed suspension can be marked at the last quote only
+                # strictly inside a held position. Never synthesize entry/exit.
+                if day not in known or not nav.days[i] < day < nav.days[j]:
+                    return reject(f"missing_market_day:{d0.date()}", code)
+                previous = value.loc[value.index < d0].iloc[-1]
+                value.loc[d0] = previous
+                marked.append({"code":code,"date":str(d0.date())})
+            value = value.sort_index()
         elif np.any(np.diff(nav.days[i:j + 1]) > 10):
             return reject("interior_nav_gap_gt_10d", code)
-        series[code] = pd.Series(nav.value[i:j + 1], index=nav.dates[i:j + 1])
+        series[code] = value
     # Common observation calendar is essential: equal array positions need not
     # correspond to the same date for different funds.
     aligned = pd.concat(series, axis=1, join="inner").sort_index()
@@ -208,7 +221,8 @@ def future_perf(paths, codes, t, hold_months, names=None, market_days=None):
             "mdd": mdd, "sharpe": sharpe, "sortino": sortino,
             "n_funds": len(codes), "start_date": str(aligned.index[0].date()),
             "end_date": str(aligned.index[-1].date()),
-            "risk_ratio_hurdle": "zero_daily_return"}
+            "risk_ratio_hurdle": "zero_daily_return",
+            "verified_suspension_marks": marked}
 
 def main():
     ap = argparse.ArgumentParser()
@@ -234,8 +248,7 @@ def main():
     paths, _ = load_paths(catalog, Path(args.data_dir), asof)
     fac = pd.read_csv(ROOT / "data" / "factors" / "daily.csv",
                       parse_dates=["date"])
-    trading_days = pd.DatetimeIndex(
-        fac.loc[fac.csi300_price_index.notna(), "date"])
+    trading_days = complete_calendar(fac.loc[fac.csi300_price_index.notna(), "date"],asof)
     sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
 
     folds = []
@@ -264,7 +277,7 @@ def main():
             top = top.drop_duplicates("product_key").head(10)
             perf = future_perf(paths, top["code"].tolist(), t, HOLD_MONTHS,
                                names=dict(zip(top["code"], top["name"])),
-                               market_days=market_days)
+                               market_days=market_days, suspensions=VERIFIED_SUSPENSIONS)
             row[model] = perf
             top[["code", "name", model]].to_csv(out / f"fold_{t_str}_{model}.csv", index=False)
         folds.append(row)
