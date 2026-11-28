@@ -16,6 +16,7 @@ from fundkit.industry_rank import nav_quality_issue
 from run_oos_model_comparison import future_perf, FORMATION_DATES
 from fundkit.industry_rank import NavPath
 from fundkit.model_ablation import add_return_ablation, identity_keys, cny_comparable
+from fundkit.oos_calendar import complete_calendar, VERIFIED_SUSPENSIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "debug_data/20261127"
@@ -152,7 +153,7 @@ def current(sample):
 
 def oos():
     rows=[]
-    calendar=pd.to_datetime(read(DATA/"oos/market_calendar.csv").trade_date)
+    calendar=complete_calendar(read(DATA/"oos/market_calendar.csv").trade_date,ASOF)
     days=calendar.to_numpy(dtype="datetime64[D]").astype("int64")
     for day in FORMATION_DATES:
         t=pd.Timestamp(day)
@@ -180,7 +181,7 @@ def oos():
             g=g.sort_values("date")
             paths[c]=NavPath(pd.DatetimeIndex(g.date),g.nav.to_numpy())
         for (label,model),top in selections.items():
-            perf=future_perf(paths,top.code.tolist(),t,6,names=dict(zip(top.code,top.name)),market_days=days)
+            perf=future_perf(paths,top.code.tolist(),t,6,names=dict(zip(top.code,top.name)),market_days=days,suspensions=VERIFIED_SUSPENSIONS)
             rows.append(dict(formation=day,universe=label,model=model,eligible=len(universes[label]),
                              factor_eb_selected=int(top.factor_status.eq("FACTOR_EB").sum()),
                              calendar_complete=bool(calendar.max()>=t+pd.DateOffset(months=6)-pd.Timedelta(days=3)),
@@ -195,7 +196,7 @@ def main():
     sample=sample_audit()
     a={"source_sha":src,"limitations":["current D95 reused from old exported feature table",
          "zero-month suffix review proxy for nonsampled funds","current status snapshot 2026-11-17, no PIT trading or fees",
-         "historical D95 absent, M2/M6 OOS not computed","calendar ends 2026-11-09, final fold incomplete calendar",
+         "historical D95 absent, M2/M6 OOS not computed","calendar tail completed by official scheduled exchange dates; verified interior suspension marked at previous quote",
          "surviving catalog; conditional EB not a calibrated expected return forecast",
          "CNY comparable share cohort; no FX imputation; legacy currency metadata may be over-conservative",
          "name-based lock exclusion applied before OOS ranking; actual PIT terms unknown",
