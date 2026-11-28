@@ -24,15 +24,38 @@ FOURTH={
     "RECOVERY":"recovery",
     "CONSISTENCY":"consistency",
 }
-# Monthly zero-hurdle ratios: same threshold for every window, no
-# risk-free data imputation. 1bp denominator floor avoids singularity.
+# Same threshold for every window. 1bp denominator floor avoids singularity.
+# Replay supplies the observed prior-month-end CNY 1Y government yield.
 MONTHLY_FLOOR=.0001
 CALMAR_FLOOR=.0001
 METRICS=("R","D","stress_proxy","monthly","daily","sharpe","sortino",
          "calmar","recovery","consistency")
 
 
-def monthly_metrics(monthly, cutoff):
+def monthly_risk_free(factors):
+    """Monthly cash-rate proxy fixed at the preceding month-end.
+
+    The source risk_free_annual is the 1Y government yield as a decimal
+    (fundkit.collect_extra). No use of within-month or future yields.
+    Stale observations (>10 calendar days) remain missing.
+    """
+    f=factors[["date","risk_free_annual"]].copy()
+    f["date"]=pd.to_datetime(f.date)
+    f["risk_free_annual"]=pd.to_numeric(f.risk_free_annual,errors="coerce")
+    f=f.loc[np.isfinite(f.risk_free_annual)&f.risk_free_annual.between(0,.20)].sort_values("date")
+    if f.empty or f.date.duplicated().any():
+        raise ValueError("invalid risk-free factor data")
+    rate=f.set_index("date").risk_free_annual
+    periods=pd.period_range(rate.index.min().to_period("M")+1,rate.index.max().to_period("M")+1,freq="M")
+    anchors=(periods-1).to_timestamp(how="end").normalize()
+    idx=rate.index.get_indexer(anchors,method="pad")
+    valid=(idx>=0)&((anchors-rate.index[np.maximum(idx,0)]).days<=10)
+    result=pd.Series(np.nan,index=periods,dtype=float)
+    result.loc[valid]=np.expm1(np.log1p(rate.to_numpy()[idx[valid]])/12)
+    return result
+
+
+def monthly_metrics(monthly, cutoff, rf_monthly=None):
     m=monthly.copy()
     if m.duplicated(["code","month"]).any():
         raise ValueError("duplicate code-month")
@@ -44,10 +67,19 @@ def monthly_metrics(monthly, cutoff):
     if not np.isfinite(m.r).all() or (m.r<=-1).any():
         raise ValueError("invalid monthly return")
     m["x"]=np.log1p(m.r)
-    m["neg2"]=np.minimum(m.r,0)**2
-    m["positive"]=(m.r>0).astype(float)
+    # A zero hurdle is supported for explicit unit tests/diagnostics only.
+    if rf_monthly is None:
+        m["rf"]=0.
+    else:
+        m["rf"]=m.month.map(rf_monthly).astype(float)
+        if not np.isfinite(m.rf).all():
+            missing=m.loc[m.rf.isna(),"month"].astype(str).unique().tolist()
+            raise ValueError(f"missing prior-month risk-free yield: {missing}")
+    m["excess"]=m.r-m.rf
+    m["neg2"]=np.minimum(m.excess,0)**2
+    m["positive"]=(m.excess>0).astype(float)
     g=m.groupby("code",sort=False)
-    d=g.agg(n_months=("r","size"),mean=("r","mean"),sd=("r","std"),
+    d=g.agg(n_months=("r","size"),mean=("excess","mean"),sd=("excess","std"),
             downside2=("neg2","mean"),consistency=("positive","mean"))
     # Require contiguous complete months. No missing-month forward fill.
     ends=g.month.agg(["min","max"])
