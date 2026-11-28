@@ -1,0 +1,27 @@
+name: Strict historical bootstrap audit
+on:
+  push:
+    branches:
+      - codex/fund-analysis-all-fund-ranking-20261114
+    paths:
+      - 'scripts/audit_bootstrap_reconstruction.py'
+      - 'tests/test_bootstrap_reconstruction.py'
+      - '.github/workflows/bootstrap-audit.yml'
+  workflow_dispatch:
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt
+      - run: python scripts/audit_bootstrap_reconstruction.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bootstrap-audit-20261128
+          path: artifacts/bootstrap_audit_20261128
+          retention-days: 30
