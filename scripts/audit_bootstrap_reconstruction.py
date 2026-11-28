@@ -21,6 +21,7 @@ from rank_models_m123 import pct, eb_posteriors, BOOT_STEPS
 from fundkit.industry_rank import NavPath, nav_quality_issue
 from fundkit.opportunity_rank import stationary_bootstrap, max_drawdown
 from run_oos_model_comparison import FORMATION_DATES, future_perf, ROUNDTRIP_FEE
+from fundkit.oos_calendar import complete_calendar, VERIFIED_SUSPENSIONS, CALENDAR_SOURCE, SUSPENSION_SOURCE
 
 OUT = Path(__file__).resolve().parents[1]/"artifacts/bootstrap_audit_20261128"
 MODELS = ["M0","M1","M2","M6","M7"]
@@ -178,7 +179,8 @@ def main():
     v=np.exp(np.cumsum(np.r_[0,np.random.default_rng(19).normal(.0001,.007,243)]))
     ref=float(np.quantile(max_drawdown(stationary_bootstrap(v,steps=BOOT_STEPS,scenarios=SCENARIOS,block_length=BLOCK,seed=SEED)),.95))
     assert abs(ref-fast_d95(v))<1e-12
-    calendar=pd.DatetimeIndex(pd.to_datetime(read(DATA/"oos/market_calendar.csv").trade_date))
+    original_calendar=pd.DatetimeIndex(pd.to_datetime(read(DATA/"oos/market_calendar.csv").trade_date))
+    calendar=complete_calendar(original_calendar,"2026-11-20")
     days=calendar.to_numpy(dtype="datetime64[D]").astype("int64")
     rows=[]; attr=[]; full_attr=[]; coverage=[]; cal=[]
     previous=[]
@@ -217,7 +219,7 @@ def main():
             paths=paths_for(post,{c for top in selections.values() for c in top.code})
             complete=bool(calendar.max()>=end-pd.Timedelta(days=3))
             for (label,model),top in selections.items():
-                perf=future_perf(paths,top.code.tolist(),t,6,names=dict(zip(top.code,top.name)),market_days=days)
+                perf=future_perf(paths,top.code.tolist(),t,6,names=dict(zip(top.code,top.name)),market_days=days,suspensions=VERIFIED_SUSPENSIONS)
                 row=dict(formation=day,universe=label,model=model,eligible=len(universes[label]),calendar_complete=complete,codes=top.code.tolist(),**perf)
                 rows.append(row); print("BOOT_OOS",json.dumps(row,ensure_ascii=False),flush=True)
                 attr.extend(attribution(top,paths,t,end,model,label,calendar))
@@ -225,8 +227,8 @@ def main():
                 full_paths=paths_for(post,{c for top in full_selections.values() for c in top.code})
                 for model,top in full_selections.items():
                     full_attr.extend(attribution(top,full_paths,t,end,model,"previous_full_cohort",calendar))
-            if not complete:
-                review=calendar_review(post,d,t,calendar); cal.append(review)
+            if day=="2026-05-20":
+                review=calendar_review(post,d,t,original_calendar); cal.append(review)
                 print("CALENDAR",json.dumps(review),flush=True)
         else:
             post=read(DATA/f"oos/fold_{day}_post_daily.csv.gz")
@@ -244,9 +246,9 @@ def main():
     for x in full_attr:
         if x["formation"]=="2026-05-20" or x.get("missing_calendar_count",0):
             print("FULL_ATTRIBUTION",json.dumps(x,ensure_ascii=False),flush=True)
-    result=dict(source=source,coverage=coverage,summary=s,calendar=cal,
+    result=dict(source=source,coverage=coverage,summary=s,calendar=cal,calendar_source=CALENDAR_SOURCE,suspension_source=SUSPENSION_SOURCE,
         limits=["first two formation dates unavailable","cohort restricted to funds present in both prior export slices and reconciled to pre-features",
-        "final calendar incomplete, provisional only","historical daily returns reconstructed from prior elapsed slices, never current post",
+        "November 10-20 scheduled trading days added from official exchange calendar; only known suspension allowed for interior marking","historical daily returns reconstructed from prior elapsed slices, never current post",
         "fees uniform 10bp; survivorship and historical eligibility unavailable; no claim of guaranteed risk cap",
         "circular stationary bootstrap, 500 scenarios, 126 steps, block 10; no parameter search"])
     (OUT/"audit.json").write_text(json.dumps(result,ensure_ascii=False,indent=2))
