@@ -15,16 +15,16 @@ from audit_debug_data_20261127 import DATA, ASOF, HORIZONS, read, verify, clean,
 from fundkit.oos_calendar import complete_calendar, VERIFIED_SUSPENSIONS
 from run_oos_model_comparison import FORMATION_DATES
 from fundkit.m0_score_research import (WEIGHTS, MODELS, METRICS, monthly_metrics,
-    product_representatives, build_scores, future_matrix, portfolio_stats)
+    product_representatives, build_scores, future_matrix, portfolio_stats, monthly_risk_free)
 
 OUT=Path(__file__).resolve().parents[1]/"artifacts/m0_score_research_20261128"
 DEFENSIVE=["中长纯债","短债/中短债","利率债","信用债","指数型-固收"]
 TOPS=(10,20,50)
 
 
-def prepare(f,monthly,cutoff,current=False):
+def prepare(f,monthly,cutoff,rf,current=False):
     d,a=clean(f,month_features(monthly))
-    m=monthly_metrics(monthly,cutoff)
+    m=monthly_metrics(monthly,cutoff,rf)
     d=d.merge(m,on="code",validate="one_to_one")
     valid=d.complete & ~d.name.str.contains(LOCK_RE,na=False)
     if current:
@@ -84,12 +84,12 @@ def outcome_analysis(z,gross):
     return ic,quint,dict(eligible=len(z),outcome_valid=len(q))
 
 
-def current():
+def current(rf):
     audits=[]; tops=[]; sensitivity=[]
     for h in HORIZONS:
         f=read(DATA/f"features/features_{h}.csv.gz")
         monthly=read(DATA/f"features/monthly_{h}.csv.gz")
-        d,a=prepare(f.loc[f.status.eq("SCORED")],monthly,ASOF,True)
+        d,a=prepare(f.loc[f.status.eq("SCORED")],monthly,ASOF,rf,True)
         print("CURRENT_COVERAGE",h,json.dumps(a),flush=True)
         for u,cohort in universes(d).items():
             for shock in (False,True):
@@ -114,14 +114,14 @@ def current():
     return audits
 
 
-def oos():
+def oos(rf):
     calendar=complete_calendar(read(DATA/"oos/market_calendar.csv").trade_date,ASOF)
     rows=[]; ics=[]; quint=[]; sensitivity=[]; coverage=[]
     for day in FORMATION_DATES:
         t=pd.Timestamp(day);end=t+pd.DateOffset(months=6)
         f=read(DATA/f"oos/fold_{day}_pre_features.csv.gz")
         monthly=read(DATA/f"oos/fold_{day}_pre_monthly.csv.gz")
-        d,a=prepare(f,monthly,t)
+        d,a=prepare(f,monthly,t,rf)
         cohorts={u:build_scores(g) for u,g in universes(d).items()}
         # Freeze every selection before reading post-formation data.
         chosen={}
@@ -211,15 +211,18 @@ def summarize(rows,ic,quint):
 def main():
     OUT.mkdir(parents=True,exist_ok=True)
     source=verify()
-    a=current()
-    rows,ic,q=oos()
+    rf=monthly_risk_free(read(DATA/"oos/factors_daily.csv"))
+    rf.rename("monthly_rate").to_csv(OUT/"monthly_rf.csv")
+    print("RISK_FREE",json.dumps(dict(first=str(rf.first_valid_index()),last=str(rf.last_valid_index()),missing=int(rf.isna().sum()))),flush=True)
+    a=current(rf)
+    rows,ic,q=oos(rf)
     summary=summarize(rows,ic,q)
     (OUT/"audit.json").write_text(json.dumps(dict(source=source,weights=WEIGHTS,models=MODELS,
         current=a,summary=summary,limitations=[
         "past seven folds repeatedly examined; development evidence, no untouched holdout",
         "only one-year historical formation features; current 5y/3y/6m not independently validated",
         "historical rolling 3-month stress proxy is not current event-specific shock",
-        "monthly zero-hurdle Sharpe/Sortino with 1bp denominator floor, not risk-free ratios",
+        "monthly excess-return Sharpe/Sortino/consistency with prior-month-end 1Y government yield proxy; 1bp denominator floor; portfolio daily Sharpe remains zero-hurdle",
         "one product one vote, A share preferred before ranking; current status only, historical eligibility unavailable",
         "individual outcomes complete-case only for IC/quintiles; selected portfolios rejected if missing, no outcome-based replacement",
         "uniform 10bp roundtrip, no actual historical fee or survivorship correction",
